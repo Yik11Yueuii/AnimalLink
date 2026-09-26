@@ -1,1 +1,3 @@
-# Dev uses the same contract; deployers provide hostnames and secrets via environment.
+spring:
+  flyway:
+    locations: classpath:db/migration,classpath:db/demo

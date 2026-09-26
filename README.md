@@ -2,7 +2,7 @@
 
 AnimalLink 是一个**基于多模态大模型的校园动物事件协同平台**，连接动物观察、救助协作、领养流转与长期数字档案。平台围绕同一只 Animal 的长期身份，持续记录校园生活、异常救助、公益支持、领养过程及领养后的生活动态。AI 用于辅助理解、生成草稿和提供候选，由人确认，正式业务状态由 Java 服务执行。
 
-当前仓库已完成 Phase 0 工程与基础设施基线，以及 Phase 1A 的 User、Campus、CampusMembership 和基础 CampusVerification 人工审核闭环。Animal、校园圈、Event、Case、Adoption 和 AI 等能力仍按后续阶段实施。项目范围以正式的[产品需求文档 V2.1](docs/product/AnimalLink-PRD-V2.1.docx)、[技术设计 V1.0](docs/technical/AnimalLink-Technical-Design-V1.0.docx)及[项目规则](AGENTS.md)为准。
+当前仓库已完成 Phase 0 工程与基础设施基线、Phase 1A 的身份与校园基础，以及 Phase 1B 的 Animal 核心长期档案。校园圈、Event、Case、Adoption 正式流程和 AI 等能力仍按后续阶段实施。项目范围以正式的[产品需求文档 V2.1](docs/product/AnimalLink-PRD-V2.1.docx)、[技术设计 V1.0](docs/technical/AnimalLink-Technical-Design-V1.0.docx)及[项目规则](AGENTS.md)为准。
 
 ## 技术架构
 
@@ -79,6 +79,51 @@ Invoke-RestMethod http://localhost:8080/identity/api/v1/users/me -Headers $userH
 Invoke-RestMethod 'http://localhost:8080/identity/api/v1/campuses?q=示例'
 ```
 
+## Phase 1B Animal 核心长期档案
+
+Animal 是系统中稳定、长期存在的主体。帖子、救助、领养及领养后动态在后续阶段都应关联同一个 Animal ID，而不能为一次业务过程重新创建 Animal。暂未识别的动物也不会创建名为“UNKNOWN”的公共档案；未来相关记录通过可空的 `animalId` 表达待确认关系。
+
+Phase 1B 的正式业务归属为 `animal-service`，已实现：
+
+- `animal` 核心主档，独立保存身份状态、领养投影状态和当前生活场景，避免单一超级状态枚举。
+- `animal_media` 媒体元数据与公开查询基础；对象内容仍由 MinIO 保存，本阶段不包含上传流程。
+- `timeline_entry` 最小只读投影模型，使用来源类型和来源 ID 保证未来投影幂等；Timeline 不是 Event、Case 或 Adoption 的事实源。
+- 按 Campus 浏览、名称/外观关键词搜索、物种筛选、稳定排序和分页，以及公开详情和 Timeline 查询。
+- 治理管理员创建、修正和归档主档；归档不会物理删除数据。
+- 创建 Animal 时由 `animal-service` 同步调用 `identity-service` 验证 Campus，且治理权限也由 identity-service 返回的当前用户事实判定。客户端提交角色请求头不能授予管理员权限，identity-service 不可用时敏感写操作返回 `503`。
+
+Phase 1B 不包含 Campus Circle、Post、Comment、Like、Follow、正式媒体上传、AI、Event、Case、Adoption 流程、Animal Merge、RabbitMQ 或管理端页面。
+
+### Phase 1B API
+
+下表是 animal-service 内部路径。通过 Gateway 访问时在路径前增加 `/animal`。
+
+| Method | Path | 用途 | 认证 |
+| --- | --- | --- | --- |
+| GET | `/api/v1/animals?campusId=...&q=...&species=CAT&page=0&size=20` | 按 Campus 分页浏览与搜索 ACTIVE Animal | 公开 |
+| GET | `/api/v1/animals/{animalId}` | 查看公开主档与公开媒体元数据 | 公开 |
+| GET | `/api/v1/animals/{animalId}/timeline?page=0&size=20` | 按时间倒序查看公开 Timeline | 公开 |
+| POST | `/api/v1/admin/animals` | 创建并绑定已启用 Campus 的 Animal | 治理管理员 |
+| PATCH | `/api/v1/admin/animals/{animalId}` | 修正允许修改的核心资料 | 治理管理员 |
+| POST | `/api/v1/admin/animals/{animalId}/archive` | 将 ACTIVE Animal 归档 | 治理管理员 |
+
+`local` / `dev` 环境会初始化三只示例 Animal：东校区的“小橘”“墨墨”和西校区的“阿黄”，并为其中两只加入少量 Timeline 示例。示例数据只保存 MinIO objectKey 语义，不写入外部随机图片 URL，也不会进入 production 默认 migration。
+
+服务启动后，可通过 Gateway 查询与创建：
+
+```powershell
+Invoke-RestMethod 'http://localhost:8080/animal/api/v1/animals?campusId=10000000-0000-0000-0000-000000000001&page=0&size=20'
+
+$adminHeaders = @{ 'X-User-Id' = '00000000-0000-0000-0000-000000000002' }
+$body = @{
+  campusId = '10000000-0000-0000-0000-000000000001'
+  displayName = '新校园成员'
+  species = 'CAT'
+  sex = 'UNKNOWN'
+} | ConvertTo-Json
+Invoke-RestMethod 'http://localhost:8080/animal/api/v1/admin/animals' -Method Post -Headers $adminHeaders -ContentType 'application/json' -Body $body
+```
+
 ## 本地环境准备
 
 安装 JDK 21 和 Docker Desktop（需支持 Docker Compose）。设置 `JAVA_HOME` 指向 JDK 21。Maven Wrapper 会自动下载 Maven 3.9.9，无需另行安装 Maven。
@@ -146,4 +191,10 @@ MySQL 数据卷初始化后，再修改 `.env` 中的数据库密码不会自动
 .\mvnw.cmd -f backend/pom.xml -pl identity-service test
 ```
 
-identity-service 集成测试使用 Testcontainers 启动隔离的 MySQL 8.0.41，验证真实 Flyway 迁移、数据库约束、本地事务回滚和并发审核，因此运行测试前必须启动 Docker Desktop。
+只运行 Phase 1B animal-service 测试：
+
+```powershell
+.\mvnw.cmd -f backend/pom.xml -pl animal-service test
+```
+
+identity-service 与 animal-service 集成测试使用 Testcontainers 启动隔离的 MySQL 8.0.41。Phase 1B 测试覆盖真实 Flyway 迁移、查询/分页、治理权限、客户端角色伪造、Campus 跨服务验证、生命周期、Timeline 隔离和数据库约束，因此运行测试前必须启动 Docker Desktop。

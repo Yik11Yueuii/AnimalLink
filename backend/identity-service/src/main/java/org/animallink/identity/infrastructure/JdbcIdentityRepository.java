@@ -53,6 +53,14 @@ public class JdbcIdentityRepository implements UserRepository, CampusRepository,
     }
 
     @Override
+    public Optional<Campus> findById(String id) {
+        return queryOptional("""
+                SELECT id, name, short_name, city, region, status, created_at, updated_at
+                FROM campus WHERE id = ?
+                """, CAMPUS_ROW_MAPPER, id);
+    }
+
+    @Override
     public Optional<Campus> findActiveById(String id) {
         return queryOptional("""
                 SELECT id, name, short_name, city, region, status, created_at, updated_at

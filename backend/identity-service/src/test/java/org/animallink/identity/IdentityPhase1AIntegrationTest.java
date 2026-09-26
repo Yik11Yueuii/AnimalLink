@@ -92,6 +92,13 @@ class IdentityPhase1AIntegrationTest {
         mockMvc.perform(get("/api/v1/campuses/{id}", UUID.randomUUID()))
                 .andExpect(status().isNotFound());
 
+        jdbcTemplate.update("UPDATE campus SET status = 'INACTIVE' WHERE id = ?", OTHER_CAMPUS_ID);
+        mockMvc.perform(get("/api/v1/campuses/{id}", OTHER_CAMPUS_ID))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/internal/v1/campuses/{id}", OTHER_CAMPUS_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("INACTIVE"));
+
         mockMvc.perform(get("/api/v1/users/me"))
                 .andExpect(status().isUnauthorized());
 

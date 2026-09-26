@@ -40,6 +40,12 @@ public class IdentityQueryService {
                 .orElseThrow(() -> new NotFoundException("Campus 不存在或不可用"));
     }
 
+    public Campus getCampusForServiceValidation(String campusId) {
+        IdRules.requireUuid(campusId, "campusId");
+        return campusRepository.findById(campusId)
+                .orElseThrow(() -> new NotFoundException("Campus 不存在"));
+    }
+
     public List<CampusMembershipView> currentUserMemberships() {
         return membershipRepository.findMembershipsByUserId(currentUser().id());
     }
