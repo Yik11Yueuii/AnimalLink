@@ -16,6 +16,10 @@
 .DS_Store
 Thumbs.db
 desktop.ini
+~$*.docx
+~$*.doc
+~$*.xlsx
+~$*.pptx
 
 # Logs and caches
 logs/
