@@ -2,7 +2,7 @@
 
 AnimalLink 是一个**基于多模态大模型的校园动物事件协同平台**，连接动物观察、救助协作、领养流转与长期数字档案。平台围绕同一只 Animal 的长期身份，持续记录校园生活、异常救助、公益支持、领养过程及领养后的生活动态。AI 用于辅助理解、生成草稿和提供候选，由人确认，正式业务状态由 Java 服务执行。
 
-当前仓库已完成 Phase 0 工程与基础设施基线、Phase 1A 的身份与校园基础、Phase 1B 的 Animal 核心长期档案，以及 Phase 1C 的 Campus Circle 基础社区与关注能力。Event、Case、Adoption 正式流程和 AI 等能力仍按后续阶段实施。项目范围以正式的[产品需求文档 V2.1](docs/product/AnimalLink-PRD-V2.1.docx)、[技术设计 V1.0](docs/technical/AnimalLink-Technical-Design-V1.0.docx)及[项目规则](AGENTS.md)为准。
+当前仓库已完成 Phase 0 工程与基础设施基线、Phase 1A 的身份与校园基础、Phase 1B 的 Animal 核心长期档案、Phase 1C 的 Campus Circle 基础社区与关注能力，以及 Phase 2A 的多模态观察解析基础。Event、Case、Adoption、候选匹配与正式媒体上传仍按后续阶段实施。项目范围以正式的[产品需求文档 V2.1](docs/product/AnimalLink-PRD-V2.1.docx)、[技术设计 V1.0](docs/technical/AnimalLink-Technical-Design-V1.0.docx)及[项目规则](AGENTS.md)为准。
 
 ## 技术架构
 
@@ -161,6 +161,41 @@ $postBody = @{
 Invoke-RestMethod 'http://localhost:8080/animal/api/v1/posts' -Method Post -Headers $userHeaders -ContentType 'application/json' -Body $postBody
 ```
 
+## Phase 2A 多模态观察解析基础
+
+Phase 2A 由 `intelligence-service` 负责。用户提交私有 MinIO objectKey、文字、Campus，以及可选的位置描述和发生时间；服务验证当前用户在目标 Campus 的有效学生或校友身份后，同步调用可替换的多模态模型客户端，生成可编辑的结构化观察草稿。
+
+模型原始响应和经 Java 严格 Schema 校验后的原始草稿保存在 `ai_result`，用户确认或编辑后的版本单独保存在 `ai_confirmation`，不会覆盖模型原文，也不会自动创建 Animal、Post、Event 或其他正式业务记录。任务状态只允许 `PENDING → RUNNING → SUCCEEDED/FAILED`。解析失败会保留错误码并允许用户改为手工填写；不确定信息必须使用 `UNKNOWN` 或空值。
+
+当前结构化草稿包括物种、性别、毛色、显著特征、可见状态、行为、估计数量、可见异常标记、用户提供的位置与时间、总体/字段置信度、警告和未知字段。提示词固定为 `animal-observation-v1`，明确禁止疾病诊断、治疗建议、危险等级断言和从图片推断精确位置。
+
+### Phase 2A API
+
+下表是 intelligence-service 内部路径；通过 Gateway 访问时在路径前增加 `/intelligence`。
+
+| Method | Path | 用途 | 认证 |
+| --- | --- | --- | --- |
+| POST | `/api/v1/ai/animal-observation/parse` | 解析媒体与文字，创建结构化观察草稿 | 目标 Campus 有效学生/校友成员 |
+| GET | `/api/v1/ai/tasks/{taskId}` | 查看本人 AI 任务、原始草稿及确认结果 | 任务所有者 |
+| POST | `/api/v1/ai/tasks/{taskId}/confirm` | 确认或编辑成功的草稿；不创建正式业务实体 | 任务所有者 |
+
+本地默认使用确定性的 `mock` provider，不需要外部模型凭据。`local` / `dev` 启动时会尝试在 intelligence 私有 bucket 中创建 `ai-input/demo-observation.png` 演示对象。可通过 Gateway 验证完整流程：
+
+```powershell
+$userHeaders = @{ 'X-User-Id' = '00000000-0000-0000-0000-000000000001' }
+$parseBody = @{
+  campusId = '10000000-0000-0000-0000-000000000001'
+  mediaObjectKeys = @('ai-input/demo-observation.png')
+  text = '教学楼东侧看到一只橘白猫，走路似乎不太自然。'
+  locationDescription = '教学楼东侧'
+  occurredAt = (Get-Date).ToUniversalTime().ToString('o')
+} | ConvertTo-Json
+$task = Invoke-RestMethod 'http://localhost:8080/intelligence/api/v1/ai/animal-observation/parse' -Method Post -Headers $userHeaders -ContentType 'application/json' -Body $parseBody
+Invoke-RestMethod "http://localhost:8080/intelligence/api/v1/ai/tasks/$($task.taskId)" -Headers $userHeaders
+```
+
+真实 OpenAI-compatible provider 通过环境变量启用：设置 `AI_PROVIDER=openai-compatible`、`AI_BASE_URL`、`AI_API_KEY`、`AI_MODEL_NAME`、`AI_CONNECT_TIMEOUT_MS` 和 `AI_READ_TIMEOUT_MS`。真实密钥只放在未提交的 `infra/.env` 或部署环境中；代码、日志和数据库都不会记录 API Key。当前自动化测试和本地默认流程不依赖外部模型服务。
+
 ## 本地环境准备
 
 安装 JDK 21 和 Docker Desktop（需支持 Docker Compose）。设置 `JAVA_HOME` 指向 JDK 21。Maven Wrapper 会自动下载 Maven 3.9.9，无需另行安装 Maven。
@@ -234,4 +269,10 @@ MySQL 数据卷初始化后，再修改 `.env` 中的数据库密码不会自动
 .\mvnw.cmd -f backend/pom.xml -pl animal-service test
 ```
 
-identity-service 与 animal-service 集成测试使用 Testcontainers 启动隔离的 MySQL 8.0.41。测试覆盖真实 Flyway 迁移、查询/分页、治理权限、客户端角色伪造、Campus 与 Membership 跨服务验证、Animal 生命周期、Campus Feed 隔离、发布、评论、点赞、关注、隐藏、Timeline 边界和数据库约束，因此运行测试前必须启动 Docker Desktop。
+只运行 Phase 2A intelligence-service 测试：
+
+```powershell
+.\mvnw.cmd -f backend/pom.xml -pl intelligence-service test
+```
+
+identity-service、animal-service 与 intelligence-service 集成测试使用 Testcontainers 启动隔离的 MySQL 8.0.41。除既有身份、Animal 与 Campus Circle 回归外，Phase 2A 测试覆盖真实 Flyway 迁移、结构化解析、UNKNOWN、媒体错误、模型超时/5xx/非法响应、任务状态、所有者隔离、人工编辑确认、原始结果保留、敏感配置和跨 Phase 边界，因此运行测试前必须启动 Docker Desktop。
