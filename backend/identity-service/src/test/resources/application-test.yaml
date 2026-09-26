@@ -1,0 +1,19 @@
+spring:
+  cloud:
+    nacos:
+      config:
+        enabled: false
+      discovery:
+        enabled: false
+  flyway:
+    locations: classpath:db/migration
+management:
+  health:
+    nacos:
+      enabled: false
+animallink:
+  minio:
+    endpoint: http://localhost:9000
+    access-key: test-access
+    secret-key: test-secret
+    bucket: test-identity

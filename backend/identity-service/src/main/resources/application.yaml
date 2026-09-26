@@ -3,8 +3,6 @@ spring:
     name: identity-service
   profiles:
     default: local
-  config:
-    import: optional:nacos:${spring.application.name}.yaml
   cloud:
     nacos:
       server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
@@ -41,4 +39,10 @@ animallink:
     bucket: ${MINIO_BUCKET_IDENTITY:animallink-identity}
 logging:
   pattern:
-    level: "%5p [traceId=%X{traceId:-}]"
+    level: "%5p [traceId=%X{traceId:-}] [userId=%X{userId:-}]"
+---
+spring:
+  config:
+    activate:
+      on-profile: "!test"
+    import: optional:nacos:${spring.application.name}.yaml
