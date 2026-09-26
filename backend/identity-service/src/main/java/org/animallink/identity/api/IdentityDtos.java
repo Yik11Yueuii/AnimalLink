@@ -1,6 +1,7 @@
 package org.animallink.identity.api;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import org.animallink.identity.domain.Campus;
@@ -13,6 +14,7 @@ import org.animallink.identity.domain.VerificationStatus;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 
 public final class IdentityDtos {
     private IdentityDtos() {
@@ -58,6 +60,30 @@ public final class IdentityDtos {
             return new CampusMembershipResponse(membership.id(), CampusResponse.from(view.campus()),
                     membership.membershipType(), membership.status(), membership.expectedGraduationDate(),
                     membership.approvedAt(), membership.createdAt(), membership.updatedAt());
+        }
+    }
+
+    public record InternalMembershipResponse(
+            boolean exists,
+            String membershipType,
+            String status) {
+        public static InternalMembershipResponse missing() {
+            return new InternalMembershipResponse(false, null, null);
+        }
+
+        public static InternalMembershipResponse from(org.animallink.identity.domain.CampusMembership membership) {
+            return new InternalMembershipResponse(true, membership.membershipType().name(),
+                    membership.status().name());
+        }
+    }
+
+    public record UserSummariesRequest(
+            @NotEmpty @Size(max = 100) List<@NotBlank @Size(max = 36) String> userIds) {
+    }
+
+    public record UserSummaryResponse(String id, String displayName, String accountStatus) {
+        public static UserSummaryResponse from(UserAccount user) {
+            return new UserSummaryResponse(user.id(), user.displayName(), user.accountStatus().name());
         }
     }
 

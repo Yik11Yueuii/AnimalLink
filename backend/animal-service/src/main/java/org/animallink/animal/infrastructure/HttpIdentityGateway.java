@@ -14,6 +14,13 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.util.Arrays;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
 @Component
 public class HttpIdentityGateway implements IdentityGateway {
     static final String USER_ID_HEADER = "X-User-Id";
@@ -64,7 +71,7 @@ public class HttpIdentityGateway implements IdentityGateway {
             if (user == null) {
                 throw new UnauthorizedException("无法确认当前用户");
             }
-            return new CurrentUser(user.id(), user.accountStatus(), user.systemRole());
+            return new CurrentUser(user.id(), user.displayName(), user.accountStatus(), user.systemRole());
         } catch (HttpClientErrorException.Unauthorized exception) {
             throw new UnauthorizedException("需要登录");
         } catch (HttpClientErrorException.Forbidden exception) {
@@ -84,6 +91,55 @@ public class HttpIdentityGateway implements IdentityGateway {
         }
     }
 
+    @Override
+    public Optional<CurrentUser> currentUserIfPresent() {
+        String userId = request.getHeader(USER_ID_HEADER);
+        if (userId == null || userId.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.of(requireCurrentUser());
+    }
+
+    @Override
+    public MembershipFact campusMembership(String userId, String campusId) {
+        try {
+            MembershipPayload value = restClient.get()
+                    .uri("/internal/v1/users/{userId}/campus-memberships/{campusId}", userId, campusId)
+                    .header("X-Trace-Id", traceId())
+                    .retrieve()
+                    .body(MembershipPayload.class);
+            if (value == null) {
+                throw unavailable();
+            }
+            return new MembershipFact(value.exists(), value.membershipType(), value.status());
+        } catch (ResourceAccessException | RestClientResponseException exception) {
+            throw unavailable();
+        }
+    }
+
+    @Override
+    public Map<String, UserSummary> userSummaries(Set<String> userIds) {
+        if (userIds.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            UserSummaryPayload[] values = restClient.post()
+                    .uri("/internal/v1/users/summaries")
+                    .header("X-Trace-Id", traceId())
+                    .body(new UserSummariesPayload(userIds))
+                    .retrieve()
+                    .body(UserSummaryPayload[].class);
+            if (values == null) {
+                throw unavailable();
+            }
+            return Arrays.stream(values)
+                    .map(value -> new UserSummary(value.id(), value.displayName()))
+                    .collect(Collectors.toMap(UserSummary::id, Function.identity()));
+        } catch (ResourceAccessException | RestClientResponseException exception) {
+            throw unavailable();
+        }
+    }
+
     private DependencyUnavailableException unavailable() {
         return new DependencyUnavailableException("identity-service 暂不可用，敏感写操作已拒绝");
     }
@@ -96,6 +152,15 @@ public class HttpIdentityGateway implements IdentityGateway {
     private record CampusPayload(String id, String status) {
     }
 
-    private record UserPayload(String id, String accountStatus, String systemRole) {
+    private record UserPayload(String id, String displayName, String accountStatus, String systemRole) {
+    }
+
+    private record MembershipPayload(boolean exists, String membershipType, String status) {
+    }
+
+    private record UserSummariesPayload(Set<String> userIds) {
+    }
+
+    private record UserSummaryPayload(String id, String displayName) {
     }
 }

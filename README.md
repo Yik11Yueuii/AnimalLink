@@ -2,7 +2,7 @@
 
 AnimalLink 是一个**基于多模态大模型的校园动物事件协同平台**，连接动物观察、救助协作、领养流转与长期数字档案。平台围绕同一只 Animal 的长期身份，持续记录校园生活、异常救助、公益支持、领养过程及领养后的生活动态。AI 用于辅助理解、生成草稿和提供候选，由人确认，正式业务状态由 Java 服务执行。
 
-当前仓库已完成 Phase 0 工程与基础设施基线、Phase 1A 的身份与校园基础，以及 Phase 1B 的 Animal 核心长期档案。校园圈、Event、Case、Adoption 正式流程和 AI 等能力仍按后续阶段实施。项目范围以正式的[产品需求文档 V2.1](docs/product/AnimalLink-PRD-V2.1.docx)、[技术设计 V1.0](docs/technical/AnimalLink-Technical-Design-V1.0.docx)及[项目规则](AGENTS.md)为准。
+当前仓库已完成 Phase 0 工程与基础设施基线、Phase 1A 的身份与校园基础、Phase 1B 的 Animal 核心长期档案，以及 Phase 1C 的 Campus Circle 基础社区与关注能力。Event、Case、Adoption 正式流程和 AI 等能力仍按后续阶段实施。项目范围以正式的[产品需求文档 V2.1](docs/product/AnimalLink-PRD-V2.1.docx)、[技术设计 V1.0](docs/technical/AnimalLink-Technical-Design-V1.0.docx)及[项目规则](AGENTS.md)为准。
 
 ## 技术架构
 
@@ -92,7 +92,7 @@ Phase 1B 的正式业务归属为 `animal-service`，已实现：
 - 治理管理员创建、修正和归档主档；归档不会物理删除数据。
 - 创建 Animal 时由 `animal-service` 同步调用 `identity-service` 验证 Campus，且治理权限也由 identity-service 返回的当前用户事实判定。客户端提交角色请求头不能授予管理员权限，identity-service 不可用时敏感写操作返回 `503`。
 
-Phase 1B 不包含 Campus Circle、Post、Comment、Like、Follow、正式媒体上传、AI、Event、Case、Adoption 流程、Animal Merge、RabbitMQ 或管理端页面。
+Phase 1B 不包含正式媒体上传、AI、Event、Case、Adoption 流程、Animal Merge、RabbitMQ 或管理端页面。
 
 ### Phase 1B API
 
@@ -122,6 +122,43 @@ $body = @{
   sex = 'UNKNOWN'
 } | ConvertTo-Json
 Invoke-RestMethod 'http://localhost:8080/animal/api/v1/admin/animals' -Method Post -Headers $adminHeaders -ContentType 'application/json' -Body $body
+```
+
+## Phase 1C Campus Circle 基础社区与关注
+
+Campus Circle 是校园内动物近况的主浏览面。Phase 1C 由 `animal-service` 负责，新增 `post`、`post_media`、`comment`、`post_like` 和 `animal_follow` 五张表，实现按 Campus 隔离的公开 Feed、帖子详情与评论读取。Post 可关联同 Campus 的 ACTIVE Animal，也允许 `animalId = null`，但不会因此创建虚假的 UNKNOWN Animal。
+
+发布 Post 和评论必须具备目标 Campus 的 ACTIVE `STUDENT` 或 `ALUMNI` CampusMembership；点赞和关注只要求有效登录。治理管理员可以隐藏 Post。作者昵称通过 identity-service 批量查询，Feed 的点赞数和评论数由 MySQL 聚合，不引入 Redis。Campus Feed 是社区内容，不会写入 `timeline_entry`；Timeline 仍只接受未来正式业务流程产生、带来源的投影。
+
+### Phase 1C API
+
+下表是 animal-service 内部路径；通过 Gateway 访问时在路径前增加 `/animal`。
+
+| Method | Path | 用途 | 认证 |
+| --- | --- | --- | --- |
+| GET | `/api/v1/campuses/{campusId}/feed?page=0&size=20` | 按创建时间倒序读取公开 Campus Feed | 公开 |
+| GET | `/api/v1/posts/{postId}` | 读取公开 Post 详情 | 公开 |
+| GET | `/api/v1/posts/{postId}/comments?page=0&size=50` | 读取公开评论 | 公开 |
+| POST | `/api/v1/posts` | 发布 Campus Post | 目标 Campus 有效学生/校友成员 |
+| POST | `/api/v1/posts/{postId}/comments` | 评论公开 Post | Post 所属 Campus 有效学生/校友成员 |
+| POST / DELETE | `/api/v1/posts/{postId}/like` | 点赞 / 取消点赞 | 当前用户 |
+| POST / DELETE | `/api/v1/animals/{animalId}/follow` | 关注 / 取消关注 Animal | 当前用户 |
+| GET | `/api/v1/users/me/animal-follows?page=0&size=20` | 分页读取我的 ACTIVE Animal 关注 | 当前用户 |
+| POST | `/api/v1/admin/posts/{postId}/hide` | 隐藏 Post，不物理删除 | 治理管理员 |
+
+本地普通示例用户已具有东校区 ACTIVE STUDENT Membership，可直接发布和评论：
+
+```powershell
+$userHeaders = @{ 'X-User-Id' = '00000000-0000-0000-0000-000000000001' }
+Invoke-RestMethod 'http://localhost:8080/animal/api/v1/campuses/10000000-0000-0000-0000-000000000001/feed'
+
+$postBody = @{
+  campusId = '10000000-0000-0000-0000-000000000001'
+  animalId = '20000000-0000-0000-0000-000000000001'
+  textContent = '今天在教学楼旁看到小橘。'
+  media = @()
+} | ConvertTo-Json
+Invoke-RestMethod 'http://localhost:8080/animal/api/v1/posts' -Method Post -Headers $userHeaders -ContentType 'application/json' -Body $postBody
 ```
 
 ## 本地环境准备
@@ -191,10 +228,10 @@ MySQL 数据卷初始化后，再修改 `.env` 中的数据库密码不会自动
 .\mvnw.cmd -f backend/pom.xml -pl identity-service test
 ```
 
-只运行 Phase 1B animal-service 测试：
+只运行 Phase 1B/1C animal-service 测试：
 
 ```powershell
 .\mvnw.cmd -f backend/pom.xml -pl animal-service test
 ```
 
-identity-service 与 animal-service 集成测试使用 Testcontainers 启动隔离的 MySQL 8.0.41。Phase 1B 测试覆盖真实 Flyway 迁移、查询/分页、治理权限、客户端角色伪造、Campus 跨服务验证、生命周期、Timeline 隔离和数据库约束，因此运行测试前必须启动 Docker Desktop。
+identity-service 与 animal-service 集成测试使用 Testcontainers 启动隔离的 MySQL 8.0.41。测试覆盖真实 Flyway 迁移、查询/分页、治理权限、客户端角色伪造、Campus 与 Membership 跨服务验证、Animal 生命周期、Campus Feed 隔离、发布、评论、点赞、关注、隐藏、Timeline 边界和数据库约束，因此运行测试前必须启动 Docker Desktop。

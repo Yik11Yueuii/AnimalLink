@@ -110,6 +110,32 @@ class IdentityPhase1AIntegrationTest {
     }
 
     @Test
+    void internalMembershipAndBatchUserSummaryEndpointsExposeAuthoritativeFacts() throws Exception {
+        String verificationId = insertVerification(USER_ID, CAMPUS_ID, "APPROVED");
+        insertMembership(USER_ID, CAMPUS_ID, verificationId);
+
+        mockMvc.perform(get("/internal/v1/users/{userId}/campus-memberships/{campusId}",
+                        USER_ID, CAMPUS_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.exists").value(true))
+                .andExpect(jsonPath("$.membershipType").value("STUDENT"))
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+
+        mockMvc.perform(get("/internal/v1/users/{userId}/campus-memberships/{campusId}",
+                        OTHER_USER_ID, CAMPUS_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.exists").value(false));
+
+        mockMvc.perform(post("/internal/v1/users/summaries")
+                        .contentType("application/json")
+                        .content("{\"userIds\":[\"" + USER_ID + "\",\"" + ADMIN_ID + "\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[?(@.id == '%s')].displayName".formatted(USER_ID))
+                        .value("普通用户"));
+    }
+
+    @Test
     void submitRejectsDuplicatePendingAndExistingMembership() throws Exception {
         String request = verificationRequest(CAMPUS_ID, "STUDENT");
         mockMvc.perform(post("/api/v1/campus-verifications")

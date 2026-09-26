@@ -26,6 +26,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Repository
 public class JdbcIdentityRepository implements UserRepository, CampusRepository,
@@ -50,6 +51,18 @@ public class JdbcIdentityRepository implements UserRepository, CampusRepository,
                 SELECT id, display_name, account_status, system_role, created_at, updated_at
                 FROM `user` WHERE id = ?
                 """, USER_ROW_MAPPER, id);
+    }
+
+    @Override
+    public List<UserAccount> findUsersByIds(List<String> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        String placeholders = ids.stream().map(ignored -> "?").collect(Collectors.joining(","));
+        return jdbcTemplate.query("""
+                SELECT id, display_name, account_status, system_role, created_at, updated_at
+                FROM `user` WHERE id IN (%s)
+                """.formatted(placeholders), USER_ROW_MAPPER, ids.toArray());
     }
 
     @Override
@@ -106,6 +119,17 @@ public class JdbcIdentityRepository implements UserRepository, CampusRepository,
                 WHERE user_id = ? AND campus_id = ? AND status = 'ACTIVE'
                 """, Integer.class, userId, campusId);
         return count != null && count > 0;
+    }
+
+    @Override
+    public Optional<CampusMembership> findByUserAndCampus(String userId, String campusId) {
+        return queryOptional("""
+                SELECT id, user_id, campus_id, membership_type, status,
+                       expected_graduation_date, approved_at, last_verification_id,
+                       created_at, updated_at
+                FROM campus_membership
+                WHERE user_id = ? AND campus_id = ?
+                """, MEMBERSHIP_ROW_MAPPER, userId, campusId);
     }
 
     @Override
@@ -260,6 +284,19 @@ public class JdbcIdentityRepository implements UserRepository, CampusRepository,
                     rs.getString("reviewed_by"),
                     instant(rs, "reviewed_at"),
                     rs.getInt("version"),
+                    instant(rs, "created_at"),
+                    instant(rs, "updated_at"));
+
+    private static final RowMapper<CampusMembership> MEMBERSHIP_ROW_MAPPER = (rs, rowNum) ->
+            new CampusMembership(
+                    rs.getString("id"),
+                    rs.getString("user_id"),
+                    rs.getString("campus_id"),
+                    MembershipType.valueOf(rs.getString("membership_type")),
+                    MembershipStatus.valueOf(rs.getString("status")),
+                    localDate(rs, "expected_graduation_date"),
+                    instant(rs, "approved_at"),
+                    rs.getString("last_verification_id"),
                     instant(rs, "created_at"),
                     instant(rs, "updated_at"));
 
