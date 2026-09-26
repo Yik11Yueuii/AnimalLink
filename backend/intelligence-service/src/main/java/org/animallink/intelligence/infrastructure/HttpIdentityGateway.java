@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.animallink.intelligence.application.IdentityGateway;
 import org.animallink.intelligence.domain.ApiExceptions.*;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.*;
 
@@ -13,7 +14,8 @@ public class HttpIdentityGateway implements IdentityGateway {
     private final RestClient client;
     private final HttpServletRequest request;
 
-    public HttpIdentityGateway(RestClient identityRestClient, HttpServletRequest request) {
+    public HttpIdentityGateway(@Qualifier("identityRestClient") RestClient identityRestClient,
+                               HttpServletRequest request) {
         this.client = identityRestClient;
         this.request = request;
     }

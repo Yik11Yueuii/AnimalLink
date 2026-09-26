@@ -71,8 +71,12 @@ class Phase2AMultimodalParsingIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        jdbc.update("DELETE FROM matching_candidate");
+        jdbc.update("DELETE FROM matching_record");
+        jdbc.update("DELETE FROM animal_embedding");
         jdbc.update("DELETE FROM ai_confirmation");
         jdbc.update("DELETE FROM ai_result");
+        jdbc.update("DELETE FROM ai_task_media");
         jdbc.update("DELETE FROM ai_task");
         when(identityGateway.requireCurrentUser()).thenReturn(user(USER_ID));
         when(identityGateway.campusMembership(USER_ID, CAMPUS_ID))
@@ -101,6 +105,8 @@ class Phase2AMultimodalParsingIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT started_at IS NOT NULL AND completed_at IS NOT NULL FROM ai_task WHERE id = ?", Boolean.class, taskId))
                 .isTrue();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM ai_result WHERE task_id = ?", Integer.class, taskId))
+                .isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM ai_task_media WHERE task_id = ?", Integer.class, taskId))
                 .isEqualTo(1);
         String inputSummary = jdbc.queryForObject("SELECT input_summary FROM ai_task WHERE id = ?", String.class, taskId);
         assertThat(inputSummary).doesNotContain("教学楼").doesNotContain("base64");
@@ -136,6 +142,7 @@ class Phase2AMultimodalParsingIntegrationTest {
                 .andExpect(jsonPath("$.code").value("PROVIDER_TIMEOUT"));
         assertFailed("PROVIDER_TIMEOUT");
 
+        jdbc.update("DELETE FROM ai_task_media");
         jdbc.update("DELETE FROM ai_task");
         doThrow(new ProviderUnavailable("模型服务不可用")).when(modelClient).analyze(any());
         performParse(parseRequest(false)).andExpect(status().isServiceUnavailable())
@@ -146,6 +153,7 @@ class Phase2AMultimodalParsingIntegrationTest {
     @Test
     void invalidJsonSchemaAndEmptyResponsesMarkTaskFailed() throws Exception {
         for (String raw : List.of("```json\n{}\n```", "{}", "")) {
+            jdbc.update("DELETE FROM ai_task_media");
             jdbc.update("DELETE FROM ai_task");
             when(modelClient.analyze(any())).thenReturn(new MultimodalModelClient.ModelResponse(raw));
             performParse(parseRequest(false)).andExpect(status().isBadGateway())
@@ -230,7 +238,8 @@ class Phase2AMultimodalParsingIntegrationTest {
         List<String> tables = jdbc.queryForList("""
                 SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()
                 """, String.class).stream().map(String::toLowerCase).toList();
-        assertThat(tables).contains("ai_task", "ai_result", "ai_confirmation");
+        assertThat(tables).contains("ai_task", "ai_result", "ai_confirmation", "ai_task_media",
+                "animal_embedding", "matching_record", "matching_candidate");
         assertThat(tables).doesNotContain("animal", "post", "event", "case", "candidate_match", "outbox_event");
     }
 

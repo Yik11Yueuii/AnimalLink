@@ -3,6 +3,7 @@ package org.animallink.animal.infrastructure;
 import org.animallink.animal.domain.AdoptionStatus;
 import org.animallink.animal.domain.Animal;
 import org.animallink.animal.domain.AnimalMedia;
+import org.animallink.animal.domain.AnimalCandidateSnapshot;
 import org.animallink.animal.domain.AnimalRepository;
 import org.animallink.animal.domain.AnimalSex;
 import org.animallink.animal.domain.AnimalSpecies;
@@ -24,6 +25,9 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Collections;
 
 @Repository
 public class JdbcAnimalRepository implements AnimalRepository {
@@ -134,6 +138,52 @@ public class JdbcAnimalRepository implements AnimalRepository {
         return count == null ? 0 : count;
     }
 
+    @Override
+    public List<AnimalCandidateSnapshot> recallCandidates(String campusId, AnimalSpecies species, int limit) {
+        String speciesClause = species == null ? "" : " AND a.species = ?";
+        List<Object> args = new ArrayList<>();
+        args.add(campusId);
+        if (species != null) args.add(species.name());
+        args.add(limit);
+        List<CandidateBase> bases = jdbcTemplate.query("""
+                SELECT a.id, a.campus_id, a.display_name, a.species, a.sex, a.coat_color,
+                       a.distinctive_features, a.typical_area,
+                       latest.occurred_at AS last_seen_at, latest.summary AS recent_summary
+                FROM animal a
+                LEFT JOIN (
+                    SELECT animal_id, occurred_at, summary
+                    FROM (
+                        SELECT animal_id, occurred_at, summary,
+                               ROW_NUMBER() OVER (PARTITION BY animal_id ORDER BY occurred_at DESC, id DESC) AS rn
+                        FROM timeline_entry WHERE visibility = 'PUBLIC'
+                    ) ranked WHERE rn = 1
+                ) latest ON latest.animal_id = a.id
+                WHERE a.campus_id = ? AND a.identity_status = 'ACTIVE'
+                """ + speciesClause + " ORDER BY a.updated_at DESC, a.id ASC LIMIT ?",
+                (rs, rowNum) -> new CandidateBase(rs.getString("id"), rs.getString("campus_id"),
+                        rs.getString("display_name"), AnimalSpecies.valueOf(rs.getString("species")),
+                        AnimalSex.valueOf(rs.getString("sex")), rs.getString("coat_color"),
+                        rs.getString("distinctive_features"), rs.getString("typical_area"),
+                        instant(rs, "last_seen_at"), rs.getString("recent_summary")), args.toArray());
+        if (bases.isEmpty()) return List.of();
+
+        Map<String, List<AnimalCandidateSnapshot.PublicMedia>> mediaByAnimal = new LinkedHashMap<>();
+        bases.forEach(base -> mediaByAnimal.put(base.id(), new ArrayList<>()));
+        String placeholders = String.join(",", Collections.nCopies(bases.size(), "?"));
+        jdbcTemplate.query("""
+                SELECT id, animal_id, object_key, content_type
+                FROM animal_media
+                WHERE visibility = 'PUBLIC' AND media_type = 'IMAGE' AND animal_id IN (
+                """ + placeholders + ") ORDER BY animal_id, sort_order, id", rs -> {
+            mediaByAnimal.get(rs.getString("animal_id")).add(new AnimalCandidateSnapshot.PublicMedia(
+                    rs.getString("id"), rs.getString("object_key"), rs.getString("content_type")));
+        }, bases.stream().map(CandidateBase::id).toArray());
+        return bases.stream().map(base -> new AnimalCandidateSnapshot(base.id(), base.campusId(),
+                base.displayName(), base.species(), base.sex(), base.coatColor(),
+                base.distinctiveFeatures(), base.typicalArea(),
+                List.copyOf(mediaByAnimal.get(base.id())), base.lastSeenAt(), base.recentSummary())).toList();
+    }
+
     private QueryParts filters(String campusId, String query, AnimalSpecies species) {
         StringBuilder where = new StringBuilder(" WHERE campus_id = ? AND identity_status = 'ACTIVE'");
         List<Object> args = new ArrayList<>();
@@ -195,5 +245,11 @@ public class JdbcAnimalRepository implements AnimalRepository {
                     instant(rs, "created_at"));
 
     private record QueryParts(String where, List<Object> args) {
+    }
+
+    private record CandidateBase(String id, String campusId, String displayName,
+                                 AnimalSpecies species, AnimalSex sex, String coatColor,
+                                 String distinctiveFeatures, String typicalArea,
+                                 Instant lastSeenAt, String recentSummary) {
     }
 }

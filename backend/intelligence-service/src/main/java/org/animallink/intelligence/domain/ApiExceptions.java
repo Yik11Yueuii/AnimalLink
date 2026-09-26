@@ -13,4 +13,10 @@ public final class ApiExceptions {
     public static class ProviderTimeout extends RuntimeException { public ProviderTimeout(String m, Throwable c) { super(m, c); } }
     public static class ProviderUnavailable extends RuntimeException { public ProviderUnavailable(String m) { super(m); } public ProviderUnavailable(String m, Throwable c) { super(m, c); } }
     public static class InvalidModelResponse extends RuntimeException { public InvalidModelResponse(String m) { super(m); } public InvalidModelResponse(String m, Throwable c) { super(m, c); } }
+    public static class CandidateServiceUnavailable extends RuntimeException { public CandidateServiceUnavailable(String m, Throwable c) { super(m, c); } }
+    public static class EmbeddingTimeout extends RuntimeException { public EmbeddingTimeout(String m, Throwable c) { super(m, c); } }
+    public static class EmbeddingUnavailable extends RuntimeException { public EmbeddingUnavailable(String m) { super(m); } public EmbeddingUnavailable(String m, Throwable c) { super(m, c); } }
+    public static class InvalidEmbeddingVector extends RuntimeException { public InvalidEmbeddingVector(String m) { super(m); } }
+    public static class TaskNotSucceeded extends RuntimeException { public TaskNotSucceeded(String m) { super(m); } }
+    public static class TaskNotConfirmed extends RuntimeException { public TaskNotConfirmed(String m) { super(m); } }
 }

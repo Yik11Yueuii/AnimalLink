@@ -254,6 +254,40 @@ class AnimalPhase1BIntegrationTest {
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
+    @Test
+    void internalCandidateRecallIsCampusScopedActiveSpeciesAwareAndBatched() throws Exception {
+        String activeDog = "20000000-0000-0000-0000-000000000104";
+        insertAnimal(activeDog, CAMPUS_ID, "校内犬", "DOG", "ACTIVE");
+        insertMedia(ANIMAL_ONE, "PUBLIC", 0);
+        insertMedia(ANIMAL_ONE, "RESTRICTED", 1);
+        insertTimeline(ANIMAL_ONE, "2026-09-22T10:00:00Z");
+
+        String catRequest = """
+                {"campusId":"%s","species":"CAT","limit":20}
+                """.formatted(CAMPUS_ID);
+        mockMvc.perform(post("/internal/v1/animals/candidates")
+                        .contentType(MediaType.APPLICATION_JSON).content(catRequest))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.candidates.length()").value(1))
+                .andExpect(jsonPath("$.candidates[0].id").value(ANIMAL_ONE))
+                .andExpect(jsonPath("$.candidates[0].media.length()").value(1))
+                .andExpect(jsonPath("$.candidates[0].lastSeenAt").value("2026-09-22T10:00:00Z"));
+
+        String unknownRequest = """
+                {"campusId":"%s","species":"UNKNOWN","limit":20}
+                """.formatted(CAMPUS_ID);
+        mockMvc.perform(post("/internal/v1/animals/candidates")
+                        .contentType(MediaType.APPLICATION_JSON).content(unknownRequest))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.candidates.length()").value(2));
+
+        mockMvc.perform(post("/internal/v1/animals/candidates")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"campusId\":\"10000000-0000-0000-0000-000000000999\",\"species\":\"CAT\",\"limit\":20}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.candidates.length()").value(0));
+    }
+
     private void insertAnimal(String id, String campusId, String name, String species, String status) {
         jdbcTemplate.update("""
                 INSERT INTO animal

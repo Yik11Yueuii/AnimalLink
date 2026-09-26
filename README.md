@@ -2,7 +2,7 @@
 
 AnimalLink 是一个**基于多模态大模型的校园动物事件协同平台**，连接动物观察、救助协作、领养流转与长期数字档案。平台围绕同一只 Animal 的长期身份，持续记录校园生活、异常救助、公益支持、领养过程及领养后的生活动态。AI 用于辅助理解、生成草稿和提供候选，由人确认，正式业务状态由 Java 服务执行。
 
-当前仓库已完成 Phase 0 工程与基础设施基线、Phase 1A 的身份与校园基础、Phase 1B 的 Animal 核心长期档案、Phase 1C 的 Campus Circle 基础社区与关注能力，以及 Phase 2A 的多模态观察解析基础。Event、Case、Adoption、候选匹配与正式媒体上传仍按后续阶段实施。项目范围以正式的[产品需求文档 V2.1](docs/product/AnimalLink-PRD-V2.1.docx)、[技术设计 V1.0](docs/technical/AnimalLink-Technical-Design-V1.0.docx)及[项目规则](AGENTS.md)为准。
+当前仓库已完成 Phase 0 工程与基础设施基线、Phase 1A 的身份与校园基础、Phase 1B 的 Animal 核心长期档案、Phase 1C 的 Campus Circle 基础社区与关注能力、Phase 2A 的多模态观察解析基础，以及 Phase 2B 的 Animal Candidate Matching。Event、Case、Adoption、正式媒体上传和匹配后的 Animal 绑定/新建仍按后续阶段实施。项目范围以正式的[产品需求文档 V2.1](docs/product/AnimalLink-PRD-V2.1.docx)、[技术设计 V1.0](docs/technical/AnimalLink-Technical-Design-V1.0.docx)及[项目规则](AGENTS.md)为准。
 
 ## 技术架构
 
@@ -196,6 +196,36 @@ Invoke-RestMethod "http://localhost:8080/intelligence/api/v1/ai/tasks/$($task.ta
 
 真实 OpenAI-compatible provider 通过环境变量启用：设置 `AI_PROVIDER=openai-compatible`、`AI_BASE_URL`、`AI_API_KEY`、`AI_MODEL_NAME`、`AI_CONNECT_TIMEOUT_MS` 和 `AI_READ_TIMEOUT_MS`。真实密钥只放在未提交的 `infra/.env` 或部署环境中；代码、日志和数据库都不会记录 API Key。当前自动化测试和本地默认流程不依赖外部模型服务。
 
+## Phase 2B Animal Candidate Matching
+
+Phase 2B 由 `intelligence-service` 负责匹配编排、评分、Embedding 缓存和运行记录，`animal-service` 只通过一个内部批量接口提供最小候选快照。匹配只能从 Phase 2A 已成功且已由任务所有者确认的草稿启动，不接受客户端任意拼装特征，也不会自动绑定、创建或合并 Animal。
+
+匹配采用两阶段设计：第一阶段由 animal-service 按 Campus、ACTIVE 状态和已知物种召回小规模候选；物种为 `UNKNOWN` 时跳过物种硬过滤。第二阶段在 intelligence-service 中计算图片、外观特征、地理区域、时间/历史四类分数，仅对当前有效且实验组启用的维度重新归一化权重，稳定排序后返回 Top-K。候选卡片同时返回各维分数、解释原因和缺失维度；没有候选时返回空列表，最高分不足时返回 `lowConfidence=true` 和 `NO_STRONG_MATCH`，始终保留“都不是/不确定”的产品选择。
+
+Animal 图片 Embedding 仅从公开且受信任的 AnimalMedia 图片生成，以 Animal、媒体、模型名和模型版本为唯一缓存键；观察图片按匹配请求即时计算。默认 `mock` provider 是确定性的本地实现。真实 provider 使用独立的图像 Embedding `/embeddings` 适配器，不复用多模态聊天接口，需由所选供应商明确支持图像输入。
+
+### Phase 2B API
+
+下表是服务内部路径；公开调用通过 Gateway 时分别增加 `/intelligence` 或 `/animal` 前缀。animal-service 的内部候选接口只供受控服务间调用，不是客户端搜索接口。
+
+| Method | Path | 用途 | 认证 |
+| --- | --- | --- | --- |
+| POST | `/api/v1/ai/tasks/{taskId}/match-candidates` | 基于已确认任务创建一次独立匹配记录，`topK` 默认 3、范围 1–10，实验组默认 D | 任务所有者 |
+| GET | `/api/v1/ai/matches/{matchingRecordId}` | 查看本人某次匹配快照、分数和解释 | 匹配记录所有者 |
+| POST | `/internal/v1/animals/candidates` | 按 Campus、ACTIVE 和可选物种批量读取最小候选快照 | intelligence-service 内部调用 |
+
+实验组 A/B/C/D 分别启用“图片”“图片 + 外观”“图片 + 外观 + 地理”“图片 + 外观 + 地理 + 时间/历史”。每次匹配都在 `matching_record` 中保存算法版本、权重版本、实验组和完整权重，不会覆盖历史运行。`matching_candidate` 保存返回时的 Animal 名称、物种、封面 objectKey 和各维评分快照；`animal_embedding` 使用 MySQL JSON 保存向量并由 Java 计算余弦相似度，本阶段不引入向量数据库。
+
+完成 Phase 2A 的确认后，可继续通过 Gateway 请求匹配：
+
+```powershell
+$matchBody = @{ topK = 3; experimentCode = 'D' } | ConvertTo-Json
+$match = Invoke-RestMethod "http://localhost:8080/intelligence/api/v1/ai/tasks/$($task.taskId)/match-candidates" -Method Post -Headers $userHeaders -ContentType 'application/json' -Body $matchBody
+Invoke-RestMethod "http://localhost:8080/intelligence/api/v1/ai/matches/$($match.matchingRecordId)" -Headers $userHeaders
+```
+
+Embedding 配置使用 `EMBEDDING_PROVIDER`、`EMBEDDING_BASE_URL`、`EMBEDDING_API_KEY`、`EMBEDDING_MODEL_NAME`、`EMBEDDING_MODEL_VERSION`、`EMBEDDING_CONNECT_TIMEOUT_MS` 和 `EMBEDDING_READ_TIMEOUT_MS`。召回上限通过 `MATCHING_RECALL_LIMIT` 配置，允许 20–100，默认 50；A/B/C/D 各维权重通过 `MATCHING_WEIGHT_<实验组>_<维度>` 配置，默认值见 `infra/.env.example`。未配置真实凭据时保持 `EMBEDDING_PROVIDER=mock`。
+
 ## 本地环境准备
 
 安装 JDK 21 和 Docker Desktop（需支持 Docker Compose）。设置 `JAVA_HOME` 指向 JDK 21。Maven Wrapper 会自动下载 Maven 3.9.9，无需另行安装 Maven。
@@ -269,10 +299,10 @@ MySQL 数据卷初始化后，再修改 `.env` 中的数据库密码不会自动
 .\mvnw.cmd -f backend/pom.xml -pl animal-service test
 ```
 
-只运行 Phase 2A intelligence-service 测试：
+只运行 Phase 2A/2B intelligence-service 测试：
 
 ```powershell
 .\mvnw.cmd -f backend/pom.xml -pl intelligence-service test
 ```
 
-identity-service、animal-service 与 intelligence-service 集成测试使用 Testcontainers 启动隔离的 MySQL 8.0.41。除既有身份、Animal 与 Campus Circle 回归外，Phase 2A 测试覆盖真实 Flyway 迁移、结构化解析、UNKNOWN、媒体错误、模型超时/5xx/非法响应、任务状态、所有者隔离、人工编辑确认、原始结果保留、敏感配置和跨 Phase 边界，因此运行测试前必须启动 Docker Desktop。
+identity-service、animal-service 与 intelligence-service 集成测试使用 Testcontainers 启动隔离的 MySQL 8.0.41。除既有身份、Animal、Campus Circle 和 Phase 2A 回归外，Phase 2B 测试覆盖 Campus/ACTIVE/物种召回、UNKNOWN、空候选、四维评分、缺失维度重归一化、稳定 Top-K、A/B/C/D 实验记录、Embedding 模型版本缓存与并发唯一保护、运行历史、所有者隔离，以及依赖不可用、超时和非法向量错误。因此运行测试前必须启动 Docker Desktop。

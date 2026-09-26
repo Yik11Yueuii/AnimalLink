@@ -11,6 +11,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.List;
 
 @Repository
 public class JdbcAiTaskRepository implements AiTaskRepository {
@@ -19,7 +20,8 @@ public class JdbcAiTaskRepository implements AiTaskRepository {
     public JdbcAiTaskRepository(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
     @Override
-    public void create(AiTask task) {
+    @Transactional
+    public void create(AiTask task, List<String> mediaObjectKeys) {
         jdbc.update("""
                 INSERT INTO ai_task (id, user_id, campus_id, task_type, status, model_provider,
                     model_name, prompt_version, input_summary, created_at, version)
@@ -27,6 +29,10 @@ public class JdbcAiTaskRepository implements AiTaskRepository {
                 """, task.id(), task.userId(), task.campusId(), task.taskType().name(), task.status().name(),
                 task.modelProvider(), task.modelName(), task.promptVersion(), task.inputSummary(),
                 Timestamp.from(task.createdAt()), task.version());
+        for (int index = 0; index < mediaObjectKeys.size(); index++) {
+            jdbc.update("INSERT INTO ai_task_media (task_id, sort_order, object_key) VALUES (?, ?, ?)",
+                    task.id(), index, mediaObjectKeys.get(index));
+        }
     }
 
     @Override
@@ -89,6 +95,13 @@ public class JdbcAiTaskRepository implements AiTaskRepository {
                 """, confirmation.id(), confirmation.taskId(), confirmation.resultId(),
                 confirmation.confirmedStructuredJson(), confirmation.wasModified(),
                 confirmation.confirmedBy(), Timestamp.from(confirmation.confirmedAt()));
+    }
+
+    @Override
+    public List<String> findMediaObjectKeys(String taskId) {
+        return jdbc.queryForList("""
+                SELECT object_key FROM ai_task_media WHERE task_id = ? ORDER BY sort_order
+                """, String.class, taskId);
     }
 
     private AiTaskBundle mapBundle(ResultSet rs, int rowNum) throws SQLException {

@@ -56,7 +56,7 @@ public class ObservationParsingService {
                 AiTaskType.ANIMAL_OBSERVATION_PARSE, AiTaskStatus.PENDING,
                 modelClient.providerName(), modelClient.modelName(), VersionedObservationPrompt.VERSION,
                 inputSummary(command), now, null, null, null, null, null, null, null, 0);
-        repository.create(pending);
+        repository.create(pending, command.mediaObjectKeys());
         if (!repository.markRunning(taskId, 0)) throw new Conflict("AI 任务状态已变化");
         AiTask running = new AiTask(taskId, user.id(), command.campusId(), pending.taskType(),
                 AiTaskStatus.RUNNING, pending.modelProvider(), pending.modelName(), pending.promptVersion(),

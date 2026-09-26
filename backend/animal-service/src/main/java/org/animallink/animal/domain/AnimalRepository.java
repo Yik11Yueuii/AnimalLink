@@ -21,4 +21,6 @@ public interface AnimalRepository {
     List<TimelineEntry> findPublicTimeline(String animalId, int limit, int offset);
 
     long countPublicTimeline(String animalId);
+
+    List<AnimalCandidateSnapshot> recallCandidates(String campusId, AnimalSpecies species, int limit);
 }

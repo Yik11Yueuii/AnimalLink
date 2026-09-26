@@ -60,6 +60,36 @@ public class ApiExceptionHandler {
         return response(HttpStatus.SERVICE_UNAVAILABLE, "DEPENDENCY_UNAVAILABLE", e.getMessage(), r);
     }
 
+    @ExceptionHandler(CandidateServiceUnavailable.class)
+    ResponseEntity<ApiError> candidateUnavailable(CandidateServiceUnavailable e, HttpServletRequest r) {
+        return response(HttpStatus.SERVICE_UNAVAILABLE, "ANIMAL_SERVICE_UNAVAILABLE", e.getMessage(), r);
+    }
+
+    @ExceptionHandler(EmbeddingTimeout.class)
+    ResponseEntity<ApiError> embeddingTimeout(EmbeddingTimeout e, HttpServletRequest r) {
+        return response(HttpStatus.GATEWAY_TIMEOUT, "EMBEDDING_TIMEOUT", e.getMessage(), r);
+    }
+
+    @ExceptionHandler(EmbeddingUnavailable.class)
+    ResponseEntity<ApiError> embeddingUnavailable(EmbeddingUnavailable e, HttpServletRequest r) {
+        return response(HttpStatus.SERVICE_UNAVAILABLE, "EMBEDDING_UNAVAILABLE", e.getMessage(), r);
+    }
+
+    @ExceptionHandler(InvalidEmbeddingVector.class)
+    ResponseEntity<ApiError> invalidEmbedding(InvalidEmbeddingVector e, HttpServletRequest r) {
+        return response(HttpStatus.BAD_GATEWAY, "INVALID_EMBEDDING_VECTOR", e.getMessage(), r);
+    }
+
+    @ExceptionHandler(TaskNotSucceeded.class)
+    ResponseEntity<ApiError> taskNotSucceeded(TaskNotSucceeded e, HttpServletRequest r) {
+        return response(HttpStatus.CONFLICT, "AI_TASK_NOT_SUCCEEDED", e.getMessage(), r);
+    }
+
+    @ExceptionHandler(TaskNotConfirmed.class)
+    ResponseEntity<ApiError> taskNotConfirmed(TaskNotConfirmed e, HttpServletRequest r) {
+        return response(HttpStatus.CONFLICT, "AI_TASK_NOT_CONFIRMED", e.getMessage(), r);
+    }
+
     @ExceptionHandler({ValidationException.class, IllegalArgumentException.class,
             HttpMessageNotReadableException.class})
     ResponseEntity<ApiError> badRequest(Exception e, HttpServletRequest r) {
