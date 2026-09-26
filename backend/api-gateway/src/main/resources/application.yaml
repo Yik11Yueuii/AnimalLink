@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: api-gateway
+  profiles:
+    default: local
+  config:
+    import: optional:nacos:${spring.application.name}.yaml
+  cloud:
+    nacos:
+      server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+      config:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        file-extension: yaml
+    gateway:
+      routes:
+        - id: identity-service
+          uri: lb://identity-service
+          predicates: [Path=/identity/**]
+          filters: [StripPrefix=1]
+        - id: animal-service
+          uri: lb://animal-service
+          predicates: [Path=/animal/**]
+          filters: [StripPrefix=1]
+        - id: incident-service
+          uri: lb://incident-service
+          predicates: [Path=/incident/**]
+          filters: [StripPrefix=1]
+        - id: adoption-service
+          uri: lb://adoption-service
+          predicates: [Path=/adoption/**]
+          filters: [StripPrefix=1]
+        - id: intelligence-service
+          uri: lb://intelligence-service
+          predicates: [Path=/intelligence/**]
+          filters: [StripPrefix=1]
+server:
+  port: ${SERVER_PORT:8080}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true

@@ -1,0 +1,6 @@
+# Data ID: identity-service.yaml
+# Group: DEFAULT_GROUP
+# Namespace: public (empty namespace ID)
+# This is a harmless connectivity proof, not a secret store.
+animallink:
+  environment: nacos-local

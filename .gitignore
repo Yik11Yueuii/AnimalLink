@@ -1,0 +1,45 @@
+# Java and Maven
+**/target/
+*.class
+*.jar
+*.war
+*.ear
+!.mvn/wrapper/maven-wrapper.jar
+
+# IDEs and operating systems
+.idea/
+*.iml
+.vscode/
+.project
+.classpath
+.settings/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and caches
+logs/
+*.log
+*.tmp
+*.cache
+.cache/
+
+# Local configuration and credentials
+.env
+.env.local
+.env.*.local
+!.env.example
+infra/.env
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local infrastructure data
+**/mysql_data/
+**/minio_data/
+**/data/mysql/
+**/data/minio/
+
+# Deprecated PRD build workspace retained locally, not part of the baseline
+docs/archive/DEPRECATED-PRD-V1.2-work/
