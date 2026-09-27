@@ -3,8 +3,14 @@ package org.animallink.animal.api;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ValidationException;
 import org.animallink.animal.domain.DependencyUnavailableException;
+import org.animallink.animal.domain.CrossCampusAnimalException;
+import org.animallink.animal.domain.DuplicateFinalizeConflictException;
 import org.animallink.animal.domain.ForbiddenException;
+import org.animallink.animal.domain.MediaCopyException;
+import org.animallink.animal.domain.ProposalAlreadyReviewedException;
 import org.animallink.animal.domain.ResourceNotFoundException;
+import org.animallink.animal.domain.SelectedAnimalArchivedException;
+import org.animallink.animal.domain.SelectedAnimalNotFoundException;
 import org.animallink.animal.domain.StateConflictException;
 import org.animallink.animal.domain.UnauthorizedException;
 import org.slf4j.MDC;
@@ -44,6 +50,48 @@ public class ApiExceptionHandler {
     ResponseEntity<ApiError> conflict(StateConflictException exception,
                                       HttpServletRequest request) {
         return response(HttpStatus.CONFLICT, "STATE_CONFLICT", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(SelectedAnimalNotFoundException.class)
+    ResponseEntity<ApiError> selectedNotFound(SelectedAnimalNotFoundException exception,
+                                              HttpServletRequest request) {
+        return response(HttpStatus.NOT_FOUND, "SELECTED_ANIMAL_NOT_FOUND",
+                exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(SelectedAnimalArchivedException.class)
+    ResponseEntity<ApiError> selectedArchived(SelectedAnimalArchivedException exception,
+                                              HttpServletRequest request) {
+        return response(HttpStatus.CONFLICT, "SELECTED_ANIMAL_ARCHIVED",
+                exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(CrossCampusAnimalException.class)
+    ResponseEntity<ApiError> crossCampus(CrossCampusAnimalException exception,
+                                         HttpServletRequest request) {
+        return response(HttpStatus.CONFLICT, "CROSS_CAMPUS_ANIMAL",
+                exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(DuplicateFinalizeConflictException.class)
+    ResponseEntity<ApiError> duplicateFinalize(DuplicateFinalizeConflictException exception,
+                                               HttpServletRequest request) {
+        return response(HttpStatus.CONFLICT, "DUPLICATE_FINALIZE_CONFLICT",
+                exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(ProposalAlreadyReviewedException.class)
+    ResponseEntity<ApiError> proposalReviewed(ProposalAlreadyReviewedException exception,
+                                              HttpServletRequest request) {
+        return response(HttpStatus.CONFLICT, "PROPOSAL_ALREADY_REVIEWED",
+                exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(MediaCopyException.class)
+    ResponseEntity<ApiError> mediaCopy(MediaCopyException exception,
+                                       HttpServletRequest request) {
+        return response(HttpStatus.SERVICE_UNAVAILABLE, "MEDIA_COPY_FAILED",
+                exception.getMessage(), request);
     }
 
     @ExceptionHandler(DependencyUnavailableException.class)

@@ -13,13 +13,17 @@ public class CampusMembershipAuthorization {
 
     public IdentityGateway.CurrentUser requireActiveMember(String campusId) {
         IdentityGateway.CurrentUser user = requireActiveUser();
-        IdentityGateway.MembershipFact membership = identityGateway.campusMembership(user.id(), campusId);
+        requireActiveMember(user.id(), campusId);
+        return user;
+    }
+
+    public void requireActiveMember(String userId, String campusId) {
+        IdentityGateway.MembershipFact membership = identityGateway.campusMembership(userId, campusId);
         boolean eligibleType = "STUDENT".equals(membership.membershipType())
                 || "ALUMNI".equals(membership.membershipType());
         if (!membership.exists() || !eligibleType || !"ACTIVE".equals(membership.status())) {
             throw new ForbiddenException("需要该 Campus 的有效学生或校友成员身份");
         }
-        return user;
     }
 
     public IdentityGateway.CurrentUser requireActiveUser() {

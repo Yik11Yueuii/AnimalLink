@@ -21,6 +21,7 @@ public class HttpAnimalCandidateGateway implements AnimalCandidateGateway {
     public List<CandidateSnapshot> recall(String campusId, String species, int limit) {
         try {
             BatchResponse response = client.post().uri("/internal/v1/animals/candidates")
+                    .header("X-Internal-Service", "intelligence-service")
                     .body(new BatchRequest(campusId, species, limit)).retrieve().body(BatchResponse.class);
             return response == null || response.candidates() == null ? List.of() : response.candidates();
         } catch (RestClientException exception) {

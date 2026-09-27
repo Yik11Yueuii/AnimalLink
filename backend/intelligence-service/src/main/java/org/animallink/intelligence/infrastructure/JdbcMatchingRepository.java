@@ -83,14 +83,26 @@ public class JdbcMatchingRepository implements MatchingRepository {
 
     @Override
     public Optional<MatchingRecord> findById(String recordId) {
-        List<MatchingRecord> records = jdbc.query("SELECT * FROM matching_record WHERE id = ?",
+        return findRecord(recordId, false);
+    }
+
+    @Override
+    public Optional<MatchingRecord> lockById(String recordId) {
+        return findRecord(recordId, true);
+    }
+
+    private Optional<MatchingRecord> findRecord(String recordId, boolean forUpdate) {
+        String sql = "SELECT * FROM matching_record WHERE id = ?"
+                + (forUpdate ? " FOR UPDATE" : "");
+        List<MatchingRecord> records = jdbc.query(sql,
                 (rs, rowNum) -> new MatchingRecord(rs.getString("id"), rs.getString("user_id"),
                         rs.getString("ai_task_id"), rs.getString("campus_id"),
                         rs.getString("algorithm_version"), rs.getString("weight_version"),
                         MatchingExperiment.valueOf(rs.getString("experiment_code")),
                         readMap(rs.getString("weights_json")), rs.getInt("top_k"),
                         rs.getInt("candidate_count"), rs.getBoolean("low_confidence"),
-                        instant(rs, "created_at"), List.of()), recordId);
+                        instant(rs, "created_at"), List.of()),
+                recordId);
         if (records.isEmpty()) return Optional.empty();
         MatchingRecord base = records.getFirst();
         List<MatchingCandidate> candidates = jdbc.query("""
@@ -99,6 +111,28 @@ public class JdbcMatchingRepository implements MatchingRepository {
         return Optional.of(new MatchingRecord(base.id(), base.userId(), base.aiTaskId(), base.campusId(),
                 base.algorithmVersion(), base.weightVersion(), base.experiment(), base.weights(),
                 base.topK(), base.candidateCount(), base.lowConfidence(), base.createdAt(), candidates));
+    }
+
+    @Override
+    public Optional<MatchingDecision> findDecisionByRecordId(String recordId) {
+        return jdbc.query("""
+                SELECT id, matching_record_id, user_id, decision_type, selected_animal_id,
+                       selected_rank, selected_score, post_id, proposal_id, decided_at
+                FROM matching_decision WHERE matching_record_id = ?
+                """, this::mapDecision, recordId).stream().findFirst();
+    }
+
+    @Override
+    public void saveDecision(MatchingDecision decision) {
+        jdbc.update("""
+                INSERT INTO matching_decision
+                    (id, matching_record_id, user_id, decision_type, selected_animal_id,
+                     selected_rank, selected_score, post_id, proposal_id, decided_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, decision.id(), decision.matchingRecordId(), decision.userId(),
+                decision.decisionType().name(), decision.selectedAnimalId(),
+                decision.selectedRank(), decision.selectedScore(), decision.postId(),
+                decision.proposalId(), Timestamp.from(decision.decidedAt()));
     }
 
     private AnimalEmbedding mapEmbedding(ResultSet rs, int rowNum) throws SQLException {
@@ -117,6 +151,17 @@ public class JdbcMatchingRepository implements MatchingRepository {
                 nullableDouble(rs, "history_score"), rs.getDouble("final_score"),
                 readStringList(rs.getString("reasons_json")),
                 readStringList(rs.getString("missing_dimensions_json")));
+    }
+
+    private MatchingDecision mapDecision(ResultSet rs, int rowNum) throws SQLException {
+        int rank = rs.getInt("selected_rank");
+        Integer selectedRank = rs.wasNull() ? null : rank;
+        return new MatchingDecision(rs.getString("id"), rs.getString("matching_record_id"),
+                rs.getString("user_id"),
+                MatchingDecisionType.valueOf(rs.getString("decision_type")),
+                rs.getString("selected_animal_id"), selectedRank,
+                nullableDouble(rs, "selected_score"), rs.getString("post_id"),
+                rs.getString("proposal_id"), instant(rs, "decided_at"));
     }
 
     private String json(Object value) {

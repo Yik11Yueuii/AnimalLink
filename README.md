@@ -2,7 +2,7 @@
 
 AnimalLink 是一个**基于多模态大模型的校园动物事件协同平台**，连接动物观察、救助协作、领养流转与长期数字档案。平台围绕同一只 Animal 的长期身份，持续记录校园生活、异常救助、公益支持、领养过程及领养后的生活动态。AI 用于辅助理解、生成草稿和提供候选，由人确认，正式业务状态由 Java 服务执行。
 
-当前仓库已完成 Phase 0 工程与基础设施基线、Phase 1A 的身份与校园基础、Phase 1B 的 Animal 核心长期档案、Phase 1C 的 Campus Circle 基础社区与关注能力、Phase 2A 的多模态观察解析基础，以及 Phase 2B 的 Animal Candidate Matching。Event、Case、Adoption、正式媒体上传和匹配后的 Animal 绑定/新建仍按后续阶段实施。项目范围以正式的[产品需求文档 V2.1](docs/product/AnimalLink-PRD-V2.1.docx)、[技术设计 V1.0](docs/technical/AnimalLink-Technical-Design-V1.0.docx)及[项目规则](AGENTS.md)为准。
+当前仓库已完成 Phase 0 工程与基础设施基线、Phase 1A 的身份与校园基础、Phase 1B 的 Animal 核心长期档案、Phase 1C 的 Campus Circle 基础社区与关注能力，以及 Phase 2A–2C 的多模态解析、Animal Candidate Matching、人工身份确认与正式观察 Post 闭环。Event、Case、Adoption 和通用媒体上传入口仍按后续阶段实施。项目范围以正式的[产品需求文档 V2.1](docs/product/AnimalLink-PRD-V2.1.docx)、[技术设计 V1.0](docs/technical/AnimalLink-Technical-Design-V1.0.docx)及[项目规则](AGENTS.md)为准。
 
 ## 技术架构
 
@@ -226,6 +226,49 @@ Invoke-RestMethod "http://localhost:8080/intelligence/api/v1/ai/matches/$($match
 
 Embedding 配置使用 `EMBEDDING_PROVIDER`、`EMBEDDING_BASE_URL`、`EMBEDDING_API_KEY`、`EMBEDDING_MODEL_NAME`、`EMBEDDING_MODEL_VERSION`、`EMBEDDING_CONNECT_TIMEOUT_MS` 和 `EMBEDDING_READ_TIMEOUT_MS`。召回上限通过 `MATCHING_RECALL_LIMIT` 配置，允许 20–100，默认 50；A/B/C/D 各维权重通过 `MATCHING_WEIGHT_<实验组>_<维度>` 配置，默认值见 `infra/.env.example`。未配置真实凭据时保持 `EMBEDDING_PROVIDER=mock`。
 
+## Phase 2C 人工身份确认与正式观察记录
+
+Phase 2C 完成 `解析 → 人工确认草稿 → Candidate Matching → 人工身份决策 → 正式 Post` 闭环。身份决策由 `intelligence-service` 编排并保存不可变事实，正式 Post、永久媒体以及待治理的新身份建议由数据所有者 `animal-service` 在本地事务中创建。AI 只提供候选，不会自动绑定、合并或创建 Animal；`lowConfidence=true` 也不会替用户决定。
+
+三种决策具有明确且不同的结果：
+
+- `SELECT_EXISTING`：只能选择本次 Top-K 快照中的候选。系统再次确认 Animal 为同 Campus 的 ACTIVE 主档，创建绑定该 Animal 的正式 Post，并把输入媒体复制到 animal-service 的永久对象路径。
+- `NO_MATCH`：创建 `animalId = null` 的正式 Post，同时创建 `PENDING_REVIEW` 的 `AnimalIdentityProposal`。普通用户不会因此获得创建 Animal 的能力。
+- `UNSURE`：只保存“不确定”的匹配决策，不创建 Post，也不创建 Proposal，用户可结束本次识别而不污染正式业务数据。
+
+每个 matching record 最多拥有一条决策。相同请求重试返回同一结果，不同决策重试返回冲突。animal-service 另以来源 matching record 和决策摘要进行幂等保护；跨服务不使用分布式事务或消息队列。媒体先复制到确定性永久 objectKey，随后 Post、PostMedia、Proposal 和幂等记录在同一 MySQL 本地事务中写入，因此数据库失败时不会留下部分业务记录，重试也不会生成重复媒体路径。
+
+治理管理员可以审核 NO_MATCH 产生的 Proposal：批准并创建新 Animal、关联同 Campus 的现有 ACTIVE Animal，或拒绝建议。批准或关联时，Proposal 状态更新和原 Post 的 `animalId` 回填在 animal-service 同一事务中完成，并通过行锁与条件更新保证并发审核只有一个成功。此流程不创建 Event、Case 或 TimelineEntry。
+
+匹配决策同时保存实验评估 ground truth：`SELECT_EXISTING` 记录所选 Animal、候选排名和分数，并计算 `hitAt1`、`hitAt3`、`hitAtK`；`NO_MATCH` 和 `UNSURE` 保留决策标签，其命中指标为空。历史匹配快照不会被覆盖。
+
+### Phase 2C API
+
+公开 API 通过 Gateway 访问时分别增加 `/intelligence` 或 `/animal` 前缀。以 `/internal` 开头的接口仅供服务间调用，Gateway 会拒绝客户端访问。
+
+| Method | Path | 用途 | 认证 |
+| --- | --- | --- | --- |
+| POST | `/api/v1/ai/matches/{matchingRecordId}/finalize` | 提交 SELECT_EXISTING、NO_MATCH 或 UNSURE 人工决策 | 匹配记录所有者且具备目标 Campus 有效成员身份 |
+| GET | `/api/v1/ai/matches/{matchingRecordId}/decision` | 查看本人的不可变决策及实验命中指标 | 匹配记录所有者 |
+| POST | `/internal/v1/observation-finalizations` | 创建幂等正式 Post、永久媒体及可选 Proposal | intelligence-service 内部调用 |
+| GET | `/api/v1/admin/animal-identity-proposals` | 分页查看 Proposal，可按状态筛选 | 治理管理员 |
+| GET | `/api/v1/admin/animal-identity-proposals/{proposalId}` | 查看 Proposal、来源 Post 和媒体详情 | 治理管理员 |
+| POST | `/api/v1/admin/animal-identity-proposals/{proposalId}/approve-create` | 批准建议，创建 Animal 并回填来源 Post | 治理管理员 |
+| POST | `/api/v1/admin/animal-identity-proposals/{proposalId}/link-existing` | 关联同 Campus ACTIVE Animal 并回填来源 Post | 治理管理员 |
+| POST | `/api/v1/admin/animal-identity-proposals/{proposalId}/reject` | 拒绝新身份建议，保留未绑定 Post | 治理管理员 |
+
+例如，在 Phase 2B 获得 `$match` 后选择候选：
+
+```powershell
+$finalizeBody = @{
+  decisionType = 'SELECT_EXISTING'
+  selectedAnimalId = $match.candidates[0].animalId
+  postText = '今天在教学楼旁再次看到这只猫。'
+} | ConvertTo-Json
+$decision = Invoke-RestMethod "http://localhost:8080/intelligence/api/v1/ai/matches/$($match.matchingRecordId)/finalize" -Method Post -Headers $userHeaders -ContentType 'application/json' -Body $finalizeBody
+Invoke-RestMethod "http://localhost:8080/intelligence/api/v1/ai/matches/$($match.matchingRecordId)/decision" -Headers $userHeaders
+```
+
 ## 本地环境准备
 
 安装 JDK 21 和 Docker Desktop（需支持 Docker Compose）。设置 `JAVA_HOME` 指向 JDK 21。Maven Wrapper 会自动下载 Maven 3.9.9，无需另行安装 Maven。
@@ -293,16 +336,16 @@ MySQL 数据卷初始化后，再修改 `.env` 中的数据库密码不会自动
 .\mvnw.cmd -f backend/pom.xml -pl identity-service test
 ```
 
-只运行 Phase 1B/1C animal-service 测试：
+只运行 Phase 1B/1C/2C animal-service 测试：
 
 ```powershell
 .\mvnw.cmd -f backend/pom.xml -pl animal-service test
 ```
 
-只运行 Phase 2A/2B intelligence-service 测试：
+只运行 Phase 2A/2B/2C intelligence-service 测试：
 
 ```powershell
 .\mvnw.cmd -f backend/pom.xml -pl intelligence-service test
 ```
 
-identity-service、animal-service 与 intelligence-service 集成测试使用 Testcontainers 启动隔离的 MySQL 8.0.41。除既有身份、Animal、Campus Circle 和 Phase 2A 回归外，Phase 2B 测试覆盖 Campus/ACTIVE/物种召回、UNKNOWN、空候选、四维评分、缺失维度重归一化、稳定 Top-K、A/B/C/D 实验记录、Embedding 模型版本缓存与并发唯一保护、运行历史、所有者隔离，以及依赖不可用、超时和非法向量错误。因此运行测试前必须启动 Docker Desktop。
+identity-service、animal-service 与 intelligence-service 集成测试使用 Testcontainers 启动隔离的 MySQL 8.0.41。除既有身份、Animal、Campus Circle 和 Phase 2A 回归外，Phase 2B 测试覆盖 Campus/ACTIVE/物种召回、UNKNOWN、空候选、四维评分、缺失维度重归一化、稳定 Top-K、A/B/C/D 实验记录、Embedding 模型版本缓存与并发唯一保护、运行历史、所有者隔离，以及依赖不可用、超时和非法向量错误。Phase 2C 测试覆盖三种人工决策、候选与 Campus/状态校验、权限失败关闭、跨服务错误、幂等冲突、永久媒体、Proposal 三种治理结果、并发审核、事务回滚和实验 ground truth。因此运行测试前必须启动 Docker Desktop。

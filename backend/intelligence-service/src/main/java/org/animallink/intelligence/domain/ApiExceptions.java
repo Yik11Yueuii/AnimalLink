@@ -19,4 +19,23 @@ public final class ApiExceptions {
     public static class InvalidEmbeddingVector extends RuntimeException { public InvalidEmbeddingVector(String m) { super(m); } }
     public static class TaskNotSucceeded extends RuntimeException { public TaskNotSucceeded(String m) { super(m); } }
     public static class TaskNotConfirmed extends RuntimeException { public TaskNotConfirmed(String m) { super(m); } }
+    public static class TaskNoLongerValid extends RuntimeException { public TaskNoLongerValid(String m) { super(m); } }
+    public static class AlreadyFinalized extends RuntimeException { public AlreadyFinalized(String m) { super(m); } }
+    public static class SelectedAnimalNotCandidate extends RuntimeException { public SelectedAnimalNotCandidate(String m) { super(m); } }
+    public static class FinalizationServiceUnavailable extends RuntimeException {
+        public FinalizationServiceUnavailable(String m, Throwable c) { super(m, c); }
+    }
+    public static class AnimalFinalizationRejected extends RuntimeException {
+        private final int status;
+        private final String code;
+
+        public AnimalFinalizationRejected(int status, String code, String message) {
+            super(message);
+            this.status = status;
+            this.code = code;
+        }
+
+        public int status() { return status; }
+        public String code() { return code; }
+    }
 }

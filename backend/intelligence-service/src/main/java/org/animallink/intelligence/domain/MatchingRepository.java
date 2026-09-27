@@ -11,4 +11,10 @@ public interface MatchingRepository {
     void save(MatchingRecord record);
 
     Optional<MatchingRecord> findById(String recordId);
+
+    Optional<MatchingRecord> lockById(String recordId);
+
+    Optional<MatchingDecision> findDecisionByRecordId(String recordId);
+
+    void saveDecision(MatchingDecision decision);
 }

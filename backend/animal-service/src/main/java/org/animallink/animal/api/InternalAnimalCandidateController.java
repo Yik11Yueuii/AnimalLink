@@ -6,10 +6,12 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.animallink.animal.application.AnimalCandidateQueryService;
+import org.animallink.animal.application.InternalServiceAuthorization;
 import org.animallink.animal.domain.AnimalCandidateSnapshot;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
@@ -19,13 +21,19 @@ import java.util.List;
 @RequestMapping("/internal/v1/animals")
 public class InternalAnimalCandidateController {
     private final AnimalCandidateQueryService service;
+    private final InternalServiceAuthorization authorization;
 
-    public InternalAnimalCandidateController(AnimalCandidateQueryService service) {
+    public InternalAnimalCandidateController(AnimalCandidateQueryService service,
+                                             InternalServiceAuthorization authorization) {
         this.service = service;
+        this.authorization = authorization;
     }
 
     @PostMapping("/candidates")
-    CandidateBatchResponse candidates(@Valid @RequestBody CandidateBatchRequest request) {
+    CandidateBatchResponse candidates(
+            @RequestHeader(name = "X-Internal-Service", required = false) String caller,
+            @Valid @RequestBody CandidateBatchRequest request) {
+        authorization.requireIntelligenceService(caller);
         return new CandidateBatchResponse(service.recall(request.campusId(), request.species(), request.limit())
                 .stream().map(CandidateSnapshotResponse::from).toList());
     }

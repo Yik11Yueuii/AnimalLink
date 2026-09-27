@@ -18,8 +18,14 @@ public record Post(
 
     public static Post campusPost(String campusId, String animalId, String authorUserId,
                                   String textContent) {
+        return observationPost(UUID.randomUUID().toString(), campusId, animalId,
+                authorUserId, textContent);
+    }
+
+    public static Post observationPost(String id, String campusId, String animalId,
+                                       String authorUserId, String textContent) {
         Instant now = Instant.now();
-        return new Post(UUID.randomUUID().toString(), campusId, animalId, authorUserId,
+        return new Post(id, campusId, animalId, authorUserId,
                 PostType.CAMPUS_POST, required(textContent), Visibility.PUBLIC,
                 PostStatus.ACTIVE, 0, now, now);
     }

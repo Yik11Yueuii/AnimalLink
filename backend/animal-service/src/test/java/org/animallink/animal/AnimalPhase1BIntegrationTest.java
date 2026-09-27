@@ -266,6 +266,7 @@ class AnimalPhase1BIntegrationTest {
                 {"campusId":"%s","species":"CAT","limit":20}
                 """.formatted(CAMPUS_ID);
         mockMvc.perform(post("/internal/v1/animals/candidates")
+                        .header("X-Internal-Service", "intelligence-service")
                         .contentType(MediaType.APPLICATION_JSON).content(catRequest))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.candidates.length()").value(1))
@@ -277,11 +278,13 @@ class AnimalPhase1BIntegrationTest {
                 {"campusId":"%s","species":"UNKNOWN","limit":20}
                 """.formatted(CAMPUS_ID);
         mockMvc.perform(post("/internal/v1/animals/candidates")
+                        .header("X-Internal-Service", "intelligence-service")
                         .contentType(MediaType.APPLICATION_JSON).content(unknownRequest))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.candidates.length()").value(2));
 
         mockMvc.perform(post("/internal/v1/animals/candidates")
+                        .header("X-Internal-Service", "intelligence-service")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"campusId\":\"10000000-0000-0000-0000-000000000999\",\"species\":\"CAT\",\"limit\":20}"))
                 .andExpect(status().isOk())

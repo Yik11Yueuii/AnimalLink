@@ -90,6 +90,35 @@ public class ApiExceptionHandler {
         return response(HttpStatus.CONFLICT, "AI_TASK_NOT_CONFIRMED", e.getMessage(), r);
     }
 
+    @ExceptionHandler(TaskNoLongerValid.class)
+    ResponseEntity<ApiError> taskNoLongerValid(TaskNoLongerValid e, HttpServletRequest r) {
+        return response(HttpStatus.CONFLICT, "AI_TASK_NO_LONGER_VALID", e.getMessage(), r);
+    }
+
+    @ExceptionHandler(AlreadyFinalized.class)
+    ResponseEntity<ApiError> alreadyFinalized(AlreadyFinalized e, HttpServletRequest r) {
+        return response(HttpStatus.CONFLICT, "MATCH_ALREADY_FINALIZED", e.getMessage(), r);
+    }
+
+    @ExceptionHandler(SelectedAnimalNotCandidate.class)
+    ResponseEntity<ApiError> selectedAnimalNotCandidate(SelectedAnimalNotCandidate e,
+                                                         HttpServletRequest r) {
+        return response(HttpStatus.CONFLICT, "SELECTED_ANIMAL_NOT_CANDIDATE", e.getMessage(), r);
+    }
+
+    @ExceptionHandler(FinalizationServiceUnavailable.class)
+    ResponseEntity<ApiError> finalizationUnavailable(FinalizationServiceUnavailable e,
+                                                     HttpServletRequest r) {
+        return response(HttpStatus.SERVICE_UNAVAILABLE, "ANIMAL_SERVICE_UNAVAILABLE",
+                e.getMessage(), r);
+    }
+
+    @ExceptionHandler(AnimalFinalizationRejected.class)
+    ResponseEntity<ApiError> animalRejected(AnimalFinalizationRejected e,
+                                            HttpServletRequest r) {
+        return response(HttpStatus.valueOf(e.status()), e.code(), e.getMessage(), r);
+    }
+
     @ExceptionHandler({ValidationException.class, IllegalArgumentException.class,
             HttpMessageNotReadableException.class})
     ResponseEntity<ApiError> badRequest(Exception e, HttpServletRequest r) {
