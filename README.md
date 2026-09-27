@@ -2,7 +2,13 @@
 
 AnimalLink 是一个**基于多模态大模型的校园动物事件协同平台**，连接动物观察、救助协作、领养流转与长期数字档案。平台围绕同一只 Animal 的长期身份，持续记录校园生活、异常救助、公益支持、领养过程及领养后的生活动态。AI 用于辅助理解、生成草稿和提供候选，由人确认，正式业务状态由 Java 服务执行。
 
-当前仓库已完成 Phase 0 工程与基础设施基线、Phase 1A 的身份与校园基础、Phase 1B 的 Animal 核心长期档案、Phase 1C 的 Campus Circle 基础社区与关注能力，以及 Phase 2A–2C 的多模态解析、Animal Candidate Matching、人工身份确认与正式观察 Post 闭环。Event、Case、Adoption 和通用媒体上传入口仍按后续阶段实施。项目范围以正式的[产品需求文档 V2.1](docs/product/AnimalLink-PRD-V2.1.docx)、[技术设计 V1.0](docs/technical/AnimalLink-Technical-Design-V1.0.docx)及[项目规则](AGENTS.md)为准。
+当前仓库已完成 Phase 0 工程与基础设施基线、Phase 1A 的身份与校园基础、Phase 1B 的 Animal 核心长期档案、Phase 1C 的 Campus Circle 基础社区与关注能力，以及 Phase 2A–2C 的多模态解析、Animal Candidate Matching、人工身份确认与正式观察 Post 闭环。项目范围以正式的[产品需求文档 V2.1](docs/product/AnimalLink-PRD-V2.1.docx)、[技术设计 V1.0](docs/technical/AnimalLink-Technical-Design-V1.0.docx)及[项目规则](AGENTS.md)为准。
+
+## Phase 3A 事件与证据基础
+
+Phase 3A 由 `incident-service` 负责，提供独立的 `EventDraft → Event(REPORTED)` 人工确认链路、按 Campus 隔离的救助事件列表/详情、只追加的 Evidence，以及治理管理员的 VERIFY、REJECT、DUPLICATE、ARCHIVE 状态操作。`EventDraft` 不是 Event 状态；AI 或低置信候选不能自动创建 Event。公开响应只返回低精度位置说明，精确文本和经纬度不对外公开。
+
+`Event != Case`：本阶段没有 VolunteerMembership、Case、CaseAction、Support、Timeline 或 Adoption 的业务实现。Case 会在后续 Phase 3B 按正式 Event 接手，而不会由当前代码自动创建。
 
 ## 技术架构
 
