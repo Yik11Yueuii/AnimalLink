@@ -6,4 +6,5 @@ import org.springframework.web.client.RestClient;
 @Configuration public class ServiceClientsConfiguration {
  @Bean RestClient identityRestClient(@Value("${animallink.identity.base-url:http://localhost:8081}") String url){return RestClient.builder().baseUrl(url).build();}
  @Bean RestClient animalRestClient(@Value("${animallink.animal.base-url:http://localhost:8082}") String url){return RestClient.builder().baseUrl(url).build();}
+ @Bean RestClient intelligenceRestClient(@Value("${animallink.intelligence.base-url:http://localhost:8085}") String url){return RestClient.builder().baseUrl(url).build();}
 }

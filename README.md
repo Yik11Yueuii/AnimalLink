@@ -6,9 +6,20 @@ AnimalLink 是一个**基于多模态大模型的校园动物事件协同平台*
 
 ## Phase 3A 事件与证据基础
 
-Phase 3A 由 `incident-service` 负责，提供独立的 `EventDraft → Event(REPORTED)` 人工确认链路、按 Campus 隔离的救助事件列表/详情、只追加的 Evidence，以及治理管理员的 VERIFY、REJECT、DUPLICATE、ARCHIVE 状态操作。`EventDraft` 不是 Event 状态；AI 或低置信候选不能自动创建 Event。公开响应只返回低精度位置说明，精确文本和经纬度不对外公开。
+Phase 3A 由 `incident-service` 负责，完成了 `EventDraft → 人工确认 → Event → Rescue List / Detail → Evidence → Media → Governance` 的正式事件闭环。`EventDraft` 不是 Event 状态；AI 或低置信候选不能自动创建 Event。
 
-`Event != Case`：本阶段没有 VolunteerMembership、Case、CaseAction、Support、Timeline 或 Adoption 的业务实现。Case 会在后续 Phase 3B 按正式 Event 接手，而不会由当前代码自动创建。
+已完成能力：
+
+- EventDraft 的创建、读取、更新和提交；提交会正式化为初始 `REPORTED` Event，并保证重复提交返回同一 Event。
+- AI Task、MatchingRecord、Post 来源校验；Animal 可为空，支持 UNKNOWN-compatible 报告流程。
+- 按 Campus 隔离的救助列表、Event 详情、稳定分页与筛选；默认救助列表仅显示 `REPORTED`、`VERIFIED`。
+- 服务端位置隐私：公开/非相关用户仅见公开位置；Reporter 与治理管理员按既定权限看到精确位置和坐标。
+- Evidence 的追加、分页、位置隐私与正式媒体；仅 `REPORTED`、`VERIFIED` Event 接受 Evidence。
+- EventDraft、Event 与 Evidence 媒体均使用私有 MinIO object；正式化路径确定，读取仅提供短期签名 URL。
+- 严格 Event 状态机：`REPORTED → VERIFIED → ARCHIVED`，以及从 `REPORTED` 到 `REJECTED` / `DUPLICATE` 的受控治理操作。
+- MySQL + Flyway 集成测试覆盖 Draft、来源、Animal、Event、Evidence、媒体、隐私、状态机、幂等性与约束；真实 Gateway runtime smoke 已验证六个服务、MinIO 上传/正式化及完整 Phase 3A 链路。
+
+`Event != Case`：本阶段仍未实现 VolunteerMembership、Case collaboration、CaseAction、Support、Timeline result projection 或 Adoption。Case 会在后续 Phase 3B 按正式 Event 接手，而不会由当前代码自动创建。
 
 ## 技术架构
 
