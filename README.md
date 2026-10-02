@@ -19,11 +19,19 @@ Phase 3A 由 `incident-service` 负责，完成了 `EventDraft → 人工确认 
 - 严格 Event 状态机：`REPORTED → VERIFIED → ARCHIVED`，以及从 `REPORTED` 到 `REJECTED` / `DUPLICATE` 的受控治理操作。
 - MySQL + Flyway 集成测试覆盖 Draft、来源、Animal、Event、Evidence、媒体、隐私、状态机、幂等性与约束；真实 Gateway runtime smoke 已验证六个服务、MinIO 上传/正式化及完整 Phase 3A 链路。
 
-`Event != Case`：Phase 3B-a 已完成 Campus-scoped VolunteerMembership 授权基础；Case collaboration、CaseAction、Support、Timeline result projection 和 Adoption 仍未实现。Case 不会由当前代码自动创建。
+`Event != Case`：Phase 3B-a 已完成 Campus-scoped VolunteerMembership 授权基础；Phase 3B-b 在此基础上实现受控的 Case 首次认领。Case 不会由 Event 自动创建。
 
 ## Phase 3B-a 志愿者授权基础
 
 `identity-service` 已支持有效 STUDENT / ALUMNI CampusMembership 申请志愿者身份，治理管理员审核或撤销，以及志愿者本人暂停、恢复和退出。VolunteerMembership 与 SystemRole、CampusMembership 及后续 CaseParticipation 保持独立；本阶段未实现 Case 或认领流程。
+
+## Phase 3B-b Case 认领
+
+Phase 3B-b 仅完成 `VERIFIED Event → Case` 的首次认领闭环：只有同 Campus 的 ACTIVE VolunteerMembership 可以认领；一个 Event 最多关联一个主 Case。首次并发认领由数据库唯一约束与条件更新共同保证单一 winner；同一志愿者重复认领返回同一 Case，其他志愿者获得 `CASE_ALREADY_CLAIMED`。
+
+Event detail 和 list 返回不含 ownerUserId 的 CaseSummary（Case ID、Case 状态、认领状态和是否已有 owner）。Event 与 Case 状态独立，认领不会改变 Event.status。Case owner 可查看关联 Event 与 Evidence 的精确位置；无关志愿者、普通用户和公开请求仍被隐藏。
+
+本阶段尚未实现：Case collaborator、CaseAction、owner transfer、Case result / close、Support、Timeline projection。Phase 3B 其余工作仍未完成。
 
 ## 技术架构
 
