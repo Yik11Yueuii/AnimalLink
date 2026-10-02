@@ -246,6 +246,7 @@ public class JdbcIdentityRepository implements UserRepository, CampusRepository,
         return value == null ? null : value.toInstant();
     }
 
+
     private static LocalDate localDate(ResultSet rs, String column) throws SQLException {
         java.sql.Date value = rs.getDate(column);
         return value == null ? null : value.toLocalDate();
@@ -323,4 +324,5 @@ public class JdbcIdentityRepository implements UserRepository, CampusRepository,
                 instant(rs, "c_updated_at"));
         return new CampusMembershipView(membership, campus);
     };
+
 }

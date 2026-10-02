@@ -72,6 +72,7 @@ class IdentityPhase1AIntegrationTest {
 
     @BeforeEach
     void resetDatabase() {
+        jdbcTemplate.update("DELETE FROM volunteer_membership");
         jdbcTemplate.update("DELETE FROM campus_membership");
         jdbcTemplate.update("DELETE FROM campus_verification");
         jdbcTemplate.update("DELETE FROM campus");

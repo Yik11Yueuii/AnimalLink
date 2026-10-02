@@ -6,6 +6,8 @@ import org.animallink.identity.domain.ConflictException;
 import org.animallink.identity.domain.ForbiddenException;
 import org.animallink.identity.domain.NotFoundException;
 import org.animallink.identity.domain.UnauthorizedException;
+import org.animallink.identity.domain.VolunteerMembershipException;
+import org.animallink.identity.domain.VolunteerMembershipNotFoundException;
 import org.slf4j.MDC;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -19,6 +21,22 @@ import java.time.Instant;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+    @ExceptionHandler(VolunteerMembershipException.class)
+    public ResponseEntity<ApiError> volunteerMembership(VolunteerMembershipException exception,
+                                                         HttpServletRequest request) {
+        HttpStatus status = switch (exception.code()) {
+            case "CAMPUS_MEMBERSHIP_REQUIRED", "GOVERNANCE_REQUIRED" -> HttpStatus.FORBIDDEN;
+            case "VOLUNTEER_APPLICATION_EXISTS", "INVALID_VOLUNTEER_TRANSITION" -> HttpStatus.CONFLICT;
+            default -> HttpStatus.BAD_REQUEST;
+        };
+        return response(status, exception.code(), exception.getMessage(), request);
+    }
+    @ExceptionHandler(VolunteerMembershipNotFoundException.class)
+    public ResponseEntity<ApiError> volunteerMembershipNotFound(VolunteerMembershipNotFoundException exception,
+                                                                 HttpServletRequest request) {
+        return response(HttpStatus.NOT_FOUND, "VOLUNTEER_MEMBERSHIP_NOT_FOUND", exception.getMessage(), request);
+    }
+
     @ExceptionHandler(NotFoundException.class)
     public ResponseEntity<ApiError> notFound(NotFoundException exception, HttpServletRequest request) {
         return response(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", exception.getMessage(), request);
@@ -41,7 +59,7 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler({ValidationException.class, HttpMessageNotReadableException.class})
     public ResponseEntity<ApiError> badRequest(Exception exception, HttpServletRequest request) {
-        return response(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", exception.getMessage(), request);
+        return response(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", exception.getMessage(), request);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -51,7 +69,7 @@ public class ApiExceptionHandler {
                 .findFirst()
                 .map(error -> error.getField() + ": " + error.getDefaultMessage())
                 .orElse("请求参数校验失败");
-        return response(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", message, request);
+        return response(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", message, request);
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)

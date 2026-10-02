@@ -19,7 +19,11 @@ Phase 3A 由 `incident-service` 负责，完成了 `EventDraft → 人工确认 
 - 严格 Event 状态机：`REPORTED → VERIFIED → ARCHIVED`，以及从 `REPORTED` 到 `REJECTED` / `DUPLICATE` 的受控治理操作。
 - MySQL + Flyway 集成测试覆盖 Draft、来源、Animal、Event、Evidence、媒体、隐私、状态机、幂等性与约束；真实 Gateway runtime smoke 已验证六个服务、MinIO 上传/正式化及完整 Phase 3A 链路。
 
-`Event != Case`：本阶段仍未实现 VolunteerMembership、Case collaboration、CaseAction、Support、Timeline result projection 或 Adoption。Case 会在后续 Phase 3B 按正式 Event 接手，而不会由当前代码自动创建。
+`Event != Case`：Phase 3B-a 已完成 Campus-scoped VolunteerMembership 授权基础；Case collaboration、CaseAction、Support、Timeline result projection 和 Adoption 仍未实现。Case 不会由当前代码自动创建。
+
+## Phase 3B-a 志愿者授权基础
+
+`identity-service` 已支持有效 STUDENT / ALUMNI CampusMembership 申请志愿者身份，治理管理员审核或撤销，以及志愿者本人暂停、恢复和退出。VolunteerMembership 与 SystemRole、CampusMembership 及后续 CaseParticipation 保持独立；本阶段未实现 Case 或认领流程。
 
 ## 技术架构
 

@@ -11,6 +11,8 @@ import org.animallink.identity.domain.MembershipStatus;
 import org.animallink.identity.domain.MembershipType;
 import org.animallink.identity.domain.UserAccount;
 import org.animallink.identity.domain.VerificationStatus;
+import org.animallink.identity.domain.VolunteerMembership;
+import org.animallink.identity.domain.VolunteerMembershipStatus;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -100,6 +102,33 @@ public final class IdentityDtos {
     }
 
     public record RejectRequest(@NotBlank @Size(max = 500) String reviewReason) {
+    }
+
+    public record VolunteerMembershipApplyRequest(
+            @NotBlank @Size(max = 36) String campusId,
+            @Size(max = 500) String applicationNote) {
+    }
+
+    public record VolunteerMembershipResponse(
+            String id, String userId, String campusId, VolunteerMembershipStatus status,
+            String applicationNote, String reviewReason, String reviewedBy, Instant reviewedAt,
+            Instant activatedAt, Instant pausedAt, Instant endedAt, Instant createdAt, Instant updatedAt) {
+        public static VolunteerMembershipResponse from(VolunteerMembership value) {
+            return new VolunteerMembershipResponse(value.id(), value.userId(), value.campusId(), value.status(),
+                    value.applicationNote(), value.reviewReason(), value.reviewedBy(), value.reviewedAt(),
+                    value.activatedAt(), value.pausedAt(), value.endedAt(), value.createdAt(), value.updatedAt());
+        }
+    }
+
+    public record InternalVolunteerMembershipResponse(
+            boolean exists, String userId, String campusId, String status, boolean active) {
+        public static InternalVolunteerMembershipResponse missing(String userId, String campusId) {
+            return new InternalVolunteerMembershipResponse(false, userId, campusId, null, false);
+        }
+        public static InternalVolunteerMembershipResponse from(VolunteerMembership value) {
+            return new InternalVolunteerMembershipResponse(true, value.userId(), value.campusId(),
+                    value.status().name(), value.isActive());
+        }
     }
 
     public record CampusVerificationResponse(
