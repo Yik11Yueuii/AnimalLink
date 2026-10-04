@@ -8,6 +8,7 @@ import org.animallink.adoption.domain.ApplicationNotOwnerException;
 import org.animallink.adoption.domain.ListingNotFoundException;
 import org.animallink.adoption.domain.ListingNotOpenForApplicationException;
 import org.animallink.adoption.domain.AdoptionListing;
+import org.animallink.adoption.domain.InvalidApplicationTransitionException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,9 +38,7 @@ public class AdoptionApplicationService {
     @Transactional
     public AdoptionApplication withdraw(String applicationId) {
         AdoptionApplication withdrawn = owned(applicationId, identity.requireCurrentUser().id()).withdraw();
-        if (!applications.withdraw(withdrawn.id(), withdrawn.updatedAt(), withdrawn.withdrawnAt())) {
-            return owned(applicationId, withdrawn.applicantUserId()).withdraw();
-        }
+        if (!applications.withdraw(withdrawn.id(), withdrawn.applicantUserId(), withdrawn.updatedAt(), withdrawn.withdrawnAt())) throw new InvalidApplicationTransitionException("领养申请已不处于可撤回状态");
         return withdrawn;
     }
     private AdoptionApplication owned(String applicationId, String userId) {

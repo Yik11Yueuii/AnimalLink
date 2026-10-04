@@ -10,5 +10,5 @@ public interface AdoptionApplicationRepository {
     Optional<AdoptionApplication> findById(String id);
     List<AdoptionApplication> findByApplicant(String applicantUserId, int limit, int offset);
     long countByApplicant(String applicantUserId);
-    boolean withdraw(String id, Instant updatedAt, Instant withdrawnAt);
+    boolean withdraw(String id, String applicantUserId, Instant updatedAt, Instant withdrawnAt);
 }
