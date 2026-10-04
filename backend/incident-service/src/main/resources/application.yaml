@@ -1,4 +1,10 @@
 spring:
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:}
+    password: ${RABBITMQ_PASSWORD:}
+    publisher-confirm-type: correlated
   application:
     name: incident-service
   profiles:
@@ -34,6 +40,8 @@ management:
       show-details: when_authorized
       show-components: always
 animallink:
+  messaging:
+    enabled: ${ANIMALLINK_MESSAGING_ENABLED:true}
   identity:
     base-url: ${IDENTITY_SERVICE_URL:http://localhost:8081}
   animal:

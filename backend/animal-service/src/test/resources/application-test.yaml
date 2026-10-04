@@ -12,6 +12,8 @@ management:
     nacos:
       enabled: false
 animallink:
+  messaging:
+    enabled: false
   minio:
     endpoint: http://localhost:9000
     access-key: test-access

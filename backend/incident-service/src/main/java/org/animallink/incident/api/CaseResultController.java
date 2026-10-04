@@ -1,6 +1,7 @@
 package org.animallink.incident.api;
 
 import jakarta.servlet.http.HttpServletRequest;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -8,6 +9,7 @@ import jakarta.validation.constraints.Size;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -23,8 +25,8 @@ import org.springframework.web.client.RestClient;
 @RestController
 @RequestMapping("/api/v1/cases/{caseId}")
 public class CaseResultController {
-  private final JdbcTemplate jdbc; private final RestClient identity; private final HttpServletRequest request;
-  public CaseResultController(JdbcTemplate jdbc,@Qualifier("identityRestClient") RestClient identity,HttpServletRequest request){this.jdbc=jdbc;this.identity=identity;this.request=request;}
+  private final JdbcTemplate jdbc; private final RestClient identity; private final HttpServletRequest request; private final ObjectMapper json;
+  public CaseResultController(JdbcTemplate jdbc,@Qualifier("identityRestClient") RestClient identity,HttpServletRequest request,ObjectMapper json){this.jdbc=jdbc;this.identity=identity;this.request=request;this.json=json;}
 
   @PostMapping("/result") @Transactional
   public ResultResponse submit(@PathVariable("caseId") String caseId,@Valid @RequestBody ResultRequest body) {
@@ -36,6 +38,7 @@ public class CaseResultController {
       next,body.outcome(),body.summary(),caller,Timestamp.from(now),terminal(body.outcome())?Timestamp.from(now):null,Timestamp.from(now),caseId);
     if(updated!=1) throw new EventController.Conflict("CASE_RESULT_STATE_CONFLICT");
     jdbc.update("INSERT INTO case_action(id,case_id,actor_user_id,description,occurred_at,created_at,result_code) VALUES(?,?,?,?,?,?,?)",actionId,caseId,caller,body.summary(),Timestamp.from(now),Timestamp.from(now),body.outcome());
+    if(finalized(body.outcome()) && s(c,"animal_id")!=null) outbox(c, body, caller, now);
     return result(one(caseId),actionId);
   }
 
@@ -60,6 +63,8 @@ public class CaseResultController {
   private CloseResponse close(Map<String,Object> c){return new CloseResponse(s(c,"id"),s(c,"status"),s(c,"result_code"),s(c,"result_summary"),s(c,"result_submitted_by_user_id"),instant(c,"result_submitted_at"),instant(c,"closed_at"));}
   private static String statusFor(String outcome){return switch(outcome){case "CONTINUE_OBSERVATION"->"ACTIVE";case "RESOLVED"->"RESOLVED";case "UNRESOLVED"->"CLOSED_UNRESOLVED";case "CANCELLED"->"CANCELLED";default->throw new IllegalArgumentException("outcome");};}
   private static boolean terminal(String outcome){return !"CONTINUE_OBSERVATION".equals(outcome)&&!"RESOLVED".equals(outcome);}
+  private static boolean finalized(String outcome){return !"CONTINUE_OBSERVATION".equals(outcome);}
+  private void outbox(Map<String,Object> c,ResultRequest body,String caller,Instant now){try{String id=UUID.randomUUID().toString();Map<String,Object> payload=new LinkedHashMap<>();payload.put("eventId",id);payload.put("eventType","CASE_RESULT_FINALIZED");payload.put("eventVersion",1);payload.put("caseId",s(c,"id"));payload.put("incidentEventId",s(c,"event_id"));payload.put("animalId",s(c,"animal_id"));payload.put("campusId",s(c,"campus_id"));payload.put("outcome",body.outcome());payload.put("summary",body.summary());payload.put("submittedByUserId",caller);payload.put("occurredAt",now.toString());jdbc.update("INSERT INTO outbox_event(id,aggregate_type,aggregate_id,event_type,payload_json,status,available_at,created_at,updated_at) VALUES(?,?,?,? ,CAST(? AS JSON),'PENDING',?,?,?)",id,"CASE",s(c,"id"),"CASE_RESULT_FINALIZED",json.writeValueAsString(payload),Timestamp.from(now),Timestamp.from(now),Timestamp.from(now));}catch(Exception e){throw new IllegalStateException("outbox write failed",e);}}
   private static String s(Map<String,Object> row,String key){Object v=row.get(key);return v==null?null:v.toString();}
   private static Instant instant(Map<String,Object> row,String key){Object v=row.get(key);return v==null?null:((Timestamp)v).toInstant();}
   public record ResultRequest(@NotBlank @Pattern(regexp="CONTINUE_OBSERVATION|RESOLVED|UNRESOLVED|CANCELLED") String outcome,@NotBlank @Size(max=2000) String summary){}

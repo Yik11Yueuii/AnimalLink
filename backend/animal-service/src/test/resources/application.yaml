@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: animal-service
+  config:
+    import: optional:nacos:${spring.application.name}.yaml
+  cloud:
+    nacos:
+      config:
+        import-check:
+          enabled: false
+animallink:
+  messaging:
+    enabled: false
+  identity:
+    base-url: http://localhost:1
+    connect-timeout-ms: 1500
+    read-timeout-ms: 2500
+  minio:
+    endpoint: http://localhost:9000
+    access-key: test-access
+    secret-key: test-secret
+    bucket: test-animal
+    intelligence-bucket: test-intelligence
