@@ -2,6 +2,8 @@ package org.animallink.adoption;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -23,6 +25,11 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.animallink.adoption.infrastructure.AdoptionCompletedOutboxPublisher;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -45,9 +52,10 @@ class AdoptionApplicationIntegrationTest {
         r.add("spring.cloud.nacos.discovery.enabled", () -> false); r.add("spring.cloud.nacos.config.enabled", () -> false);
         r.add("animallink.identity.base-url", STUB::url); r.add("animallink.animal.base-url", STUB::url);
         r.add("animallink.minio.endpoint", () -> "http://localhost:9000"); r.add("animallink.minio.access-key", () -> "a"); r.add("animallink.minio.secret-key", () -> "b");
+        r.add("animallink.messaging.enabled", () -> false);
     }
-    @Autowired MockMvc mvc; @Autowired JdbcTemplate jdbc;
-    @BeforeEach void clean() { jdbc.update("DELETE FROM adoption_selection"); jdbc.update("DELETE FROM adoption_application"); jdbc.update("DELETE FROM adoption_listing"); STUB.animals.clear(); STUB.unavailable = false; }
+    @Autowired MockMvc mvc; @Autowired JdbcTemplate jdbc; @Autowired PlatformTransactionManager transactions; @Autowired ObjectMapper objectMapper;
+    @BeforeEach void clean() { jdbc.update("DELETE FROM outbox_event"); jdbc.update("DELETE FROM adoption_relation"); jdbc.update("DELETE FROM adoption_handover"); jdbc.update("DELETE FROM adoption_selection"); jdbc.update("DELETE FROM adoption_application"); jdbc.update("DELETE FROM adoption_listing"); STUB.animals.clear(); STUB.unavailable = false; }
     @AfterAll static void stop() { STUB.stop(); DATABASE.close(); }
 
     @Test void submitEligibilityListingStateAndSelfApplicationAreEnforced() throws Exception {
@@ -234,12 +242,57 @@ class AdoptionApplicationIntegrationTest {
         assertThrows(RuntimeException.class, () -> insertActiveSelection(UUID.randomUUID().toString(), firstListing, first));
         assertThrows(RuntimeException.class, () -> jdbc.update("INSERT INTO adoption_selection(id,listing_id,application_id,status,selected_by_user_id,selected_at,cancelled_at,cancel_reason) VALUES(?,?,?,'ACTIVE',?,NOW(6),NOW(6),'invalid')", UUID.randomUUID().toString(), secondListing, second, ADMIN));
     }
+    @Test void governanceHandoverCompletionCreatesRelationAndExactOutbox() throws Exception {
+        String listing=listing(ADMIN,true), application=applicationId(listing,APPLICANT); mvc.perform(approve(application,null)).andExpect(status().isOk());
+        String selection=id(mvc.perform(select(listing,application,null,ADMIN)).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(),"selectionId");
+        String handover=id(mvc.perform(initiate(selection,ADMIN)).andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("PENDING")).andReturn().getResponse().getContentAsString(),"handoverId");
+        mvc.perform(initiate(selection,ADMIN)).andExpect(status().isOk()).andExpect(jsonPath("$.handoverId").value(handover));
+        mvc.perform(get("/api/v1/me/handovers").header("X-User-Id",APPLICANT)).andExpect(status().isOk()).andExpect(jsonPath("$[0].handoverId").value(handover)).andExpect(jsonPath("$[0].note").doesNotExist());
+        mvc.perform(post("/api/v1/governance/handovers/{id}/complete",handover).header("X-User-Id",ADMIN)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("COMPLETED"));
+        mvc.perform(post("/api/v1/governance/handovers/{id}/complete",handover).header("X-User-Id",ADMIN)).andExpect(status().isOk());
+        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM adoption_relation WHERE handover_id=? AND status='ACTIVE'",Integer.class,handover));
+        Map<String,Object> event=jdbc.queryForMap("SELECT id,payload_json,status FROM outbox_event");assertEquals("PENDING",event.get("status"));Map<String,Object> payload=objectMapper.readValue(event.get("payload_json").toString(),new TypeReference<>(){});assertEquals(java.util.Set.of("eventId","eventType","eventVersion","occurredAt","relationId","handoverId","animalId"),payload.keySet());assertEquals(event.get("id"),payload.get("eventId"));assertEquals("ADOPTION_COMPLETED",payload.get("eventType"));assertEquals(1,payload.get("eventVersion"));assertEquals(handover,payload.get("handoverId"));assertEquals(jdbc.queryForObject("SELECT id FROM adoption_relation WHERE handover_id=?",String.class,handover),payload.get("relationId"));assertEquals(jdbc.queryForObject("SELECT animal_id FROM adoption_listing WHERE id=?",String.class,listing),payload.get("animalId"));
+    }
+    @RepeatedTest(10) void cancelVsCompleteHasOneTerminalOutcomeAndCancelledSelectionCanReselect() throws Exception {
+        String listing=listing(ADMIN,true), first=applicationId(listing,APPLICANT), second=applicationId(listing,UNRELATED);mvc.perform(approve(first,null)).andExpect(status().isOk());mvc.perform(approve(second,null)).andExpect(status().isOk());
+        String selection=id(mvc.perform(select(listing,first,null,ADMIN)).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(),"selectionId");String handover=id(mvc.perform(initiate(selection,ADMIN)).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(),"handoverId");
+        CountDownLatch ready=new CountDownLatch(2),start=new CountDownLatch(1);ExecutorService pool=Executors.newFixedThreadPool(2);Future<Integer> complete=pool.submit(()->concurrent(post("/api/v1/governance/handovers/{id}/complete",handover).header("X-User-Id",ADMIN),ready,start));Future<Integer> cancel=pool.submit(()->concurrent(post("/api/v1/governance/handovers/{id}/cancel",handover).header("X-User-Id",SECOND_ADMIN).contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"x\"}"),ready,start));assertTrue(ready.await(5,java.util.concurrent.TimeUnit.SECONDS));start.countDown();int a=complete.get(),b=cancel.get();pool.shutdown();assertEquals(1,(a==200?1:0)+(b==200?1:0));assertEquals(1,(a==409?1:0)+(b==409?1:0));String state=jdbc.queryForObject("SELECT status FROM adoption_handover WHERE id=?",String.class,handover);if("CANCELLED".equals(state)){assertEquals("CANCELLED",jdbc.queryForObject("SELECT status FROM adoption_selection WHERE id=?",String.class,selection));mvc.perform(select(listing,second,null,ADMIN)).andExpect(status().isCreated());}else{assertEquals("COMPLETED",state);assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM adoption_relation WHERE handover_id=?",Integer.class,handover));}
+    }
+    @Test void handoverValidationAuthorizationReadPrivacyAndCancellationIdempotency() throws Exception {
+        String listing=listing(ADMIN,true), selected=applicationId(listing,APPLICANT), other=applicationId(listing,UNRELATED);mvc.perform(approve(selected,null)).andExpect(status().isOk());mvc.perform(approve(other,null)).andExpect(status().isOk());
+        String selection=id(mvc.perform(select(listing,selected,null,ADMIN)).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(),"selectionId");
+        mvc.perform(post("/api/v1/governance/selections/{id}/handover",selection).header("X-User-Id",ADMIN).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        mvc.perform(post("/api/v1/governance/selections/{id}/handover",selection).header("X-User-Id",ADMIN).contentType(MediaType.APPLICATION_JSON).content("{\"scheduledAt\":\"2020-01-01T00:00:00Z\"}")).andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        mvc.perform(initiate(selection,APPLICANT)).andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("GOVERNANCE_REQUIRED"));
+        mvc.perform(get("/api/v1/governance/selections/{id}/handover",selection).header("X-User-Id",ADMIN)).andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("HANDOVER_NOT_FOUND"));
+        String handover=id(mvc.perform(initiate(selection,ADMIN)).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(),"handoverId");
+        mvc.perform(get("/api/v1/governance/selections/{id}/handover",selection).header("X-User-Id",ADMIN)).andExpect(status().isOk()).andExpect(jsonPath("$.selectedApplicantUserId").value(APPLICANT));
+        mvc.perform(get("/api/v1/me/handovers").header("X-User-Id",APPLICANT)).andExpect(status().isOk()).andExpect(jsonPath("$[0].handoverId").value(handover)).andExpect(jsonPath("$[0].selectionId").doesNotExist()).andExpect(jsonPath("$[0].note").doesNotExist());
+        mvc.perform(get("/api/v1/me/handovers").header("X-User-Id",UNRELATED)).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+        mvc.perform(post("/api/v1/governance/handovers/{id}/cancel",handover).header("X-User-Id",ADMIN).contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\" \"}")).andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        mvc.perform(post("/api/v1/governance/handovers/{id}/cancel",handover).header("X-User-Id",ADMIN).contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"  changed mind  \"}")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CANCELLED")).andExpect(jsonPath("$.cancelReason").value("changed mind"));
+        mvc.perform(post("/api/v1/governance/handovers/{id}/cancel",handover).header("X-User-Id",SECOND_ADMIN).contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"different\"}")).andExpect(status().isOk()).andExpect(jsonPath("$.cancelReason").value("changed mind"));
+        assertEquals("CLOSED",jdbc.queryForObject("SELECT status FROM adoption_listing WHERE id=?",String.class,listing));assertEquals("APPROVED",jdbc.queryForObject("SELECT status FROM adoption_application WHERE id=?",String.class,other));
+        mvc.perform(initiate(selection,ADMIN)).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("SELECTION_NOT_ACTIVE"));
+    }
+    @RepeatedTest(10) void concurrentSameSelectionInitiationConvergesToOnePendingHandover() throws Exception {
+        String listing=listing(ADMIN,true), application=applicationId(listing,APPLICANT);mvc.perform(approve(application,null)).andExpect(status().isOk());String selection=id(mvc.perform(select(listing,application,null,ADMIN)).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(),"selectionId");
+        CountDownLatch ready=new CountDownLatch(2),start=new CountDownLatch(1);ExecutorService pool=Executors.newFixedThreadPool(2);Future<Integer> first=pool.submit(()->concurrent(initiate(selection,ADMIN),ready,start));Future<Integer> second=pool.submit(()->concurrent(initiate(selection,SECOND_ADMIN),ready,start));assertTrue(ready.await(5,java.util.concurrent.TimeUnit.SECONDS));start.countDown();int a=first.get(),b=second.get();pool.shutdown();assertEquals(1,(a==201?1:0)+(b==201?1:0));assertEquals(1,(a==200?1:0)+(b==200?1:0));assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM adoption_handover WHERE selection_id=?",Integer.class,selection));
+    }
+    @Test void outboxPublisherConfirmsPublishesAndRetriesWithoutMutatingDomainState() {
+        String id=UUID.randomUUID().toString(), relation=UUID.randomUUID().toString();jdbc.update("INSERT INTO outbox_event(id,aggregate_type,aggregate_id,event_type,payload_json,status,available_at,created_at,updated_at) VALUES(?,'ADOPTION_RELATION',?,'ADOPTION_COMPLETED',CAST(? AS JSON),'PENDING',NOW(6),NOW(6),NOW(6))",id,relation,"{\"eventId\":\""+id+"\",\"eventType\":\"ADOPTION_COMPLETED\",\"eventVersion\":1}");
+        RabbitTemplate rabbit=org.mockito.Mockito.mock(RabbitTemplate.class);org.mockito.Mockito.doAnswer(i->{CorrelationData c=i.getArgument(4);c.getFuture().complete(new CorrelationData.Confirm(true,null));return null;}).when(rabbit).convertAndSend(org.mockito.ArgumentMatchers.eq("animallink.domain"),org.mockito.ArgumentMatchers.eq("adoption.handover.completed"),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(CorrelationData.class));
+        assertEquals(1,new AdoptionCompletedOutboxPublisher(jdbc,rabbit,new TransactionTemplate(transactions)).publishBatch());assertEquals("PUBLISHED",jdbc.queryForObject("SELECT status FROM outbox_event WHERE id=?",String.class,id));
+        String retry=UUID.randomUUID().toString();jdbc.update("INSERT INTO outbox_event(id,aggregate_type,aggregate_id,event_type,payload_json,status,available_at,created_at,updated_at) VALUES(?,'ADOPTION_RELATION',?,'ADOPTION_COMPLETED',CAST(? AS JSON),'PENDING',NOW(6),NOW(6),NOW(6))",retry,UUID.randomUUID().toString(),"{\"eventId\":\""+retry+"\"}");RabbitTemplate failing=org.mockito.Mockito.mock(RabbitTemplate.class);org.mockito.Mockito.doThrow(new RuntimeException("transient")).when(failing).convertAndSend(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(CorrelationData.class));
+        assertEquals(0,new AdoptionCompletedOutboxPublisher(jdbc,failing,new TransactionTemplate(transactions)).publishBatch());assertEquals("PENDING",jdbc.queryForObject("SELECT status FROM outbox_event WHERE id=?",String.class,retry));assertEquals(1,jdbc.queryForObject("SELECT attempt_count FROM outbox_event WHERE id=?",Integer.class,retry));assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM adoption_relation",Integer.class));
+    }
     private String listing(String actor, boolean publish) throws Exception { String animal = UUID.randomUUID().toString(); STUB.animals.put(animal, "OPEN"); String body = mvc.perform(post("/api/v1/listings").header("X-User-Id", actor).contentType(MediaType.APPLICATION_JSON).content("{\"animalId\":\"" + animal + "\",\"title\":\"领养信息\",\"description\":\"寻找家庭\"}")).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(); String id = id(body, "listingId"); if (publish) mvc.perform(post("/api/v1/listings/{id}/publish", id).header("X-User-Id", actor)).andExpect(status().isOk()); return id; }
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder submit(String listing, String actor) { var request = post("/api/v1/listings/{id}/applications", listing).contentType(MediaType.APPLICATION_JSON).content("{\"message\":\"我愿意领养\"}"); if (actor != null) request.header("X-User-Id", actor); return request; }
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder governanceQueue(String listing, String status, int page, int size) { var request = get("/api/v1/governance/applications").header("X-User-Id", ADMIN).param("page", String.valueOf(page)).param("size", String.valueOf(size)); if (listing != null) request.param("listingId", listing); if (status != null) request.param("status", status); return request; }
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder approve(String application, String comment) { return post("/api/v1/governance/applications/{id}/approve", application).header("X-User-Id", ADMIN).contentType(MediaType.APPLICATION_JSON).content(comment == null ? "{}" : "{\"comment\":\"" + comment + "\"}"); }
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder reject(String application, String reason) { return post("/api/v1/governance/applications/{id}/reject", application).header("X-User-Id", ADMIN).contentType(MediaType.APPLICATION_JSON).content(reason == null ? "{}" : "{\"reason\":\"" + reason + "\"}"); }
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder select(String listing, String application, String note, String actor) { return post("/api/v1/governance/listings/{id}/selection", listing).header("X-User-Id", actor).contentType(MediaType.APPLICATION_JSON).content("{\"applicationId\":\"" + application + "\"" + (note == null ? "" : ",\"note\":\"" + note + "\"") + "}"); }
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder initiate(String selection,String actor){return post("/api/v1/governance/selections/{id}/handover",selection).header("X-User-Id",actor).contentType(MediaType.APPLICATION_JSON).content("{\"scheduledAt\":\"2030-01-01T10:00:00Z\"}");}
     private String applicationId(String listing, String actor) throws Exception { return id(mvc.perform(submit(listing, actor)).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "applicationId"); }
     private void insertActiveSelection(String id, String listing, String application) { jdbc.update("INSERT INTO adoption_selection(id,listing_id,application_id,status,selected_by_user_id,selected_at) VALUES(?,?,?,'ACTIVE',?,NOW(6))", id, listing, application, ADMIN); }
     private String id(String body, String field) { Matcher m = Pattern.compile("\\\"" + field + "\\\":\\\"([0-9a-fA-F-]{36})\\\"").matcher(body); assertTrue(m.find()); return m.group(1); }

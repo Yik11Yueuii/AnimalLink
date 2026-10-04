@@ -27,9 +27,12 @@ public class JdbcAdoptionSelectionRepository implements AdoptionSelectionReposit
                 selection.id(), selection.listingId(), selection.applicationId(), selection.status().name(), selection.selectedByUserId(),
                 Timestamp.from(selection.selectedAt()), selection.note(), null, null, null);
     }
+    public Optional<AdoptionSelection> findById(String id) { return jdbc.query("SELECT * FROM adoption_selection WHERE id=?", ROW, id).stream().findFirst(); }
+    public Optional<AdoptionSelection> findByIdForUpdate(String id) { return jdbc.query("SELECT * FROM adoption_selection WHERE id=? FOR UPDATE", ROW, id).stream().findFirst(); }
     public Optional<AdoptionSelection> findActiveByListingId(String listingId) {
         return jdbc.query("SELECT * FROM adoption_selection WHERE listing_id=? AND status='ACTIVE'", ROW, listingId).stream().findFirst();
     }
+    public boolean cancel(String id,String userId,java.time.Instant at,String reason){return jdbc.update("UPDATE adoption_selection SET status='CANCELLED',cancelled_by_user_id=?,cancelled_at=?,cancel_reason=? WHERE id=? AND status='ACTIVE'",userId,Timestamp.from(at),reason,id)==1;}
     public Set<String> findActiveApplicationIds(Collection<String> applicationIds) {
         if (applicationIds.isEmpty()) return Set.of();
         String placeholders = applicationIds.stream().map(value -> "?").collect(Collectors.joining(","));
