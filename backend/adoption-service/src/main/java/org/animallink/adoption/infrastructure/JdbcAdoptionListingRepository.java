@@ -29,6 +29,7 @@ public class JdbcAdoptionListingRepository implements AdoptionListingRepository 
         } catch (DuplicateKeyException e) { throw new ListingAlreadyExistsException("该动物已存在未关闭的领养信息"); }
     }
     public Optional<AdoptionListing> findById(String id) { return jdbc.query("SELECT * FROM adoption_listing WHERE id=?", ROW, id).stream().findFirst(); }
+    public Optional<AdoptionListing> findByIdForUpdate(String id) { return jdbc.query("SELECT * FROM adoption_listing WHERE id=? FOR UPDATE", ROW, id).stream().findFirst(); }
     public List<AdoptionListing> findPublished(int limit, int offset) { return jdbc.query("SELECT * FROM adoption_listing WHERE status='PUBLISHED' ORDER BY published_at DESC,id DESC LIMIT ? OFFSET ?", ROW, limit, offset); }
     public long countPublished() { Long value = jdbc.queryForObject("SELECT COUNT(*) FROM adoption_listing WHERE status='PUBLISHED'", Long.class); return value == null ? 0L : value; }
     public boolean publish(String id, java.time.Instant updatedAt, java.time.Instant publishedAt) { return jdbc.update("UPDATE adoption_listing SET status='PUBLISHED',updated_at=?,published_at=? WHERE id=? AND status='DRAFT'", Timestamp.from(updatedAt), Timestamp.from(publishedAt), id) == 1; }

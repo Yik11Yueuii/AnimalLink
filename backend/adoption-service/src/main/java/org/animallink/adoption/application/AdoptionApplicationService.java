@@ -19,8 +19,9 @@ public class AdoptionApplicationService {
     private static final int MAX_PAGE_SIZE = 100;
     private final AdoptionApplicationRepository applications;
     private final AdoptionListingRepository listings;
+    private final AdoptionSelectionRepository selections;
     private final IdentityGateway identity;
-    public AdoptionApplicationService(AdoptionApplicationRepository applications, AdoptionListingRepository listings, IdentityGateway identity) { this.applications = applications; this.listings = listings; this.identity = identity; }
+    public AdoptionApplicationService(AdoptionApplicationRepository applications, AdoptionListingRepository listings, AdoptionSelectionRepository selections, IdentityGateway identity) { this.applications = applications; this.listings = listings; this.selections = selections; this.identity = identity; }
     @Transactional
     public AdoptionApplication submit(String listingId, String message) {
         validUuid(listingId, "listingId");
@@ -32,10 +33,15 @@ public class AdoptionApplicationService {
         if (!applications.insertIfListingPublished(application)) throw new ListingNotOpenForApplicationException("领养信息当前不接受申请");
         return application;
     }
-    public AdoptionApplication detail(String applicationId) { return owned(applicationId, identity.requireCurrentUser().id()); }
-    public PageResult<AdoptionApplication> myApplications(int page, int size) {
+    public ApplicationView detail(String applicationId) {
+        AdoptionApplication application = owned(applicationId, identity.requireCurrentUser().id());
+        return new ApplicationView(application, selections.findActiveApplicationIds(java.util.List.of(application.id())).contains(application.id()));
+    }
+    public PageResult<ApplicationView> myApplications(int page, int size) {
         String userId = identity.requireCurrentUser().id(); int safePage = Math.max(0, page); int safeSize = Math.min(MAX_PAGE_SIZE, Math.max(1, size));
-        return new PageResult<>(applications.findByApplicant(userId, safeSize, safePage * safeSize), safePage, safeSize, applications.countByApplicant(userId));
+        java.util.List<AdoptionApplication> rows = applications.findByApplicant(userId, safeSize, safePage * safeSize);
+        java.util.Set<String> selected = selections.findActiveApplicationIds(rows.stream().map(AdoptionApplication::id).toList());
+        return new PageResult<>(rows.stream().map(row -> new ApplicationView(row, selected.contains(row.id()))).toList(), safePage, safeSize, applications.countByApplicant(userId));
     }
     @Transactional
     public AdoptionApplication withdraw(String applicationId) {

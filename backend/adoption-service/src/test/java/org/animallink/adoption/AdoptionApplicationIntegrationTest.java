@@ -35,6 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class AdoptionApplicationIntegrationTest {
     static final String ADMIN = "00000000-0000-0000-0000-000000000002";
+    static final String SECOND_ADMIN = "00000000-0000-0000-0000-000000000013";
     static final String APPLICANT = "00000000-0000-0000-0000-000000000011";
     static final String UNRELATED = "00000000-0000-0000-0000-000000000014";
     static final String NO_MEMBERSHIP = "00000000-0000-0000-0000-000000000012";
@@ -46,7 +47,7 @@ class AdoptionApplicationIntegrationTest {
         r.add("animallink.minio.endpoint", () -> "http://localhost:9000"); r.add("animallink.minio.access-key", () -> "a"); r.add("animallink.minio.secret-key", () -> "b");
     }
     @Autowired MockMvc mvc; @Autowired JdbcTemplate jdbc;
-    @BeforeEach void clean() { jdbc.update("DELETE FROM adoption_application"); jdbc.update("DELETE FROM adoption_listing"); STUB.animals.clear(); STUB.unavailable = false; }
+    @BeforeEach void clean() { jdbc.update("DELETE FROM adoption_selection"); jdbc.update("DELETE FROM adoption_application"); jdbc.update("DELETE FROM adoption_listing"); STUB.animals.clear(); STUB.unavailable = false; }
     @AfterAll static void stop() { STUB.stop(); DATABASE.close(); }
 
     @Test void submitEligibilityListingStateAndSelfApplicationAreEnforced() throws Exception {
@@ -151,12 +152,96 @@ class AdoptionApplicationIntegrationTest {
         mvc.perform(approve(application, null)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("APPROVED"));
         mvc.perform(get("/api/v1/me/applications?page=0&size=20").header("X-User-Id", APPLICANT)).andExpect(status().isOk()).andExpect(jsonPath("$.items[0].status").value("APPROVED"));
     }
+    @Test void governanceSelectsApprovedApplicationClosesListingAndPreservesOtherApplications() throws Exception {
+        String listing = listing(ADMIN, true); String selected = applicationId(listing, APPLICANT); String other = applicationId(listing, UNRELATED);
+        mvc.perform(approve(selected, null)).andExpect(status().isOk()); mvc.perform(approve(other, null)).andExpect(status().isOk()); STUB.animalCalls = 0;
+        mvc.perform(select(listing, selected, "  最终候选人  ", ADMIN)).andExpect(status().isCreated())
+                .andExpect(jsonPath("$.listingId").value(listing)).andExpect(jsonPath("$.applicationId").value(selected))
+                .andExpect(jsonPath("$.selectedApplicantUserId").value(APPLICANT)).andExpect(jsonPath("$.selectedByUserId").value(ADMIN))
+                .andExpect(jsonPath("$.status").value("ACTIVE")).andExpect(jsonPath("$.note").value("最终候选人"));
+        assertEquals("CLOSED", jdbc.queryForObject("SELECT status FROM adoption_listing WHERE id=?", String.class, listing));
+        assertEquals("APPROVED", jdbc.queryForObject("SELECT status FROM adoption_application WHERE id=?", String.class, other));
+        assertEquals(0, STUB.animalCalls);
+    }
+    @Test void selectionEnforcesAuthorizationEligibilityAndListingOwnership() throws Exception {
+        String listing = listing(ADMIN, true); String submitted = applicationId(listing, APPLICANT);
+        mvc.perform(select(listing, submitted, null, APPLICANT)).andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("GOVERNANCE_REQUIRED"));
+        mvc.perform(select(listing, submitted, null, ADMIN)).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("APPLICATION_NOT_APPROVED"));
+        mvc.perform(post("/api/v1/applications/{id}/withdraw", submitted).header("X-User-Id", APPLICANT)).andExpect(status().isOk());
+        mvc.perform(select(listing, submitted, null, ADMIN)).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("APPLICATION_NOT_APPROVED"));
+        String rejected = applicationId(listing(ADMIN, true), APPLICANT); mvc.perform(reject(rejected, "不完整")).andExpect(status().isOk());
+        mvc.perform(select(jdbc.queryForObject("SELECT listing_id FROM adoption_application WHERE id=?", String.class, rejected), rejected, null, ADMIN)).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("APPLICATION_NOT_APPROVED"));
+        String approved = applicationId(listing(ADMIN, true), APPLICANT); mvc.perform(approve(approved, null)).andExpect(status().isOk());
+        mvc.perform(select(listing, approved, null, ADMIN)).andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+    @Test void selectionIsAllowedForClosedListingButNotDraftAndReadIsGoverned() throws Exception {
+        String closed = listing(ADMIN, true); String approved = applicationId(closed, APPLICANT); mvc.perform(approve(approved, null)).andExpect(status().isOk());
+        mvc.perform(post("/api/v1/listings/{id}/close", closed).header("X-User-Id", ADMIN)).andExpect(status().isOk());
+        mvc.perform(select(closed, approved, null, ADMIN)).andExpect(status().isCreated());
+        assertEquals("CLOSED", jdbc.queryForObject("SELECT status FROM adoption_listing WHERE id=?", String.class, closed));
+        String draft = listing(ADMIN, false); String app = UUID.randomUUID().toString();
+        jdbc.update("INSERT INTO adoption_application(id,listing_id,applicant_user_id,status,message,created_at,updated_at,withdrawn_at,reviewer_user_id,reviewed_at,review_comment) VALUES(?,?,?,'APPROVED','x',NOW(6),NOW(6),NULL,?,NOW(6),NULL)", app, draft, APPLICANT, ADMIN);
+        mvc.perform(select(draft, app, null, ADMIN)).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("LISTING_NOT_SELECTABLE"));
+        mvc.perform(get("/api/v1/governance/listings/{id}/selection", draft).header("X-User-Id", ADMIN)).andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("SELECTION_NOT_FOUND"));
+        mvc.perform(get("/api/v1/governance/listings/{id}/selection", closed).header("X-User-Id", APPLICANT)).andExpect(status().isForbidden());
+    }
+    @Test void sameSelectionRetryIsIdempotentAndDifferentSelectionConflicts() throws Exception {
+        String listing = listing(ADMIN, true); String first = applicationId(listing, APPLICANT); String second = applicationId(listing, UNRELATED);
+        mvc.perform(approve(first, null)).andExpect(status().isOk()); mvc.perform(approve(second, null)).andExpect(status().isOk());
+        String firstId = id(mvc.perform(select(listing, first, null, ADMIN)).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "selectionId");
+        mvc.perform(select(listing, first, null, SECOND_ADMIN)).andExpect(status().isOk()).andExpect(jsonPath("$.selectionId").value(firstId));
+        mvc.perform(select(listing, second, null, ADMIN)).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("LISTING_ALREADY_SELECTED"));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM adoption_selection WHERE listing_id=? AND status='ACTIVE'", Integer.class, listing));
+    }
+    @RepeatedTest(10) void concurrentDifferentSelectionsProduceOneActiveSelection() throws Exception {
+        String listing = listing(ADMIN, true); String first = applicationId(listing, APPLICANT); String second = applicationId(listing, UNRELATED);
+        mvc.perform(approve(first, null)).andExpect(status().isOk()); mvc.perform(approve(second, null)).andExpect(status().isOk());
+        CountDownLatch ready = new CountDownLatch(2); CountDownLatch start = new CountDownLatch(1); ExecutorService pool = Executors.newFixedThreadPool(2);
+        Future<Integer> a = pool.submit(() -> concurrent(select(listing, first, null, ADMIN), ready, start)); Future<Integer> b = pool.submit(() -> concurrent(select(listing, second, null, SECOND_ADMIN), ready, start));
+        assertTrue(ready.await(5, java.util.concurrent.TimeUnit.SECONDS)); start.countDown(); int one = a.get(); int two = b.get(); pool.shutdown();
+        assertEquals(1, (one == 201 ? 1 : 0) + (two == 201 ? 1 : 0)); assertEquals(1, (one == 409 ? 1 : 0) + (two == 409 ? 1 : 0));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM adoption_selection WHERE listing_id=? AND status='ACTIVE'", Integer.class, listing));
+        assertEquals("CLOSED", jdbc.queryForObject("SELECT status FROM adoption_listing WHERE id=?", String.class, listing));
+    }
+    @Test void concurrentSameSelectionConvergesToOneSelectionAndApplicantViewsOnlyExposeFlag() throws Exception {
+        String listing = listing(ADMIN, true); String selected = applicationId(listing, APPLICANT); String other = applicationId(listing, UNRELATED);
+        mvc.perform(approve(selected, null)).andExpect(status().isOk()); mvc.perform(approve(other, null)).andExpect(status().isOk());
+        CountDownLatch ready = new CountDownLatch(2); CountDownLatch start = new CountDownLatch(1); ExecutorService pool = Executors.newFixedThreadPool(2);
+        Future<Integer> a = pool.submit(() -> concurrent(select(listing, selected, null, ADMIN), ready, start)); Future<Integer> b = pool.submit(() -> concurrent(select(listing, selected, null, SECOND_ADMIN), ready, start));
+        assertTrue(ready.await(5, java.util.concurrent.TimeUnit.SECONDS)); start.countDown(); int one = a.get(); int two = b.get(); pool.shutdown();
+        assertTrue((one == 201 && two == 200) || (one == 200 && two == 201));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM adoption_selection WHERE listing_id=?", Integer.class, listing));
+        mvc.perform(get("/api/v1/applications/{id}", selected).header("X-User-Id", APPLICANT)).andExpect(status().isOk()).andExpect(jsonPath("$.selected").value(true)).andExpect(jsonPath("$.selectionId").doesNotExist()).andExpect(jsonPath("$.selectedByUserId").doesNotExist()).andExpect(jsonPath("$.note").doesNotExist());
+        mvc.perform(get("/api/v1/applications/{id}", other).header("X-User-Id", UNRELATED)).andExpect(status().isOk()).andExpect(jsonPath("$.selected").value(false));
+        mvc.perform(get("/api/v1/me/applications").header("X-User-Id", APPLICANT)).andExpect(status().isOk()).andExpect(jsonPath("$.items[0].selected").value(true));
+        mvc.perform(get("/api/v1/governance/listings/{id}/selection", listing).header("X-User-Id", ADMIN)).andExpect(status().isOk()).andExpect(jsonPath("$.applicationId").value(selected));
+    }
+    @Test void selectionVsManualCloseRaceLeavesActiveSelectionAndClosedListing() throws Exception {
+        String listing = listing(ADMIN, true); String application = applicationId(listing, APPLICANT); mvc.perform(approve(application, null)).andExpect(status().isOk());
+        CountDownLatch ready = new CountDownLatch(2); CountDownLatch start = new CountDownLatch(1); ExecutorService pool = Executors.newFixedThreadPool(2);
+        Future<Integer> selection = pool.submit(() -> concurrent(select(listing, application, null, ADMIN), ready, start));
+        Future<Integer> close = pool.submit(() -> concurrent(post("/api/v1/listings/{id}/close", listing).header("X-User-Id", SECOND_ADMIN), ready, start));
+        assertTrue(ready.await(5, java.util.concurrent.TimeUnit.SECONDS)); start.countDown();
+        assertEquals(201, selection.get()); assertTrue(close.get() == 200 || close.get() == 409); pool.shutdown();
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM adoption_selection WHERE listing_id=? AND status='ACTIVE'", Integer.class, listing));
+        assertEquals("CLOSED", jdbc.queryForObject("SELECT status FROM adoption_listing WHERE id=?", String.class, listing));
+    }
+    @Test void v5DatabaseConstraintsEnforceCompositeOwnershipActiveUniquenessAndMetadata() throws Exception {
+        String firstListing = listing(ADMIN, true); String first = applicationId(firstListing, APPLICANT); mvc.perform(approve(first, null)).andExpect(status().isOk());
+        String secondListing = listing(ADMIN, true); String second = applicationId(secondListing, UNRELATED); mvc.perform(approve(second, null)).andExpect(status().isOk());
+        assertThrows(RuntimeException.class, () -> insertActiveSelection(UUID.randomUUID().toString(), firstListing, second));
+        insertActiveSelection(UUID.randomUUID().toString(), firstListing, first);
+        assertThrows(RuntimeException.class, () -> insertActiveSelection(UUID.randomUUID().toString(), firstListing, first));
+        assertThrows(RuntimeException.class, () -> jdbc.update("INSERT INTO adoption_selection(id,listing_id,application_id,status,selected_by_user_id,selected_at,cancelled_at,cancel_reason) VALUES(?,?,?,'ACTIVE',?,NOW(6),NOW(6),'invalid')", UUID.randomUUID().toString(), secondListing, second, ADMIN));
+    }
     private String listing(String actor, boolean publish) throws Exception { String animal = UUID.randomUUID().toString(); STUB.animals.put(animal, "OPEN"); String body = mvc.perform(post("/api/v1/listings").header("X-User-Id", actor).contentType(MediaType.APPLICATION_JSON).content("{\"animalId\":\"" + animal + "\",\"title\":\"领养信息\",\"description\":\"寻找家庭\"}")).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(); String id = id(body, "listingId"); if (publish) mvc.perform(post("/api/v1/listings/{id}/publish", id).header("X-User-Id", actor)).andExpect(status().isOk()); return id; }
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder submit(String listing, String actor) { var request = post("/api/v1/listings/{id}/applications", listing).contentType(MediaType.APPLICATION_JSON).content("{\"message\":\"我愿意领养\"}"); if (actor != null) request.header("X-User-Id", actor); return request; }
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder governanceQueue(String listing, String status, int page, int size) { var request = get("/api/v1/governance/applications").header("X-User-Id", ADMIN).param("page", String.valueOf(page)).param("size", String.valueOf(size)); if (listing != null) request.param("listingId", listing); if (status != null) request.param("status", status); return request; }
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder approve(String application, String comment) { return post("/api/v1/governance/applications/{id}/approve", application).header("X-User-Id", ADMIN).contentType(MediaType.APPLICATION_JSON).content(comment == null ? "{}" : "{\"comment\":\"" + comment + "\"}"); }
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder reject(String application, String reason) { return post("/api/v1/governance/applications/{id}/reject", application).header("X-User-Id", ADMIN).contentType(MediaType.APPLICATION_JSON).content(reason == null ? "{}" : "{\"reason\":\"" + reason + "\"}"); }
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder select(String listing, String application, String note, String actor) { return post("/api/v1/governance/listings/{id}/selection", listing).header("X-User-Id", actor).contentType(MediaType.APPLICATION_JSON).content("{\"applicationId\":\"" + application + "\"" + (note == null ? "" : ",\"note\":\"" + note + "\"") + "}"); }
     private String applicationId(String listing, String actor) throws Exception { return id(mvc.perform(submit(listing, actor)).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "applicationId"); }
+    private void insertActiveSelection(String id, String listing, String application) { jdbc.update("INSERT INTO adoption_selection(id,listing_id,application_id,status,selected_by_user_id,selected_at) VALUES(?,?,?,'ACTIVE',?,NOW(6))", id, listing, application, ADMIN); }
     private String id(String body, String field) { Matcher m = Pattern.compile("\\\"" + field + "\\\":\\\"([0-9a-fA-F-]{36})\\\"").matcher(body); assertTrue(m.find()); return m.group(1); }
     private int concurrentSubmit(String listing, CountDownLatch ready, CountDownLatch start) throws Exception { ready.countDown(); start.await(); return mvc.perform(submit(listing, APPLICANT)).andReturn().getResponse().getStatus(); }
     private int concurrent(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request, CountDownLatch ready, CountDownLatch start) throws Exception { ready.countDown(); start.await(); return mvc.perform(request).andReturn().getResponse().getStatus(); }
@@ -164,7 +249,7 @@ class AdoptionApplicationIntegrationTest {
         final Map<String, String> animals = new ConcurrentHashMap<>(); volatile boolean unavailable; volatile int animalCalls; final HttpServer server;
         Stub() { try { server = HttpServer.create(new InetSocketAddress(0), 0); server.createContext("/api/v1/users/me", this::user); server.createContext("/api/v1/animals", this::animal); server.start(); } catch (IOException e) { throw new RuntimeException(e); } }
         String url() { return "http://localhost:" + server.getAddress().getPort(); } void stop() { server.stop(0); }
-        void user(HttpExchange e) throws IOException { if (unavailable) { reply(e, 503, "{}"); return; } String id = e.getRequestHeaders().getFirst("X-User-Id"); if (id == null) { reply(e, 401, "{}"); return; } if (e.getRequestURI().getPath().endsWith("campus-memberships")) { reply(e, 200, NO_MEMBERSHIP.equals(id) ? "[]" : "[{\"status\":\"ACTIVE\"}]"); return; } reply(e, 200, "{\"id\":\"" + id + "\",\"accountStatus\":\"ACTIVE\",\"systemRole\":\"" + (ADMIN.equals(id) ? "GOVERNANCE_ADMIN" : "USER") + "\"}"); }
+        void user(HttpExchange e) throws IOException { if (unavailable) { reply(e, 503, "{}"); return; } String id = e.getRequestHeaders().getFirst("X-User-Id"); if (id == null) { reply(e, 401, "{}"); return; } if (e.getRequestURI().getPath().endsWith("campus-memberships")) { reply(e, 200, NO_MEMBERSHIP.equals(id) ? "[]" : "[{\"status\":\"ACTIVE\"}]"); return; } reply(e, 200, "{\"id\":\"" + id + "\",\"accountStatus\":\"ACTIVE\",\"systemRole\":\"" + ((ADMIN.equals(id) || SECOND_ADMIN.equals(id)) ? "GOVERNANCE_ADMIN" : "USER") + "\"}"); }
         void animal(HttpExchange e) throws IOException { animalCalls++; String id = e.getRequestURI().getPath().substring("/api/v1/animals/".length()); String status = animals.get(id); if (status == null) { reply(e, 404, "{}"); return; } reply(e, 200, "{\"id\":\"" + id + "\",\"adoptionStatus\":\"" + status + "\"}"); }
         void reply(HttpExchange e, int status, String body) throws IOException { byte[] bytes = body.getBytes(StandardCharsets.UTF_8); e.getResponseHeaders().set("Content-Type", "application/json"); e.sendResponseHeaders(status, bytes.length); e.getResponseBody().write(bytes); e.close(); }
     }

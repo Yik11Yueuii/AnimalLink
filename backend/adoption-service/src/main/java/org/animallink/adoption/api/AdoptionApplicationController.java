@@ -18,13 +18,19 @@ public class AdoptionApplicationController {
     private final AdoptionApplicationService service;
     public AdoptionApplicationController(AdoptionApplicationService service) { this.service = service; }
     @PostMapping("/listings/{listingId}/applications") @ResponseStatus(HttpStatus.CREATED)
-    public AdoptionApplicationDtos.ApplicationResponse submit(@PathVariable("listingId") String listingId, @Valid @RequestBody AdoptionApplicationDtos.SubmitApplicationRequest request) { return AdoptionApplicationDtos.ApplicationResponse.from(service.submit(listingId, request.message())); }
+    public AdoptionApplicationDtos.ApplicationResponse submit(@PathVariable("listingId") String listingId, @Valid @RequestBody AdoptionApplicationDtos.SubmitApplicationRequest request) {
+        var application = service.submit(listingId, request.message());
+        return AdoptionApplicationDtos.ApplicationResponse.from(new org.animallink.adoption.application.ApplicationView(application, false));
+    }
     @GetMapping("/applications/{applicationId}")
     public AdoptionApplicationDtos.ApplicationResponse detail(@PathVariable("applicationId") String applicationId) { return AdoptionApplicationDtos.ApplicationResponse.from(service.detail(applicationId)); }
     @GetMapping("/me/applications")
     public AdoptionApplicationDtos.PageResponse mine(@RequestParam(name = "page", defaultValue = "0") int page, @RequestParam(name = "size", defaultValue = "20") int size) { return AdoptionApplicationDtos.PageResponse.from(service.myApplications(page, size)); }
     @PostMapping("/applications/{applicationId}/withdraw")
-    public AdoptionApplicationDtos.ApplicationResponse withdraw(@PathVariable("applicationId") String applicationId) { return AdoptionApplicationDtos.ApplicationResponse.from(service.withdraw(applicationId)); }
+    public AdoptionApplicationDtos.ApplicationResponse withdraw(@PathVariable("applicationId") String applicationId) {
+        var application = service.withdraw(applicationId);
+        return AdoptionApplicationDtos.ApplicationResponse.from(new org.animallink.adoption.application.ApplicationView(application, false));
+    }
     @GetMapping("/governance/applications")
     public AdoptionApplicationDtos.GovernancePageResponse governanceQueue(@RequestParam(name = "listingId", required = false) String listingId, @RequestParam(name = "status", required = false) String status, @RequestParam(name = "page", defaultValue = "0") int page, @RequestParam(name = "size", defaultValue = "20") int size) { return AdoptionApplicationDtos.GovernancePageResponse.from(service.governanceApplications(listingId, status, page, size)); }
     @GetMapping("/governance/applications/{applicationId}")
