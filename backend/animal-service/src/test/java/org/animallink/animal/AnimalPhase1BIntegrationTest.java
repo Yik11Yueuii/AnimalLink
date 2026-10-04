@@ -291,6 +291,40 @@ class AnimalPhase1BIntegrationTest {
                 .andExpect(jsonPath("$.candidates.length()").value(0));
     }
 
+    @Test
+    void incidentAnimalBatchRequiresTrustedCallerDeduplicatesAndOmitsMissing() throws Exception {
+        String body = "{\"animalIds\":[\"%s\",\"%s\",\"%s\",\"missing\"]}"
+                .formatted(ANIMAL_ONE, ANIMAL_ONE, ANIMAL_TWO);
+        mockMvc.perform(post("/internal/v1/incident-facts/animals/batch")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/internal/v1/incident-facts/animals/batch")
+                        .header("X-Internal-Service", "incident-service")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].id").exists())
+                .andExpect(jsonPath("$[0].displayName").exists())
+                .andExpect(jsonPath("$[0].objectKey").doesNotExist())
+                .andExpect(jsonPath("$[0].coatColor").doesNotExist())
+                .andExpect(jsonPath("$[0].currentContext").doesNotExist());
+
+        mockMvc.perform(post("/internal/v1/incident-facts/animals/batch")
+                        .header("X-Internal-Service", "incident-service")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"animalIds\":[]}"))
+                .andExpect(status().isBadRequest());
+        StringBuilder tooMany = new StringBuilder("{\"animalIds\":[");
+        for (int i = 0; i < 101; i++) {
+            if (i > 0) tooMany.append(',');
+            tooMany.append('\"').append(UUID.randomUUID()).append('\"');
+        }
+        tooMany.append("]}");
+        mockMvc.perform(post("/internal/v1/incident-facts/animals/batch")
+                        .header("X-Internal-Service", "incident-service")
+                        .contentType(MediaType.APPLICATION_JSON).content(tooMany.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
     private void insertAnimal(String id, String campusId, String name, String species, String status) {
         jdbcTemplate.update("""
                 INSERT INTO animal
