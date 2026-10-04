@@ -1,0 +1,32 @@
+package org.animallink.adoption.api;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ValidationException;
+import java.time.Instant;
+import org.animallink.adoption.domain.AnimalNotEligibleException;
+import org.animallink.adoption.domain.AnimalNotFoundException;
+import org.animallink.adoption.domain.DependencyUnavailableException;
+import org.animallink.adoption.domain.InvalidListingTransitionException;
+import org.animallink.adoption.domain.ListingAccessDeniedException;
+import org.animallink.adoption.domain.ListingAlreadyExistsException;
+import org.animallink.adoption.domain.ListingNotFoundException;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+@RestControllerAdvice
+public class ApiExceptionHandler {
+    @ExceptionHandler(ListingNotFoundException.class) ResponseEntity<ApiError> missing(ListingNotFoundException e, HttpServletRequest r) { return response(HttpStatus.NOT_FOUND, "LISTING_NOT_FOUND", e.getMessage(), r); }
+    @ExceptionHandler(AnimalNotFoundException.class) ResponseEntity<ApiError> animalMissing(AnimalNotFoundException e, HttpServletRequest r) { return response(HttpStatus.NOT_FOUND, "ANIMAL_NOT_FOUND", e.getMessage(), r); }
+    @ExceptionHandler(ListingAccessDeniedException.class) ResponseEntity<ApiError> forbidden(ListingAccessDeniedException e, HttpServletRequest r) { return response(HttpStatus.FORBIDDEN, "GOVERNANCE_REQUIRED", e.getMessage(), r); }
+    @ExceptionHandler(AnimalNotEligibleException.class) ResponseEntity<ApiError> ineligible(AnimalNotEligibleException e, HttpServletRequest r) { return response(HttpStatus.CONFLICT, "ANIMAL_NOT_ELIGIBLE", e.getMessage(), r); }
+    @ExceptionHandler(ListingAlreadyExistsException.class) ResponseEntity<ApiError> exists(ListingAlreadyExistsException e, HttpServletRequest r) { return response(HttpStatus.CONFLICT, "ACTIVE_LISTING_EXISTS", e.getMessage(), r); }
+    @ExceptionHandler(InvalidListingTransitionException.class) ResponseEntity<ApiError> transition(InvalidListingTransitionException e, HttpServletRequest r) { return response(HttpStatus.CONFLICT, "INVALID_LISTING_TRANSITION", e.getMessage(), r); }
+    @ExceptionHandler(DependencyUnavailableException.class) ResponseEntity<ApiError> dependency(DependencyUnavailableException e, HttpServletRequest r) { return response(HttpStatus.SERVICE_UNAVAILABLE, "DEPENDENCY_UNAVAILABLE", e.getMessage(), r); }
+    @ExceptionHandler({IllegalArgumentException.class, ValidationException.class}) ResponseEntity<ApiError> invalid(Exception e, HttpServletRequest r) { return response(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", e.getMessage(), r); }
+    @ExceptionHandler(MethodArgumentNotValidException.class) ResponseEntity<ApiError> invalidBody(MethodArgumentNotValidException e, HttpServletRequest r) { String message = e.getBindingResult().getFieldErrors().stream().findFirst().map(x -> x.getField() + ": " + x.getDefaultMessage()).orElse("请求参数校验失败"); return response(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", message, r); }
+    private ResponseEntity<ApiError> response(HttpStatus status, String code, String message, HttpServletRequest request) { return ResponseEntity.status(status).body(new ApiError(Instant.now(), status.value(), code, message, request.getRequestURI())); }
+    public record ApiError(Instant timestamp, int status, String code, String message, String path) { }
+}
