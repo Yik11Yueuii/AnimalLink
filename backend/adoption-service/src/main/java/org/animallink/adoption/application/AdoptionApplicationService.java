@@ -8,7 +8,9 @@ import org.animallink.adoption.domain.ApplicationNotOwnerException;
 import org.animallink.adoption.domain.ListingNotFoundException;
 import org.animallink.adoption.domain.ListingNotOpenForApplicationException;
 import org.animallink.adoption.domain.AdoptionListing;
+import org.animallink.adoption.domain.ApplicationStatus;
 import org.animallink.adoption.domain.InvalidApplicationTransitionException;
+import org.animallink.adoption.domain.ListingAccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,6 +43,53 @@ public class AdoptionApplicationService {
         if (!applications.withdraw(withdrawn.id(), withdrawn.applicantUserId(), withdrawn.updatedAt(), withdrawn.withdrawnAt())) throw new InvalidApplicationTransitionException("领养申请已不处于可撤回状态");
         return withdrawn;
     }
+    public PageResult<AdoptionApplication> governanceApplications(String listingId, String status, int page, int size) {
+        requireGovernance();
+        if (listingId != null && !listingId.isBlank()) validUuid(listingId, "listingId"); else listingId = null;
+        ApplicationStatus filter = status == null || status.isBlank() ? ApplicationStatus.SUBMITTED : parseStatus(status);
+        Page pageRequest = page(page, size);
+        return new PageResult<>(applications.findForGovernance(listingId, filter, pageRequest.size(), pageRequest.offset()), pageRequest.page(), pageRequest.size(), applications.countForGovernance(listingId, filter));
+    }
+    public AdoptionApplication governanceDetail(String applicationId) {
+        requireGovernance();
+        return existing(applicationId);
+    }
+    @Transactional
+    public AdoptionApplication approve(String applicationId, String comment) { return review(applicationId, ApplicationStatus.APPROVED, normalizeOptionalComment(comment)); }
+    @Transactional
+    public AdoptionApplication reject(String applicationId, String reason) {
+        if (reason == null || reason.trim().isEmpty()) throw new IllegalArgumentException("reason 不能为空");
+        String normalized = reason.trim();
+        if (normalized.length() > 500) throw new IllegalArgumentException("reason 最大长度为 500");
+        return review(applicationId, ApplicationStatus.REJECTED, normalized);
+    }
+    private AdoptionApplication review(String applicationId, ApplicationStatus decision, String comment) {
+        IdentityGateway.CurrentUser reviewer = requireGovernance();
+        AdoptionApplication reviewed = existing(applicationId).review(decision, reviewer.id(), comment);
+        if (applications.review(reviewed.id(), decision, reviewer.id(), reviewed.reviewedAt(), reviewed.reviewComment(), reviewed.updatedAt())) return reviewed;
+        AdoptionApplication latest = applications.findById(applicationId).orElseThrow(() -> new ApplicationNotFoundException("领养申请不存在"));
+        throw new InvalidApplicationTransitionException("领养申请已不处于可审核状态");
+    }
+    private IdentityGateway.CurrentUser requireGovernance() {
+        IdentityGateway.CurrentUser user = identity.requireCurrentUser();
+        if (!user.isActiveGovernanceAdmin()) throw new ListingAccessDeniedException("需要治理管理员权限");
+        return user;
+    }
+    private AdoptionApplication existing(String applicationId) {
+        validUuid(applicationId, "applicationId");
+        return applications.findById(applicationId).orElseThrow(() -> new ApplicationNotFoundException("领养申请不存在"));
+    }
+    private static ApplicationStatus parseStatus(String value) { try { return ApplicationStatus.valueOf(value); } catch (RuntimeException e) { throw new IllegalArgumentException("status 无效"); } }
+    private static String normalizeOptionalComment(String value) {
+        if (value == null || value.trim().isEmpty()) return null;
+        String normalized = value.trim(); if (normalized.length() > 500) throw new IllegalArgumentException("comment 最大长度为 500"); return normalized;
+    }
+    private static Page page(int page, int size) {
+        if (page < 0) throw new IllegalArgumentException("page 不能小于 0");
+        if (size < 1 || size > MAX_PAGE_SIZE) throw new IllegalArgumentException("size 必须在 1 到 100 之间");
+        try { return new Page(page, size, Math.multiplyExact(page, size)); } catch (ArithmeticException e) { throw new IllegalArgumentException("page 过大"); }
+    }
+    private record Page(int page, int size, int offset) { }
     private AdoptionApplication owned(String applicationId, String userId) {
         validUuid(applicationId, "applicationId");
         AdoptionApplication application = applications.findById(applicationId).orElseThrow(() -> new ApplicationNotFoundException("领养申请不存在"));

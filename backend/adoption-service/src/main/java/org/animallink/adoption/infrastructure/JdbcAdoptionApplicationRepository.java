@@ -19,7 +19,10 @@ public class JdbcAdoptionApplicationRepository implements AdoptionApplicationRep
             rs.getString("id"), rs.getString("listing_id"), rs.getString("applicant_user_id"),
             ApplicationStatus.valueOf(rs.getString("status")), rs.getString("message"),
             rs.getTimestamp("created_at").toInstant(), rs.getTimestamp("updated_at").toInstant(),
-            rs.getTimestamp("withdrawn_at") == null ? null : rs.getTimestamp("withdrawn_at").toInstant());
+            rs.getTimestamp("withdrawn_at") == null ? null : rs.getTimestamp("withdrawn_at").toInstant(),
+            rs.getString("reviewer_user_id"),
+            rs.getTimestamp("reviewed_at") == null ? null : rs.getTimestamp("reviewed_at").toInstant(),
+            rs.getString("review_comment"));
     public JdbcAdoptionApplicationRepository(JdbcTemplate jdbc) { this.jdbc = jdbc; }
     public boolean insertIfListingPublished(AdoptionApplication application) {
         try {
@@ -34,4 +37,15 @@ public class JdbcAdoptionApplicationRepository implements AdoptionApplicationRep
     public List<AdoptionApplication> findByApplicant(String applicantUserId, int limit, int offset) { return jdbc.query("SELECT * FROM adoption_application WHERE applicant_user_id=? ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?", ROW, applicantUserId, limit, offset); }
     public long countByApplicant(String applicantUserId) { Long value = jdbc.queryForObject("SELECT COUNT(*) FROM adoption_application WHERE applicant_user_id=?", Long.class, applicantUserId); return value == null ? 0L : value; }
     public boolean withdraw(String id, String applicantUserId, java.time.Instant updatedAt, java.time.Instant withdrawnAt) { return jdbc.update("UPDATE adoption_application SET status='WITHDRAWN',updated_at=?,withdrawn_at=? WHERE id=? AND applicant_user_id=? AND status='SUBMITTED'", Timestamp.from(updatedAt), Timestamp.from(withdrawnAt), id, applicantUserId) == 1; }
+    public List<AdoptionApplication> findForGovernance(String listingId, ApplicationStatus status, int limit, int offset) {
+        if (listingId == null) return jdbc.query("SELECT * FROM adoption_application WHERE status=? ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?", ROW, status.name(), limit, offset);
+        return jdbc.query("SELECT * FROM adoption_application WHERE listing_id=? AND status=? ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?", ROW, listingId, status.name(), limit, offset);
+    }
+    public long countForGovernance(String listingId, ApplicationStatus status) {
+        Long value = listingId == null ? jdbc.queryForObject("SELECT COUNT(*) FROM adoption_application WHERE status=?", Long.class, status.name()) : jdbc.queryForObject("SELECT COUNT(*) FROM adoption_application WHERE listing_id=? AND status=?", Long.class, listingId, status.name());
+        return value == null ? 0L : value;
+    }
+    public boolean review(String id, ApplicationStatus status, String reviewerUserId, java.time.Instant reviewedAt, String reviewComment, java.time.Instant updatedAt) {
+        return jdbc.update("UPDATE adoption_application SET status=?,reviewer_user_id=?,reviewed_at=?,review_comment=?,updated_at=? WHERE id=? AND status='SUBMITTED'", status.name(), reviewerUserId, Timestamp.from(reviewedAt), reviewComment, Timestamp.from(updatedAt), id) == 1;
+    }
 }

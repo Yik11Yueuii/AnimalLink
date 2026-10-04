@@ -25,4 +25,12 @@ public class AdoptionApplicationController {
     public AdoptionApplicationDtos.PageResponse mine(@RequestParam(name = "page", defaultValue = "0") int page, @RequestParam(name = "size", defaultValue = "20") int size) { return AdoptionApplicationDtos.PageResponse.from(service.myApplications(page, size)); }
     @PostMapping("/applications/{applicationId}/withdraw")
     public AdoptionApplicationDtos.ApplicationResponse withdraw(@PathVariable("applicationId") String applicationId) { return AdoptionApplicationDtos.ApplicationResponse.from(service.withdraw(applicationId)); }
+    @GetMapping("/governance/applications")
+    public AdoptionApplicationDtos.GovernancePageResponse governanceQueue(@RequestParam(name = "listingId", required = false) String listingId, @RequestParam(name = "status", required = false) String status, @RequestParam(name = "page", defaultValue = "0") int page, @RequestParam(name = "size", defaultValue = "20") int size) { return AdoptionApplicationDtos.GovernancePageResponse.from(service.governanceApplications(listingId, status, page, size)); }
+    @GetMapping("/governance/applications/{applicationId}")
+    public AdoptionApplicationDtos.GovernanceApplicationResponse governanceDetail(@PathVariable("applicationId") String applicationId) { return AdoptionApplicationDtos.GovernanceApplicationResponse.from(service.governanceDetail(applicationId)); }
+    @PostMapping("/governance/applications/{applicationId}/approve")
+    public AdoptionApplicationDtos.GovernanceApplicationResponse approve(@PathVariable("applicationId") String applicationId, @Valid @RequestBody(required = false) AdoptionApplicationDtos.ReviewApplicationRequest request) { return AdoptionApplicationDtos.GovernanceApplicationResponse.from(service.approve(applicationId, request == null ? null : request.comment())); }
+    @PostMapping("/governance/applications/{applicationId}/reject")
+    public AdoptionApplicationDtos.GovernanceApplicationResponse reject(@PathVariable("applicationId") String applicationId, @Valid @RequestBody AdoptionApplicationDtos.RejectApplicationRequest request) { return AdoptionApplicationDtos.GovernanceApplicationResponse.from(service.reject(applicationId, request == null ? null : request.reason())); }
 }
