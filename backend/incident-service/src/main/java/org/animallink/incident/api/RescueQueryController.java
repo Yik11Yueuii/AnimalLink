@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestClient;
+import org.animallink.incident.infrastructure.MinioIncidentMediaFormalizer;
 
 /** Page-oriented views backed directly by the incident source tables; no read-model copy is kept. */
 @RestController
@@ -31,10 +32,11 @@ public class RescueQueryController {
   private final RestClient identity;
   private final RestClient animal;
   private final HttpServletRequest request;
+  private final MinioIncidentMediaFormalizer media;
 
   public RescueQueryController(JdbcTemplate jdbc, @Qualifier("identityRestClient") RestClient identity,
-      @Qualifier("animalRestClient") RestClient animal, HttpServletRequest request) {
-    this.jdbc = jdbc; this.identity = identity; this.animal = animal; this.request = request;
+      @Qualifier("animalRestClient") RestClient animal, HttpServletRequest request, MinioIncidentMediaFormalizer media) {
+    this.jdbc = jdbc; this.identity = identity; this.animal = animal; this.request = request; this.media = media;
   }
 
   @GetMapping("/rescues")
@@ -65,9 +67,11 @@ public class RescueQueryController {
     boolean canClaim = userId != null && volunteer && "VERIFIED".equals(s(e, "status")) && (c == null || "WAITING_CLAIM".equals(s(c, "claim_status")));
     Viewer viewer = new Viewer(exact, canClaim, owner, participant,
         activeCase && related && volunteer, activeCase && related && volunteer, activeCase && owner && volunteer);
-    List<Evidence> evidence = jdbc.queryForList("SELECT id,description,occurred_at,public_location_description,created_at FROM evidence WHERE event_id=? ORDER BY created_at,id", eventId).stream().map(this::evidence).toList();
+    List<Map<String,Object>> evidenceRows = jdbc.queryForList("SELECT * FROM evidence WHERE event_id=? ORDER BY created_at,id", eventId);
+    Map<String,List<MediaSummary>> evidenceMedia = evidenceMedia(evidenceRows.stream().map(r -> s(r,"id")).toList());
+    List<Evidence> evidence = evidenceRows.stream().map(row -> evidence(row, userId, exact, evidenceMedia)).toList();
     List<Action> progress = (related || admin) && c != null ? actions(s(c, "id")) : List.of();
-    return new RescueDetail(event(e, exact), animal(animalsFor(s(e, "animal_id")), s(e, "animal_id")), evidence,
+    return new RescueDetail(rescueStatus(e, c), event(e, exact, eventMedia(eventId)), animal(animalsFor(s(e, "animal_id")), s(e, "animal_id")), evidence,
         caseDetail(c), viewer, progress, count("SELECT COUNT(*) FROM evidence WHERE event_id=?", eventId), c == null ? 0 : count("SELECT COUNT(*) FROM case_action WHERE case_id=?", s(c, "id")));
   }
 
@@ -85,8 +89,10 @@ public class RescueQueryController {
       q = base("e.campus_id=? AND c.status IN ('RESOLVED','CLOSED','CLOSED_UNRESOLVED','CANCELLED') AND (c.owner_user_id=? OR EXISTS (SELECT 1 FROM case_participant p WHERE p.case_id=c.id AND p.user_id=?) OR EXISTS (SELECT 1 FROM case_owner_audit_log o WHERE o.case_id=c.id AND (o.previous_owner_user_id=? OR o.new_owner_user_id=?)))", List.of(campusId, user, user, user, user));
     }
     QueryPage result=query(q,page,size); Map<String,Animal> animals=animals(result.rows.stream().map(r->s(r,"animal_id")).toList());
-    Set<String> formerOwners = "HISTORY".equals(scope) ? formerOwnerCases(result.rows.stream().map(r -> s(r, "case_id")).filter(Objects::nonNull).toList(), user) : Set.of();
-    return new PageResponse<>(result.rows.stream().map(r->workspaceItem(r,user,scope,animals,formerOwners)).toList(),page,size,result.total);
+    List<String> caseIds = result.rows.stream().map(r -> s(r, "case_id")).filter(Objects::nonNull).toList();
+    Set<String> activeParticipants = activeParticipantCases(caseIds, user);
+    Set<String> formerOwners = "HISTORY".equals(scope) ? formerOwnerCases(caseIds, user) : Set.of();
+    return new PageResponse<>(result.rows.stream().map(r->workspaceItem(r,user,scope,animals,activeParticipants,formerOwners)).toList(),page,size,result.total);
   }
 
   private Query base(String where, List<Object> args) {
@@ -113,12 +119,17 @@ public class RescueQueryController {
     return new QueryPage(rows,total == null ? 0 : total);
   }
   private RescueItem rescueItem(Map<String,Object> r,Map<String,Animal> animals) { return new RescueItem(s(r,"event_id"),s(r,"case_id"),s(r,"campus_id"),s(r,"animal_id"),rescueStatus(r),s(r,"event_status"),s(r,"case_status"),s(r,"claim_status"),s(r,"owner_user_id") != null,s(r,"abnormality_summary"),s(r,"description"),s(r,"public_location_description"),instant(r,"occurred_at"),instant(r,"reported_at"),number(r,"evidence_count"),number(r,"action_count"),s(r,"result_code"),s(r,"result_summary"),instant(r,"case_updated_at") == null ? instant(r,"event_updated_at") : instant(r,"case_updated_at"),animal(animals,s(r,"animal_id"))); }
-  private WorkspaceItem workspaceItem(Map<String,Object> r, String user, String scope,Map<String,Animal> animals, Set<String> formerOwners) { String relation = "AVAILABLE".equals(scope) ? "AVAILABLE" : user.equals(s(r,"owner_user_id")) ? "OWNER" : exists("SELECT 1 FROM case_participant WHERE case_id=? AND user_id=? AND status='ACTIVE'",s(r,"case_id"),user) ? "ACTIVE_PARTICIPANT" : formerOwners.contains(s(r,"case_id")) ? "FORMER_OWNER" : "FORMER_PARTICIPANT"; return new WorkspaceItem(s(r,"case_id"),s(r,"event_id"),s(r,"animal_id"),animal(animals,s(r,"animal_id")),s(r,"case_status"),s(r,"claim_status"),relation,s(r,"abnormality_summary"),s(r,"public_location_description"),instant(r,"reported_at"),instant(r,"claimed_at"),instant(r,"latest_action_at"),number(r,"action_count"),s(r,"result_code"),s(r,"result_summary")); }
+  private WorkspaceItem workspaceItem(Map<String,Object> r, String user, String scope,Map<String,Animal> animals, Set<String> activeParticipants, Set<String> formerOwners) { String caseId=s(r,"case_id"); String relation = "AVAILABLE".equals(scope) ? "AVAILABLE" : user.equals(s(r,"owner_user_id")) ? "OWNER" : activeParticipants.contains(caseId) ? "ACTIVE_PARTICIPANT" : formerOwners.contains(caseId) ? "FORMER_OWNER" : "FORMER_PARTICIPANT"; return new WorkspaceItem(caseId,s(r,"event_id"),s(r,"animal_id"),animal(animals,s(r,"animal_id")),s(r,"case_status"),s(r,"claim_status"),relation,s(r,"abnormality_summary"),s(r,"public_location_description"),instant(r,"reported_at"),instant(r,"claimed_at"),instant(r,"latest_action_at"),number(r,"action_count"),s(r,"result_code"),s(r,"result_summary")); }
+  private Set<String> activeParticipantCases(List<String> caseIds, String user) { if (caseIds.isEmpty()) return Set.of(); String marks=String.join(",",Collections.nCopies(caseIds.size(),"?")); List<Object> args=new ArrayList<>(caseIds);args.add(user);Set<String> ids=new java.util.HashSet<>();for(Map<String,Object> row:jdbc.queryForList("SELECT case_id FROM case_participant WHERE case_id IN ("+marks+") AND user_id=? AND status='ACTIVE'",args.toArray()))ids.add(s(row,"case_id"));return ids; }
   private Set<String> formerOwnerCases(List<String> caseIds, String user) { if (caseIds.isEmpty()) return Set.of(); String marks = String.join(",", Collections.nCopies(caseIds.size(), "?")); List<Object> args = new ArrayList<>(caseIds); args.add(user); args.add(user); Set<String> ids = new java.util.HashSet<>(); for (Map<String,Object> row : jdbc.queryForList("SELECT DISTINCT case_id FROM case_owner_audit_log WHERE case_id IN (" + marks + ") AND (previous_owner_user_id=? OR new_owner_user_id=?)", args.toArray())) { String id = s(row, "case_id"); if (id != null) ids.add(id); } return ids; }
   private String rescueStatus(Map<String,Object> r) { String caseStatus=s(r,"case_status"); if (caseStatus != null && COMPLETED.contains(caseStatus)) return "COMPLETED"; if ("ACTIVE".equals(caseStatus) && "CLAIMED".equals(s(r,"claim_status"))) return "IN_PROGRESS"; return "WAITING_CLAIM"; }
-  private Event event(Map<String,Object> e, boolean exact) { return new Event(s(e,"id"),s(e,"campus_id"),s(e,"animal_id"),s(e,"description"),s(e,"abnormality_summary"),instant(e,"occurred_at"),instant(e,"reported_at"),s(e,"public_location_description"),s(e,"status"),exact?s(e,"exact_location_description"):null,exact?decimal(e,"latitude"):null,exact?decimal(e,"longitude"):null); }
+  private String rescueStatus(Map<String,Object> event, Map<String,Object> c) { if(c != null){String status=s(c,"status");if(COMPLETED.contains(status))return "COMPLETED";if("ACTIVE".equals(status)&&"CLAIMED".equals(s(c,"claim_status")))return "IN_PROGRESS";if("WAITING_CLAIM".equals(s(c,"claim_status")))return "WAITING_CLAIM";} return "VERIFIED".equals(s(event,"status")) ? "WAITING_CLAIM" : null; }
+  private Event event(Map<String,Object> e, boolean exact, List<MediaSummary> media) { return new Event(s(e,"id"),s(e,"campus_id"),s(e,"animal_id"),s(e,"description"),s(e,"abnormality_summary"),instant(e,"occurred_at"),instant(e,"reported_at"),s(e,"public_location_description"),s(e,"status"),exact?s(e,"exact_location_description"):null,exact?decimal(e,"latitude"):null,exact?decimal(e,"longitude"):null,media); }
   private Case caseDetail(Map<String,Object> c) { return c == null ? null : new Case(s(c,"id"),s(c,"status"),s(c,"claim_status"),s(c,"owner_user_id")!=null,instant(c,"claimed_at"),s(c,"result_code"),s(c,"result_summary"),instant(c,"result_submitted_at"),instant(c,"closed_at")); }
-  private Evidence evidence(Map<String,Object> r) { return new Evidence(s(r,"id"),s(r,"description"),instant(r,"occurred_at"),s(r,"public_location_description"),instant(r,"created_at")); }
+  private Evidence evidence(Map<String,Object> r, String user, boolean eventExact, Map<String,List<MediaSummary>> media) { boolean exact=user!=null&&(user.equals(s(r,"submitter_user_id"))||eventExact);return new Evidence(s(r,"id"),s(r,"description"),instant(r,"occurred_at"),s(r,"public_location_description"),exact?s(r,"exact_location_description"):null,exact?decimal(r,"latitude"):null,exact?decimal(r,"longitude"):null,instant(r,"created_at"),media.getOrDefault(s(r,"id"),List.of())); }
+  private List<MediaSummary> eventMedia(String eventId){return jdbc.queryForList("SELECT id,object_key,content_type,size_bytes,sort_order FROM event_media WHERE event_id=? ORDER BY sort_order,id",eventId).stream().map(this::media).toList();}
+  private Map<String,List<MediaSummary>> evidenceMedia(List<String> evidenceIds){if(evidenceIds.isEmpty())return Map.of();String marks=String.join(",",Collections.nCopies(evidenceIds.size(),"?"));Map<String,List<MediaSummary>> grouped=new HashMap<>();for(Map<String,Object> row:jdbc.queryForList("SELECT id,evidence_id,object_key,content_type,size_bytes,sort_order FROM evidence_media WHERE evidence_id IN ("+marks+") ORDER BY evidence_id,sort_order,id",evidenceIds.toArray()))grouped.computeIfAbsent(s(row,"evidence_id"),k->new ArrayList<>()).add(media(row));return grouped;}
+  private MediaSummary media(Map<String,Object> row){try{return new MediaSummary(s(row,"id"),s(row,"content_type"),((Number)row.get("size_bytes")).longValue(),((Number)row.get("sort_order")).intValue(),media.presignedReadUrl(s(row,"object_key")));}catch(IllegalStateException e){throw new EventController.Dependency("MinIO 媒体读取地址生成失败");}}
   private List<Action> actions(String caseId) { return jdbc.queryForList("SELECT id,case_id,actor_user_id,description,occurred_at,created_at,result_code FROM case_action WHERE case_id=? ORDER BY occurred_at,created_at,id",caseId).stream().map(r -> new Action(s(r,"id"),s(r,"case_id"),s(r,"actor_user_id"),s(r,"description"),instant(r,"occurred_at"),instant(r,"created_at"),s(r,"result_code"))).toList(); }
   private Map<String,Animal> animalsFor(String id) { return animals(Collections.singletonList(id)); }
   private Animal animal(Map<String,Animal> animals, String id) { return id == null ? null : animals.get(id); }
@@ -138,11 +149,12 @@ public class RescueQueryController {
   public record PageResponse<T>(List<T> items,int page,int size,long total){}
   public record Animal(String id,String displayName,String species,String identityStatus){}
   public record RescueItem(String eventId,String caseId,String campusId,String animalId,String rescueStatus,String eventStatus,String caseStatus,String claimStatus,boolean hasOwner,String abnormalitySummary,String description,String publicLocationDescription,Instant occurredAt,Instant reportedAt,int evidenceCount,int actionCount,String resultCode,String resultSummary,Instant updatedAt,Animal animal){}
-  public record Event(String eventId,String campusId,String animalId,String description,String abnormalitySummary,Instant occurredAt,Instant reportedAt,String publicLocationDescription,String eventStatus,String exactLocationDescription,Double latitude,Double longitude){}
-  public record Evidence(String id,String description,Instant occurredAt,String publicLocationDescription,Instant createdAt){}
+  public record Event(String eventId,String campusId,String animalId,String description,String abnormalitySummary,Instant occurredAt,Instant reportedAt,String publicLocationDescription,String eventStatus,String exactLocationDescription,Double latitude,Double longitude,List<MediaSummary> media){}
+  public record Evidence(String id,String description,Instant occurredAt,String publicLocationDescription,String exactLocationDescription,Double latitude,Double longitude,Instant createdAt,List<MediaSummary> media){}
   public record Case(String caseId,String status,String claimStatus,boolean hasOwner,Instant claimedAt,String resultCode,String resultSummary,Instant resultSubmittedAt,Instant closedAt){}
   public record Viewer(boolean canViewPreciseLocation,boolean canClaim,boolean isCaseOwner,boolean isActiveParticipant,boolean canAddCaseAction,boolean canSubmitResult,boolean canManageParticipants){}
   public record Action(String id,String caseId,String actorUserId,String description,Instant occurredAt,Instant createdAt,String resultCode){}
-  public record RescueDetail(Event event,Animal animal,List<Evidence> evidence,Case caseInfo,Viewer viewer,List<Action> progress,int evidenceCount,int actionCount){}
+  public record MediaSummary(String mediaId,String contentType,long sizeBytes,int sortOrder,String readUrl){}
+  public record RescueDetail(String rescueStatus,Event event,Animal animal,List<Evidence> evidence,Case caseInfo,Viewer viewer,List<Action> progress,int evidenceCount,int actionCount){}
   public record WorkspaceItem(String caseId,String eventId,String animalId,Animal animal,String caseStatus,String claimStatus,String relationship,String abnormalitySummary,String publicLocationDescription,Instant reportedAt,Instant claimedAt,Instant latestActionAt,int actionCount,String resultCode,String resultSummary){}
 }
