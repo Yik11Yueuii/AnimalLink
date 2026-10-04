@@ -10,6 +10,12 @@ import org.animallink.adoption.domain.InvalidListingTransitionException;
 import org.animallink.adoption.domain.ListingAccessDeniedException;
 import org.animallink.adoption.domain.ListingAlreadyExistsException;
 import org.animallink.adoption.domain.ListingNotFoundException;
+import org.animallink.adoption.domain.ApplicationNotFoundException;
+import org.animallink.adoption.domain.ApplicationNotOwnerException;
+import org.animallink.adoption.domain.ApplicationAlreadyExistsException;
+import org.animallink.adoption.domain.InvalidApplicationTransitionException;
+import org.animallink.adoption.domain.ListingNotOpenForApplicationException;
+import org.animallink.adoption.domain.ApplicantNotEligibleException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -25,6 +31,12 @@ public class ApiExceptionHandler {
     @ExceptionHandler(ListingAlreadyExistsException.class) ResponseEntity<ApiError> exists(ListingAlreadyExistsException e, HttpServletRequest r) { return response(HttpStatus.CONFLICT, "ACTIVE_LISTING_EXISTS", e.getMessage(), r); }
     @ExceptionHandler(InvalidListingTransitionException.class) ResponseEntity<ApiError> transition(InvalidListingTransitionException e, HttpServletRequest r) { return response(HttpStatus.CONFLICT, "INVALID_LISTING_TRANSITION", e.getMessage(), r); }
     @ExceptionHandler(DependencyUnavailableException.class) ResponseEntity<ApiError> dependency(DependencyUnavailableException e, HttpServletRequest r) { return response(HttpStatus.SERVICE_UNAVAILABLE, "DEPENDENCY_UNAVAILABLE", e.getMessage(), r); }
+    @ExceptionHandler(ApplicationNotFoundException.class) ResponseEntity<ApiError> applicationMissing(ApplicationNotFoundException e, HttpServletRequest r) { return response(HttpStatus.NOT_FOUND, "APPLICATION_NOT_FOUND", e.getMessage(), r); }
+    @ExceptionHandler(ApplicationNotOwnerException.class) ResponseEntity<ApiError> applicationOwner(ApplicationNotOwnerException e, HttpServletRequest r) { return response(HttpStatus.FORBIDDEN, "APPLICATION_NOT_OWNER", e.getMessage(), r); }
+    @ExceptionHandler(ApplicantNotEligibleException.class) ResponseEntity<ApiError> applicantEligible(ApplicantNotEligibleException e, HttpServletRequest r) { return response(HttpStatus.FORBIDDEN, "APPLICANT_NOT_ELIGIBLE", e.getMessage(), r); }
+    @ExceptionHandler(ApplicationAlreadyExistsException.class) ResponseEntity<ApiError> applicationExists(ApplicationAlreadyExistsException e, HttpServletRequest r) { return response(HttpStatus.CONFLICT, "APPLICATION_ALREADY_EXISTS", e.getMessage(), r); }
+    @ExceptionHandler(ListingNotOpenForApplicationException.class) ResponseEntity<ApiError> listingClosed(ListingNotOpenForApplicationException e, HttpServletRequest r) { return response(HttpStatus.CONFLICT, "LISTING_NOT_OPEN_FOR_APPLICATION", e.getMessage(), r); }
+    @ExceptionHandler(InvalidApplicationTransitionException.class) ResponseEntity<ApiError> applicationTransition(InvalidApplicationTransitionException e, HttpServletRequest r) { return response(HttpStatus.CONFLICT, "INVALID_APPLICATION_TRANSITION", e.getMessage(), r); }
     @ExceptionHandler({IllegalArgumentException.class, ValidationException.class}) ResponseEntity<ApiError> invalid(Exception e, HttpServletRequest r) { return response(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", e.getMessage(), r); }
     @ExceptionHandler(MethodArgumentNotValidException.class) ResponseEntity<ApiError> invalidBody(MethodArgumentNotValidException e, HttpServletRequest r) { String message = e.getBindingResult().getFieldErrors().stream().findFirst().map(x -> x.getField() + ": " + x.getDefaultMessage()).orElse("请求参数校验失败"); return response(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", message, r); }
     private ResponseEntity<ApiError> response(HttpStatus status, String code, String message, HttpServletRequest request) { return ResponseEntity.status(status).body(new ApiError(Instant.now(), status.value(), code, message, request.getRequestURI())); }
