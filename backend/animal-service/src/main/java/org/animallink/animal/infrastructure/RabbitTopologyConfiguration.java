@@ -6,5 +6,7 @@ import org.springframework.amqp.core.Binding; import org.springframework.amqp.co
 class RabbitTopologyConfiguration {
  @Bean TopicExchange domainExchange(){return new TopicExchange("animallink.domain",true,false);}
  @Bean Queue caseResultTimelineQueue(){return new Queue("animal.timeline.case-result",true,false,false);}
- @Bean Binding caseResultTimelineBinding(TopicExchange domainExchange,Queue caseResultTimelineQueue){return BindingBuilder.bind(caseResultTimelineQueue).to(domainExchange).with("incident.case.result-finalized");}
+ @Bean Binding caseResultTimelineBinding(TopicExchange domainExchange){return BindingBuilder.bind(caseResultTimelineQueue()).to(domainExchange).with("incident.case.result-finalized");}
+ @Bean Queue adoptionCompletedTimelineQueue(){return new Queue("animal.timeline.adoption-completed",true,false,false);}
+ @Bean Binding adoptionCompletedTimelineBinding(TopicExchange domainExchange){return BindingBuilder.bind(adoptionCompletedTimelineQueue()).to(domainExchange).with("adoption.handover.completed");}
 }
