@@ -1,17 +1,153 @@
 package org.animallink.adoption.application;
-import com.fasterxml.jackson.databind.ObjectMapper; import java.time.*; import java.util.*; import org.animallink.adoption.domain.*; import org.springframework.dao.DuplicateKeyException; import org.springframework.stereotype.Service; import org.springframework.transaction.annotation.Transactional;
-@Service public class AdoptionHandoverService{
- private final AdoptionHandoverRepository handovers; private final AdoptionSelectionRepository selections; private final AdoptionApplicationRepository applications; private final AdoptionListingRepository listings; private final IdentityGateway identity; private final ObjectMapper json;
- public AdoptionHandoverService(AdoptionHandoverRepository h,AdoptionSelectionRepository s,AdoptionApplicationRepository a,AdoptionListingRepository l,IdentityGateway i,ObjectMapper j){handovers=h;selections=s;applications=a;listings=l;identity=i;json=j;}
- @Transactional public Result initiate(String selectionId,OffsetDateTime scheduled,String note){IdentityGateway.CurrentUser u=admin();uuid(selectionId,"selectionId");if(scheduled==null)throw new IllegalArgumentException("scheduledAt 不能为空");Instant when=scheduled.toInstant();if(!when.isAfter(Instant.now()))throw new IllegalArgumentException("scheduledAt 必须是未来时间");AdoptionSelection s=selections.findByIdForUpdate(selectionId).orElseThrow(()->new SelectionNotFoundException("最终候选不存在"));if(s.status()!=SelectionStatus.ACTIVE)throw new SelectionNotActiveException("最终候选已失效");var old=handovers.findBySelectionId(selectionId);if(old.isPresent())return existing(old.get());AdoptionHandover h=AdoptionHandover.pending(selectionId,when,u.id(),optional(note));try{handovers.insert(h);return new Result(view(h),true);}catch(DuplicateKeyException e){return existing(handovers.findBySelectionId(selectionId).orElseThrow(()->e));}}
- public View governance(String selectionId){admin();uuid(selectionId,"selectionId");selection(selectionId);return view(handovers.findBySelectionId(selectionId).orElseThrow(()->new HandoverNotFoundException("交接不存在")));}
- public List<ApplicantView> mine(){String user=identity.requireCurrentUser().id();return handovers.findByApplicant(user).stream().map(x->new ApplicantView(x.handover().id(),x.listingId(),x.applicationId(),x.handover().status().name(),x.handover().scheduledAt(),x.handover().initiatedAt(),x.handover().completedAt())).toList();}
- @Transactional public Result complete(String id){IdentityGateway.CurrentUser u=admin();uuid(id,"handoverId");AdoptionHandover h=required(id);if(h.status()==HandoverStatus.COMPLETED)return new Result(view(h),false);if(h.status()!=HandoverStatus.PENDING)throw new InvalidHandoverTransitionException("已取消的交接不能完成");Instant at=Instant.now();if(!handovers.complete(id,u.id(),at))return terminal(id,HandoverStatus.COMPLETED);AdoptionSelection s=selection(h.selectionId());AdoptionApplication a=applications.findById(s.applicationId()).orElseThrow(()->new ApplicationNotFoundException("领养申请不存在"));AdoptionListing l=listings.findById(s.listingId()).orElseThrow(()->new ListingNotFoundException("领养信息不存在"));AdoptionRelation r=AdoptionRelation.active(l.animalId(),a.applicantUserId(),id,at);handovers.insertRelation(r);String eventId=UUID.randomUUID().toString();try{Map<String,Object> p=new LinkedHashMap<>();p.put("eventId",eventId);p.put("eventType","ADOPTION_COMPLETED");p.put("eventVersion",1);p.put("occurredAt",at.toString());p.put("relationId",r.id());p.put("handoverId",id);p.put("animalId",l.animalId());handovers.insertOutbox(eventId,r.id(),json.writeValueAsString(p),at);}catch(Exception e){throw new IllegalStateException("outbox write failed",e);}return new Result(view(required(id)),true);}
- @Transactional public Result cancel(String id,String reason){IdentityGateway.CurrentUser u=admin();uuid(id,"handoverId");String r=requiredReason(reason);AdoptionHandover h=required(id);if(h.status()==HandoverStatus.CANCELLED)return new Result(view(h),false);if(h.status()!=HandoverStatus.PENDING)throw new InvalidHandoverTransitionException("已完成的交接不能取消");Instant at=Instant.now();AdoptionSelection s=selection(h.selectionId());if(s.status()!=SelectionStatus.ACTIVE)throw new SelectionNotActiveException("最终候选已失效");if(!handovers.cancel(id,u.id(),at,r))return terminal(id,HandoverStatus.CANCELLED);if(!selections.cancel(s.id(),u.id(),at,r))throw new SelectionNotActiveException("最终候选已失效");return new Result(view(required(id)),true);}
- private Result terminal(String id,HandoverStatus wanted){AdoptionHandover latest=required(id);if(latest.status()==wanted)return new Result(view(latest),false);throw new InvalidHandoverTransitionException("交接状态已变化");}
- private Result existing(AdoptionHandover h){if(h.status()==HandoverStatus.PENDING)return new Result(view(h),false);if(h.status()==HandoverStatus.COMPLETED)throw new HandoverAlreadyExistsException("该最终候选已有已完成交接");throw new SelectionNotActiveException("最终候选已失效");}
- private View view(AdoptionHandover h){AdoptionSelection s=selection(h.selectionId());AdoptionApplication a=applications.findById(s.applicationId()).orElseThrow(()->new ApplicationNotFoundException("领养申请不存在"));return new View(h,s.listingId(),s.applicationId(),a.applicantUserId());}
- private AdoptionSelection selection(String id){return selections.findById(id).orElseThrow(()->new SelectionNotFoundException("最终候选不存在"));} private AdoptionHandover required(String id){return handovers.findById(id).orElseThrow(()->new HandoverNotFoundException("交接不存在"));}
- private IdentityGateway.CurrentUser admin(){var u=identity.requireCurrentUser();if(!u.isActiveGovernanceAdmin())throw new ListingAccessDeniedException("需要治理管理员权限");return u;} private static void uuid(String x,String n){try{UUID.fromString(x);}catch(Exception e){throw new IllegalArgumentException(n+" 必须是 UUID");}} private static String optional(String x){if(x==null||x.trim().isEmpty())return null;x=x.trim();if(x.length()>500)throw new IllegalArgumentException("note 最大长度为 500");return x;} private static String requiredReason(String x){if(x==null||x.trim().isEmpty())throw new IllegalArgumentException("reason 不能为空");x=x.trim();if(x.length()>500)throw new IllegalArgumentException("reason 最大长度为 500");return x;}
- public record View(AdoptionHandover handover,String listingId,String applicationId,String applicantUserId){} public record Result(View view,boolean created){} public record ApplicantView(String handoverId,String listingId,String applicationId,String status,Instant scheduledAt,Instant initiatedAt,Instant completedAt){}
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.animallink.adoption.domain.AdoptionApplication;
+import org.animallink.adoption.domain.AdoptionHandover;
+import org.animallink.adoption.domain.AdoptionRelation;
+import org.animallink.adoption.domain.AdoptionSelection;
+import org.animallink.adoption.domain.ApplicationNotFoundException;
+import org.animallink.adoption.domain.HandoverAlreadyExistsException;
+import org.animallink.adoption.domain.HandoverNotFoundException;
+import org.animallink.adoption.domain.HandoverStatus;
+import org.animallink.adoption.domain.InvalidHandoverTransitionException;
+import org.animallink.adoption.domain.ListingAccessDeniedException;
+import org.animallink.adoption.domain.ListingNotFoundException;
+import org.animallink.adoption.domain.SelectionNotActiveException;
+import org.animallink.adoption.domain.SelectionNotFoundException;
+import org.animallink.adoption.domain.SelectionStatus;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class AdoptionHandoverService {
+    private final AdoptionHandoverRepository handovers;
+    private final AdoptionSelectionRepository selections;
+    private final AdoptionApplicationRepository applications;
+    private final AdoptionListingRepository listings;
+    private final IdentityGateway identity;
+    private final ObjectMapper json;
+
+    public AdoptionHandoverService(AdoptionHandoverRepository handovers, AdoptionSelectionRepository selections, AdoptionApplicationRepository applications, AdoptionListingRepository listings, IdentityGateway identity, ObjectMapper json) {
+        this.handovers = handovers;
+        this.selections = selections;
+        this.applications = applications;
+        this.listings = listings;
+        this.identity = identity;
+        this.json = json;
+    }
+
+    @Transactional
+    public Result initiate(String selectionId, OffsetDateTime scheduled, String note) {
+        IdentityGateway.CurrentUser user = admin();
+        uuid(selectionId, "selectionId");
+        if (scheduled == null) throw new IllegalArgumentException("scheduledAt 不能为空");
+        Instant when = scheduled.toInstant();
+        if (!when.isAfter(Instant.now())) throw new IllegalArgumentException("scheduledAt 必须是未来时间");
+        AdoptionSelection selection = selections.findByIdForUpdate(selectionId).orElseThrow(() -> new SelectionNotFoundException("最终候选不存在"));
+        if (selection.status() != SelectionStatus.ACTIVE) throw new SelectionNotActiveException("最终候选已失效");
+        var existing = handovers.findBySelectionId(selectionId);
+        if (existing.isPresent()) return existing(existing.get());
+        AdoptionHandover handover = AdoptionHandover.pending(selectionId, when, user.id(), optional(note));
+        try {
+            handovers.insert(handover);
+            return new Result(view(handover), true);
+        } catch (DuplicateKeyException exception) {
+            return existing(handovers.findBySelectionId(selectionId).orElseThrow(() -> exception));
+        }
+    }
+
+    public View governance(String selectionId) {
+        admin();
+        uuid(selectionId, "selectionId");
+        selection(selectionId);
+        return view(handovers.findBySelectionId(selectionId).orElseThrow(() -> new HandoverNotFoundException("交接不存在")));
+    }
+
+    public List<ApplicantView> mine() {
+        String userId = identity.requireCurrentUser().id();
+        return handovers.findByApplicant(userId).stream().map(value -> new ApplicantView(value.handover().id(), value.listingId(), value.applicationId(), value.handover().status().name(), value.handover().scheduledAt(), value.handover().initiatedAt(), value.handover().completedAt())).toList();
+    }
+
+    @Transactional
+    public Result complete(String handoverId) {
+        IdentityGateway.CurrentUser user = admin();
+        uuid(handoverId, "handoverId");
+        AdoptionHandover handover = required(handoverId);
+        if (handover.status() == HandoverStatus.COMPLETED) return new Result(view(handover), false);
+        if (handover.status() != HandoverStatus.PENDING) throw new InvalidHandoverTransitionException("已取消的交接不能完成");
+        Instant at = Instant.now();
+        if (!handovers.complete(handoverId, user.id(), at)) return terminal(handoverId, HandoverStatus.COMPLETED);
+        AdoptionSelection selection = selection(handover.selectionId());
+        AdoptionApplication application = applications.findById(selection.applicationId()).orElseThrow(() -> new ApplicationNotFoundException("领养申请不存在"));
+        var listing = listings.findById(selection.listingId()).orElseThrow(() -> new ListingNotFoundException("领养信息不存在"));
+        AdoptionRelation relation = AdoptionRelation.active(listing.animalId(), application.applicantUserId(), handoverId, at);
+        handovers.insertRelation(relation);
+        String eventId = UUID.randomUUID().toString();
+        try {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("eventId", eventId);
+            payload.put("eventType", "ADOPTION_COMPLETED");
+            payload.put("eventVersion", 1);
+            payload.put("occurredAt", at.toString());
+            payload.put("relationId", relation.id());
+            payload.put("handoverId", handoverId);
+            payload.put("animalId", listing.animalId());
+            handovers.insertOutbox(eventId, relation.id(), "ADOPTION_COMPLETED", json.writeValueAsString(payload), at);
+        } catch (Exception exception) {
+            throw new IllegalStateException("outbox write failed", exception);
+        }
+        return new Result(view(required(handoverId)), true);
+    }
+
+    @Transactional
+    public Result cancel(String handoverId, String reason) {
+        IdentityGateway.CurrentUser user = admin();
+        uuid(handoverId, "handoverId");
+        String normalizedReason = requiredReason(reason);
+        AdoptionHandover handover = required(handoverId);
+        if (handover.status() == HandoverStatus.CANCELLED) return new Result(view(handover), false);
+        if (handover.status() != HandoverStatus.PENDING) throw new InvalidHandoverTransitionException("已完成的交接不能取消");
+        Instant at = Instant.now();
+        AdoptionSelection selection = selection(handover.selectionId());
+        if (selection.status() != SelectionStatus.ACTIVE) throw new SelectionNotActiveException("最终候选已失效");
+        if (!handovers.cancel(handoverId, user.id(), at, normalizedReason)) return terminal(handoverId, HandoverStatus.CANCELLED);
+        if (!selections.cancel(selection.id(), user.id(), at, normalizedReason)) throw new SelectionNotActiveException("最终候选已失效");
+        return new Result(view(required(handoverId)), true);
+    }
+
+    private Result terminal(String id, HandoverStatus wanted) {
+        AdoptionHandover latest = required(id);
+        if (latest.status() == wanted) return new Result(view(latest), false);
+        throw new InvalidHandoverTransitionException("交接状态已变化");
+    }
+
+    private Result existing(AdoptionHandover handover) {
+        if (handover.status() == HandoverStatus.PENDING) return new Result(view(handover), false);
+        if (handover.status() == HandoverStatus.COMPLETED) throw new HandoverAlreadyExistsException("该最终候选已有已完成交接");
+        throw new SelectionNotActiveException("最终候选已失效");
+    }
+
+    private View view(AdoptionHandover handover) {
+        AdoptionSelection selection = selection(handover.selectionId());
+        AdoptionApplication application = applications.findById(selection.applicationId()).orElseThrow(() -> new ApplicationNotFoundException("领养申请不存在"));
+        return new View(handover, selection.listingId(), selection.applicationId(), application.applicantUserId());
+    }
+
+    private AdoptionSelection selection(String id) { return selections.findById(id).orElseThrow(() -> new SelectionNotFoundException("最终候选不存在")); }
+    private AdoptionHandover required(String id) { return handovers.findById(id).orElseThrow(() -> new HandoverNotFoundException("交接不存在")); }
+    private IdentityGateway.CurrentUser admin() { var user = identity.requireCurrentUser(); if (!user.isActiveGovernanceAdmin()) throw new ListingAccessDeniedException("需要治理管理员权限"); return user; }
+    private static void uuid(String value, String name) { try { UUID.fromString(value); } catch (Exception exception) { throw new IllegalArgumentException(name + " 必须是 UUID"); } }
+    private static String optional(String value) { if (value == null || value.trim().isEmpty()) return null; value = value.trim(); if (value.length() > 500) throw new IllegalArgumentException("note 最大长度为 500"); return value; }
+    private static String requiredReason(String value) { if (value == null || value.trim().isEmpty()) throw new IllegalArgumentException("reason 不能为空"); value = value.trim(); if (value.length() > 500) throw new IllegalArgumentException("reason 最大长度为 500"); return value; }
+
+    public record View(AdoptionHandover handover, String listingId, String applicationId, String applicantUserId) { }
+    public record Result(View view, boolean created) { }
+    public record ApplicantView(String handoverId, String listingId, String applicationId, String status, Instant scheduledAt, Instant initiatedAt, Instant completedAt) { }
 }
