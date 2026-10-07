@@ -55,7 +55,7 @@ class AdoptionApplicationIntegrationTest {
         r.add("animallink.messaging.enabled", () -> false);
     }
     @Autowired MockMvc mvc; @Autowired JdbcTemplate jdbc; @Autowired PlatformTransactionManager transactions; @Autowired ObjectMapper objectMapper;
-    @BeforeEach void clean() { jdbc.update("DELETE FROM outbox_event"); jdbc.update("DELETE FROM adoption_relation"); jdbc.update("DELETE FROM adoption_handover"); jdbc.update("DELETE FROM adoption_selection"); jdbc.update("DELETE FROM adoption_application"); jdbc.update("DELETE FROM adoption_listing"); STUB.animals.clear(); STUB.unavailable = false; }
+    @BeforeEach void clean() { jdbc.update("DELETE FROM outbox_event"); jdbc.update("DELETE FROM adoption_follow_up"); jdbc.update("DELETE FROM adoption_relation"); jdbc.update("DELETE FROM adoption_handover"); jdbc.update("DELETE FROM adoption_selection"); jdbc.update("DELETE FROM adoption_application"); jdbc.update("DELETE FROM adoption_listing"); STUB.animals.clear(); STUB.unavailable = false; }
     @AfterAll static void stop() { STUB.stop(); DATABASE.close(); }
 
     @Test void submitEligibilityListingStateAndSelfApplicationAreEnforced() throws Exception {

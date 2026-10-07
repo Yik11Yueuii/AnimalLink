@@ -45,7 +45,7 @@ class AdoptionListingIntegrationTest {
         r.add("animallink.minio.endpoint", () -> "http://localhost:9000"); r.add("animallink.minio.access-key", () -> "a"); r.add("animallink.minio.secret-key", () -> "b");
     }
     @Autowired MockMvc mvc; @Autowired JdbcTemplate jdbc;
-    @BeforeEach void clean() { jdbc.update("DELETE FROM outbox_event"); jdbc.update("DELETE FROM adoption_relation"); jdbc.update("DELETE FROM adoption_handover"); jdbc.update("DELETE FROM adoption_selection"); jdbc.update("DELETE FROM adoption_application"); jdbc.update("DELETE FROM adoption_listing"); STUB.animals.clear(); }
+    @BeforeEach void clean() { jdbc.update("DELETE FROM outbox_event"); jdbc.update("DELETE FROM adoption_follow_up"); jdbc.update("DELETE FROM adoption_relation"); jdbc.update("DELETE FROM adoption_handover"); jdbc.update("DELETE FROM adoption_selection"); jdbc.update("DELETE FROM adoption_application"); jdbc.update("DELETE FROM adoption_listing"); STUB.animals.clear(); }
     @AfterAll static void stop() { STUB.stop(); DATABASE.close(); }
 
     @Test void governanceAdminCreatesDraftAndOrdinaryUserIsDenied() throws Exception {

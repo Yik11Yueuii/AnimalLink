@@ -26,6 +26,8 @@ import org.animallink.adoption.domain.InvalidHandoverTransitionException;
 import org.animallink.adoption.domain.SelectionNotActiveException;
 import org.animallink.adoption.domain.AdoptionRelationNotFoundException;
 import org.animallink.adoption.domain.InvalidAdoptionRelationTransitionException;
+import org.animallink.adoption.domain.AdoptionRelationNotActiveException;
+import org.animallink.adoption.domain.FollowUpAccessDeniedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -57,6 +59,8 @@ public class ApiExceptionHandler {
     @ExceptionHandler(SelectionNotActiveException.class) ResponseEntity<ApiError> selectionInactive(SelectionNotActiveException e, HttpServletRequest r) { return response(HttpStatus.CONFLICT, "SELECTION_NOT_ACTIVE", e.getMessage(), r); }
     @ExceptionHandler(AdoptionRelationNotFoundException.class) ResponseEntity<ApiError> relationMissing(AdoptionRelationNotFoundException e, HttpServletRequest r) { return response(HttpStatus.NOT_FOUND, "ADOPTION_RELATION_NOT_FOUND", e.getMessage(), r); }
     @ExceptionHandler(InvalidAdoptionRelationTransitionException.class) ResponseEntity<ApiError> relationTransition(InvalidAdoptionRelationTransitionException e, HttpServletRequest r) { return response(HttpStatus.CONFLICT, "INVALID_ADOPTION_RELATION_TRANSITION", e.getMessage(), r); }
+    @ExceptionHandler(AdoptionRelationNotActiveException.class) ResponseEntity<ApiError> relationNotActive(AdoptionRelationNotActiveException e, HttpServletRequest r) { return response(HttpStatus.CONFLICT, "ADOPTION_RELATION_NOT_ACTIVE", e.getMessage(), r); }
+    @ExceptionHandler(FollowUpAccessDeniedException.class) ResponseEntity<ApiError> followUpForbidden(FollowUpAccessDeniedException e, HttpServletRequest r) { return response(HttpStatus.FORBIDDEN, "FOLLOW_UP_ACCESS_DENIED", e.getMessage(), r); }
     @ExceptionHandler({IllegalArgumentException.class, ValidationException.class}) ResponseEntity<ApiError> invalid(Exception e, HttpServletRequest r) { return response(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", e.getMessage(), r); }
     @ExceptionHandler(MethodArgumentNotValidException.class) ResponseEntity<ApiError> invalidBody(MethodArgumentNotValidException e, HttpServletRequest r) { String message = e.getBindingResult().getFieldErrors().stream().findFirst().map(x -> x.getField() + ": " + x.getDefaultMessage()).orElse("请求参数校验失败"); return response(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", message, r); }
     private ResponseEntity<ApiError> response(HttpStatus status, String code, String message, HttpServletRequest request) { return ResponseEntity.status(status).body(new ApiError(Instant.now(), status.value(), code, message, request.getRequestURI())); }

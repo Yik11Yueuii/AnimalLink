@@ -74,6 +74,7 @@ class AdoptionRelationTerminationIntegrationTest {
     @BeforeEach
     void clean() {
         jdbc.update("DELETE FROM outbox_event");
+        jdbc.update("DELETE FROM adoption_follow_up");
         jdbc.update("DELETE FROM adoption_relation");
         jdbc.update("DELETE FROM adoption_handover");
         jdbc.update("DELETE FROM adoption_selection");
