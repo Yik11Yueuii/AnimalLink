@@ -7,6 +7,7 @@ public record Post(
         String id,
         String campusId,
         String animalId,
+        String relationId,
         String authorUserId,
         PostType postType,
         String textContent,
@@ -25,8 +26,17 @@ public record Post(
     public static Post observationPost(String id, String campusId, String animalId,
                                        String authorUserId, String textContent) {
         Instant now = Instant.now();
-        return new Post(id, campusId, animalId, authorUserId,
+        return new Post(id, campusId, animalId, null, authorUserId,
                 PostType.CAMPUS_POST, required(textContent), Visibility.PUBLIC,
+                PostStatus.ACTIVE, 0, now, now);
+    }
+
+    public static Post postAdoption(String campusId, String animalId, String authorUserId,
+                                    String relationId, String textContent) {
+        Instant now = Instant.now();
+        return new Post(UUID.randomUUID().toString(), campusId, animalId,
+                requiredUuid(relationId, "relationId"), authorUserId,
+                PostType.POST_ADOPTION, required(textContent), Visibility.PUBLIC,
                 PostStatus.ACTIVE, 0, now, now);
     }
 
@@ -34,7 +44,7 @@ public record Post(
         if (status != PostStatus.ACTIVE) {
             throw new StateConflictException("Post 已隐藏");
         }
-        return new Post(id, campusId, animalId, authorUserId, postType, textContent,
+        return new Post(id, campusId, animalId, relationId, authorUserId, postType, textContent,
                 visibility, PostStatus.HIDDEN, version, createdAt, Instant.now());
     }
 
@@ -43,5 +53,13 @@ public record Post(
             throw new IllegalArgumentException("textContent 不能为空");
         }
         return value.trim();
+    }
+
+    private static String requiredUuid(String value, String field) {
+        try {
+            return UUID.fromString(value).toString();
+        } catch (IllegalArgumentException | NullPointerException exception) {
+            throw new IllegalArgumentException(field + " 必须是合法 UUID");
+        }
     }
 }

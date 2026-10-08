@@ -51,6 +51,15 @@ public class CommunityController {
         return CommunityDtos.PostResponse.from(queryService.post(postId));
     }
 
+    @PostMapping("/animals/{animalId}/post-adoption-posts")
+    @ResponseStatus(HttpStatus.CREATED)
+    public CommunityDtos.PostResponse publishPostAdoption(
+            @PathVariable("animalId") String animalId,
+            @Valid @RequestBody CommunityDtos.CreatePostAdoptionRequest request) {
+        String postId = applicationService.publishPostAdoption(animalId, request.toCommand());
+        return CommunityDtos.PostResponse.from(queryService.post(postId));
+    }
+
     @PostMapping("/posts/{postId}/comments")
     @ResponseStatus(HttpStatus.CREATED)
     public CommunityDtos.CommentResponse comment(

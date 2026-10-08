@@ -24,6 +24,16 @@ public final class CommunityDtos {
         }
     }
 
+    public record CreatePostAdoptionRequest(
+            @NotBlank @Size(max = 2000) String textContent,
+            @Size(max = 6) List<@Valid MediaRequest> media) {
+        CreatePostAdoptionCommand toCommand() {
+            List<CreatePostCommand.MediaInput> values = media == null ? List.of() : media.stream()
+                    .map(MediaRequest::toInput).toList();
+            return new CreatePostAdoptionCommand(textContent, values);
+        }
+    }
+
     public record MediaRequest(
             @NotBlank @Size(max = 512) String objectKey,
             @NotBlank @Size(max = 120) String contentType,

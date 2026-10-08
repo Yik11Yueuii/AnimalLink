@@ -14,7 +14,7 @@ import java.util.*;
 @Repository
 public class JdbcCommunityRepository implements CommunityRepository {
     private static final String POST_COLUMNS = """
-            p.id, p.campus_id, p.animal_id, p.author_user_id, p.post_type, p.text_content,
+            p.id, p.campus_id, p.animal_id, p.relation_id, p.author_user_id, p.post_type, p.text_content,
             p.visibility, p.status, p.version, p.created_at, p.updated_at
             """;
     private static final String POST_VIEW_SELECT = """
@@ -43,12 +43,30 @@ public class JdbcCommunityRepository implements CommunityRepository {
 
     @Override
     public void insertPost(Post post, List<PostMedia> media) {
+        insertPostRows(post, media);
+    }
+
+    @Override
+    public void insertPostAndTimeline(Post post, List<PostMedia> media, TimelineEntry timelineEntry) {
+        insertPostRows(post, media);
+        jdbcTemplate.update("""
+                INSERT INTO timeline_entry
+                    (id, animal_id, source_type, source_id, entry_type, title, summary,
+                     occurred_at, visibility, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, timelineEntry.id(), timelineEntry.animalId(), timelineEntry.sourceType(),
+                timelineEntry.sourceId(), timelineEntry.entryType(), timelineEntry.title(),
+                timelineEntry.summary(), Timestamp.from(timelineEntry.occurredAt()),
+                timelineEntry.visibility().name(), Timestamp.from(timelineEntry.createdAt()));
+    }
+
+    private void insertPostRows(Post post, List<PostMedia> media) {
         jdbcTemplate.update("""
                 INSERT INTO post
-                    (id, campus_id, animal_id, author_user_id, post_type, text_content,
+                    (id, campus_id, animal_id, relation_id, author_user_id, post_type, text_content,
                      visibility, status, version, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, post.id(), post.campusId(), post.animalId(), post.authorUserId(),
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, post.id(), post.campusId(), post.animalId(), post.relationId(), post.authorUserId(),
                 post.postType().name(), post.textContent(), post.visibility().name(),
                 post.status().name(), post.version(), Timestamp.from(post.createdAt()),
                 Timestamp.from(post.updatedAt()));
@@ -238,7 +256,7 @@ public class JdbcCommunityRepository implements CommunityRepository {
 
     private static Post post(ResultSet rs) throws SQLException {
         return new Post(rs.getString("id"), rs.getString("campus_id"), rs.getString("animal_id"),
-                rs.getString("author_user_id"), PostType.valueOf(rs.getString("post_type")),
+                rs.getString("relation_id"), rs.getString("author_user_id"), PostType.valueOf(rs.getString("post_type")),
                 rs.getString("text_content"), Visibility.valueOf(rs.getString("visibility")),
                 PostStatus.valueOf(rs.getString("status")), rs.getInt("version"),
                 instant(rs, "created_at"), instant(rs, "updated_at"));

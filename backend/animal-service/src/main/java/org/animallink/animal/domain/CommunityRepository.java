@@ -7,6 +7,8 @@ import java.util.Optional;
 public interface CommunityRepository {
     void insertPost(Post post, List<PostMedia> media);
 
+    void insertPostAndTimeline(Post post, List<PostMedia> media, TimelineEntry timelineEntry);
+
     void updatePost(Post post);
 
     Optional<Post> findPostById(String postId);

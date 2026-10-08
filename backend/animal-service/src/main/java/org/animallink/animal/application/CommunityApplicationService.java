@@ -16,17 +16,20 @@ public class CommunityApplicationService {
     private final AnimalRepository animalRepository;
     private final CampusMembershipAuthorization membershipAuthorization;
     private final GovernanceAuthorization governanceAuthorization;
+    private final AdoptionRelationGateway adoptionRelationGateway;
     private final TransactionTemplate transactions;
 
     public CommunityApplicationService(CommunityRepository communityRepository,
                                        AnimalRepository animalRepository,
                                        CampusMembershipAuthorization membershipAuthorization,
                                        GovernanceAuthorization governanceAuthorization,
+                                       AdoptionRelationGateway adoptionRelationGateway,
                                        TransactionTemplate transactions) {
         this.communityRepository = communityRepository;
         this.animalRepository = animalRepository;
         this.membershipAuthorization = membershipAuthorization;
         this.governanceAuthorization = governanceAuthorization;
+        this.adoptionRelationGateway = adoptionRelationGateway;
         this.transactions = transactions;
     }
 
@@ -43,12 +46,26 @@ public class CommunityApplicationService {
             }
         }
         Post post = Post.campusPost(campusId, animalId, user.id(), command.textContent());
-        List<CreatePostCommand.MediaInput> inputs = command.media() == null ? List.of() : command.media();
-        List<PostMedia> media = inputs.stream().map(input -> new PostMedia(
-                UUID.randomUUID().toString(), post.id(), input.objectKey(), input.contentType(),
-                input.mediaType(), input.sizeBytes(), input.sortOrder(), Visibility.PUBLIC,
-                Instant.now())).toList();
+        List<PostMedia> media = postMedia(post, command.media());
         transactions.executeWithoutResult(status -> communityRepository.insertPost(post, media));
+        return post.id();
+    }
+
+    public String publishPostAdoption(String animalId, CreatePostAdoptionCommand command) {
+        String validAnimalId = IdRules.requireUuid(animalId, "animalId");
+        IdentityGateway.CurrentUser user = membershipAuthorization.requireActiveUser();
+        Animal animal = animalRepository.findById(validAnimalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Animal 不存在"));
+        requirePostAdoptionEligible(animal);
+        String relationId = adoptionRelationGateway.requireActiveRelation(validAnimalId);
+        Post post = Post.postAdoption(animal.campusId(), validAnimalId, user.id(), relationId,
+                command.textContent());
+        List<PostMedia> media = postMedia(post, command.media());
+        TimelineEntry timeline = new TimelineEntry(UUID.randomUUID().toString(), validAnimalId,
+                "POST", post.id(), "POST_ADOPTION_PUBLISHED", "领养后动态已发布", null,
+                post.createdAt(), Visibility.PUBLIC, post.createdAt());
+        transactions.executeWithoutResult(status ->
+                communityRepository.insertPostAndTimeline(post, media, timeline));
         return post.id();
     }
 
@@ -114,5 +131,26 @@ public class CommunityApplicationService {
     private Post activePost(String postId) {
         return communityRepository.findActivePublicPostById(postId)
                 .orElseThrow(() -> new ResourceNotFoundException("Post 不存在或不可见"));
+    }
+
+    private List<PostMedia> postMedia(Post post, List<CreatePostCommand.MediaInput> inputs) {
+        List<CreatePostCommand.MediaInput> values = inputs == null ? List.of() : inputs;
+        return values.stream().map(input -> new PostMedia(
+                UUID.randomUUID().toString(), post.id(), input.objectKey(), input.contentType(),
+                input.mediaType(), input.sizeBytes(), input.sortOrder(), Visibility.PUBLIC,
+                post.createdAt())).toList();
+    }
+
+    private void requirePostAdoptionEligible(Animal animal) {
+        if (animal.identityStatus() != IdentityStatus.ACTIVE) {
+            throw new StateConflictException("Animal 不处于 ACTIVE 状态");
+        }
+        if (animal.adoptionStatus() != AdoptionStatus.ADOPTED) {
+            throw new StateConflictException("Animal 尚未完成领养");
+        }
+        if (animal.currentContext() != CurrentContext.ADOPTED_HOME) {
+            throw new StateConflictException("Animal 不在领养家庭场景");
+        }
+        IdRules.requireUuid(animal.campusId(), "animal.campusId");
     }
 }

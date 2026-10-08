@@ -9,6 +9,7 @@ import org.animallink.animal.domain.StateConflictException;
 import org.animallink.animal.domain.UnauthorizedException;
 import org.slf4j.MDC;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
@@ -27,7 +28,8 @@ public class HttpIdentityGateway implements IdentityGateway {
     private final RestClient restClient;
     private final HttpServletRequest request;
 
-    public HttpIdentityGateway(RestClient identityRestClient, HttpServletRequest request) {
+    public HttpIdentityGateway(@Qualifier("identityRestClient") RestClient identityRestClient,
+                               HttpServletRequest request) {
         this.restClient = identityRestClient;
         this.request = request;
     }

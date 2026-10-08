@@ -3,6 +3,7 @@ package org.animallink.animal.api;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ValidationException;
 import org.animallink.animal.domain.DependencyUnavailableException;
+import org.animallink.animal.domain.ActiveAdoptionRelationRequiredException;
 import org.animallink.animal.domain.CrossCampusAnimalException;
 import org.animallink.animal.domain.DuplicateFinalizeConflictException;
 import org.animallink.animal.domain.ForbiddenException;
@@ -44,6 +45,13 @@ public class ApiExceptionHandler {
     ResponseEntity<ApiError> forbidden(ForbiddenException exception,
                                        HttpServletRequest request) {
         return response(HttpStatus.FORBIDDEN, "FORBIDDEN", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(ActiveAdoptionRelationRequiredException.class)
+    ResponseEntity<ApiError> activeAdoptionRelationRequired(
+            ActiveAdoptionRelationRequiredException exception, HttpServletRequest request) {
+        return response(HttpStatus.FORBIDDEN, "ACTIVE_ADOPTION_RELATION_REQUIRED",
+                exception.getMessage(), request);
     }
 
     @ExceptionHandler(StateConflictException.class)

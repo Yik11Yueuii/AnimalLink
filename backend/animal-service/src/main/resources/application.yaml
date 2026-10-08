@@ -43,6 +43,8 @@ animallink:
     base-url: ${IDENTITY_SERVICE_BASE_URL:http://localhost:8081}
     connect-timeout-ms: ${IDENTITY_SERVICE_CONNECT_TIMEOUT_MS:1500}
     read-timeout-ms: ${IDENTITY_SERVICE_READ_TIMEOUT_MS:2500}
+  adoption:
+    base-url: ${ADOPTION_SERVICE_BASE_URL:http://localhost:8084}
   minio:
     endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
     access-key: ${MINIO_ACCESS_KEY:}
