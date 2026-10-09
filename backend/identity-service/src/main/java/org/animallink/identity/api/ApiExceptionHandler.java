@@ -6,6 +6,9 @@ import org.animallink.identity.domain.ConflictException;
 import org.animallink.identity.domain.ForbiddenException;
 import org.animallink.identity.domain.NotFoundException;
 import org.animallink.identity.domain.UnauthorizedException;
+import org.animallink.identity.domain.CredentialStorageException;
+import org.animallink.identity.domain.UnsupportedCredentialMaterialException;
+import org.animallink.identity.domain.CredentialObjectMissingException;
 import org.animallink.identity.domain.VolunteerMembershipException;
 import org.animallink.identity.domain.VolunteerMembershipNotFoundException;
 import org.slf4j.MDC;
@@ -55,6 +58,24 @@ public class ApiExceptionHandler {
     @ExceptionHandler(ConflictException.class)
     public ResponseEntity<ApiError> conflict(ConflictException exception, HttpServletRequest request) {
         return response(HttpStatus.CONFLICT, "STATE_CONFLICT", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(UnsupportedCredentialMaterialException.class)
+    public ResponseEntity<ApiError> unsupportedCredential(UnsupportedCredentialMaterialException exception,
+                                                           HttpServletRequest request) {
+        return response(HttpStatus.BAD_REQUEST, "UNSUPPORTED_CREDENTIAL_MATERIAL", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(CredentialStorageException.class)
+    public ResponseEntity<ApiError> credentialStorage(CredentialStorageException exception,
+                                                       HttpServletRequest request) {
+        return response(HttpStatus.SERVICE_UNAVAILABLE, "DEPENDENCY_UNAVAILABLE", "凭证存储暂不可用", request);
+    }
+
+    @ExceptionHandler(CredentialObjectMissingException.class)
+    public ResponseEntity<ApiError> credentialMissing(CredentialObjectMissingException exception,
+                                                       HttpServletRequest request) {
+        return response(HttpStatus.CONFLICT, "CREDENTIAL_OBJECT_MISSING", exception.getMessage(), request);
     }
 
     @ExceptionHandler({ValidationException.class, HttpMessageNotReadableException.class})

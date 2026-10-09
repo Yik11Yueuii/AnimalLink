@@ -6,6 +6,11 @@ import org.animallink.identity.domain.CampusRepository;
 import org.animallink.identity.domain.CampusVerification;
 import org.animallink.identity.domain.CampusVerificationRepository;
 import org.animallink.identity.domain.CampusVerificationView;
+import org.animallink.identity.domain.CredentialMaterial;
+import org.animallink.identity.domain.CredentialMaterialRepository;
+import org.animallink.identity.domain.CredentialMaterialStatus;
+import org.animallink.identity.domain.CredentialPrecheckAttempt;
+import org.animallink.identity.domain.CredentialPrecheckAttemptRepository;
 import org.animallink.identity.domain.ConflictException;
 import org.animallink.identity.domain.ForbiddenException;
 import org.animallink.identity.domain.NotFoundException;
@@ -25,17 +30,23 @@ public class CampusVerificationApplicationService {
     private final CampusRepository campusRepository;
     private final CampusMembershipRepository membershipRepository;
     private final CampusVerificationRepository verificationRepository;
+    private final CredentialMaterialRepository materialRepository;
+    private final CredentialPrecheckAttemptRepository precheckAttemptRepository;
     private final CampusVerificationReviewService reviewService;
 
     public CampusVerificationApplicationService(CurrentUserProvider currentUserProvider,
                                                 CampusRepository campusRepository,
                                                 CampusMembershipRepository membershipRepository,
                                                 CampusVerificationRepository verificationRepository,
+                                                CredentialMaterialRepository materialRepository,
+                                                CredentialPrecheckAttemptRepository precheckAttemptRepository,
                                                 CampusVerificationReviewService reviewService) {
         this.currentUserProvider = currentUserProvider;
         this.campusRepository = campusRepository;
         this.membershipRepository = membershipRepository;
         this.verificationRepository = verificationRepository;
+        this.materialRepository = materialRepository;
+        this.precheckAttemptRepository = precheckAttemptRepository;
         this.reviewService = reviewService;
     }
 
@@ -54,6 +65,7 @@ public class CampusVerificationApplicationService {
             throw new ConflictException("当前用户在该 Campus 已有待审核申请");
         }
 
+        CredentialMaterial material = materialMediaId == null ? null : requireReadyOwnedMaterial(materialMediaId, user.id());
         Instant now = Instant.now();
         CampusVerification verification = new CampusVerification(
                 UUID.randomUUID().toString(),
@@ -73,11 +85,29 @@ public class CampusVerificationApplicationService {
                 now);
         try {
             verificationRepository.insert(verification);
+            if (material != null) {
+                if (!materialRepository.attachReady(material.id(), now)) {
+                    throw new ConflictException("凭证材料已被绑定或状态已变化");
+                }
+                precheckAttemptRepository.insert(CredentialPrecheckAttempt.pending(UUID.randomUUID().toString(), verification.id(), now));
+            }
         } catch (DataIntegrityViolationException exception) {
             throw new ConflictException("无法创建申请：可能存在重复的待审核申请或无效关联");
         }
         return new CampusVerificationView(
                 verificationRepository.findVerificationById(verification.id()).orElse(verification), campus);
+    }
+
+    private CredentialMaterial requireReadyOwnedMaterial(String materialId, String ownerUserId) {
+        CredentialMaterial material = materialRepository.findByIdForUpdate(materialId)
+                .orElseThrow(() -> new NotFoundException("凭证材料不存在"));
+        if (!ownerUserId.equals(material.ownerUserId())) {
+            throw new NotFoundException("凭证材料不存在");
+        }
+        if (material.status() != CredentialMaterialStatus.READY) {
+            throw new ConflictException("凭证材料尚未完成上传或已被绑定");
+        }
+        return material;
     }
 
     public List<CampusVerificationView> listMine() {

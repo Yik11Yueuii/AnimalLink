@@ -74,7 +74,9 @@ class IdentityPhase1AIntegrationTest {
     void resetDatabase() {
         jdbcTemplate.update("DELETE FROM volunteer_membership");
         jdbcTemplate.update("DELETE FROM campus_membership");
+        jdbcTemplate.update("DELETE FROM credential_precheck_attempt");
         jdbcTemplate.update("DELETE FROM campus_verification");
+        jdbcTemplate.update("DELETE FROM credential_material");
         jdbcTemplate.update("DELETE FROM campus");
         jdbcTemplate.update("DELETE FROM `user`");
         insertUser(USER_ID, "普通用户", "USER");
