@@ -1,5 +1,8 @@
 package org.animallink.identity.application;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.animallink.identity.domain.Campus;
 import org.animallink.identity.domain.CampusMembershipRepository;
 import org.animallink.identity.domain.CampusRepository;
@@ -21,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -33,6 +37,7 @@ public class CampusVerificationApplicationService {
     private final CredentialMaterialRepository materialRepository;
     private final CredentialPrecheckAttemptRepository precheckAttemptRepository;
     private final CampusVerificationReviewService reviewService;
+    private final ObjectMapper objectMapper;
 
     public CampusVerificationApplicationService(CurrentUserProvider currentUserProvider,
                                                 CampusRepository campusRepository,
@@ -40,7 +45,8 @@ public class CampusVerificationApplicationService {
                                                 CampusVerificationRepository verificationRepository,
                                                 CredentialMaterialRepository materialRepository,
                                                 CredentialPrecheckAttemptRepository precheckAttemptRepository,
-                                                CampusVerificationReviewService reviewService) {
+                                                CampusVerificationReviewService reviewService,
+                                                ObjectMapper objectMapper) {
         this.currentUserProvider = currentUserProvider;
         this.campusRepository = campusRepository;
         this.membershipRepository = membershipRepository;
@@ -48,10 +54,11 @@ public class CampusVerificationApplicationService {
         this.materialRepository = materialRepository;
         this.precheckAttemptRepository = precheckAttemptRepository;
         this.reviewService = reviewService;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional
-    public CampusVerificationView submit(SubmitVerificationCommand command) {
+    public ApplicantCampusVerificationView submit(SubmitVerificationCommand command) {
         UserAccount user = currentUserProvider.requireCurrentUser();
         String campusId = IdRules.requireUuid(command.campusId(), "campusId");
         String materialMediaId = IdRules.optionalUuid(command.materialMediaId(), "materialMediaId");
@@ -94,8 +101,8 @@ public class CampusVerificationApplicationService {
         } catch (DataIntegrityViolationException exception) {
             throw new ConflictException("无法创建申请：可能存在重复的待审核申请或无效关联");
         }
-        return new CampusVerificationView(
-                verificationRepository.findVerificationById(verification.id()).orElse(verification), campus);
+        return applicantView(new CampusVerificationView(
+                verificationRepository.findVerificationById(verification.id()).orElse(verification), campus));
     }
 
     private CredentialMaterial requireReadyOwnedMaterial(String materialId, String ownerUserId) {
@@ -110,17 +117,18 @@ public class CampusVerificationApplicationService {
         return material;
     }
 
-    public List<CampusVerificationView> listMine() {
+    public List<ApplicantCampusVerificationView> listMine() {
         UserAccount user = currentUserProvider.requireCurrentUser();
-        return verificationRepository.findVerificationsByUserId(user.id()).stream().map(this::withCampus).toList();
+        return verificationRepository.findVerificationsByUserId(user.id()).stream()
+                .map(this::withCampus).map(this::applicantView).toList();
     }
 
-    public CampusVerificationView getMine(String verificationId) {
+    public ApplicantCampusVerificationView getMine(String verificationId) {
         IdRules.requireUuid(verificationId, "verificationId");
         UserAccount user = currentUserProvider.requireCurrentUser();
         CampusVerification verification = verificationRepository.findByIdAndUserId(verificationId, user.id())
                 .orElseThrow(() -> new NotFoundException("CampusVerification 不存在"));
-        return withCampus(verification);
+        return applicantView(withCampus(verification));
     }
 
     public List<CampusVerificationView> listForAdmin(VerificationStatus status, int page, int size) {
@@ -131,21 +139,21 @@ public class CampusVerificationApplicationService {
                 .stream().map(this::withCampus).toList();
     }
 
-    public CampusVerificationView getForAdmin(String verificationId) {
+    public AdminCampusVerificationView getForAdmin(String verificationId) {
         requireAdmin();
         IdRules.requireUuid(verificationId, "verificationId");
-        return withCampus(verificationRepository.findVerificationById(verificationId)
-                .orElseThrow(() -> new NotFoundException("CampusVerification 不存在")));
+        return adminView(withCampus(verificationRepository.findVerificationById(verificationId)
+                .orElseThrow(() -> new NotFoundException("CampusVerification 不存在"))));
     }
 
-    public CampusVerificationView approve(String verificationId, String reason) {
+    public AdminCampusVerificationView approve(String verificationId, String reason) {
         UserAccount reviewer = requireAdmin();
-        return withCampus(reviewService.approve(verificationId, reviewer, normalize(reason)));
+        return adminView(withCampus(reviewService.approve(verificationId, reviewer, normalize(reason))));
     }
 
-    public CampusVerificationView reject(String verificationId, String reason) {
+    public AdminCampusVerificationView reject(String verificationId, String reason) {
         UserAccount reviewer = requireAdmin();
-        return withCampus(reviewService.reject(verificationId, reviewer, reason.trim()));
+        return adminView(withCampus(reviewService.reject(verificationId, reviewer, reason.trim())));
     }
 
     private UserAccount requireAdmin() {
@@ -160,6 +168,49 @@ public class CampusVerificationApplicationService {
         Campus campus = campusRepository.findActiveById(verification.campusId())
                 .orElseThrow(() -> new NotFoundException("申请关联的 Campus 不存在或不可用"));
         return new CampusVerificationView(verification, campus);
+    }
+
+    private ApplicantCampusVerificationView applicantView(CampusVerificationView view) {
+        ApplicantCredentialPrecheckStatus status = precheckAttemptRepository
+                .findLatestByVerificationId(view.verification().id())
+                .map(attempt -> switch (attempt.status()) {
+                    case PENDING, PROCESSING -> ApplicantCredentialPrecheckStatus.CHECKING;
+                    case PASSED, MANUAL_REVIEW_REQUIRED -> ApplicantCredentialPrecheckStatus.COMPLETED;
+                    case UNAVAILABLE -> ApplicantCredentialPrecheckStatus.TEMPORARILY_UNAVAILABLE;
+                })
+                .orElse(ApplicantCredentialPrecheckStatus.NOT_REQUESTED);
+        return new ApplicantCampusVerificationView(view, status);
+    }
+
+    private AdminCampusVerificationView adminView(CampusVerificationView view) {
+        AdminCampusVerificationView.CredentialPrecheckView precheck = precheckAttemptRepository
+                .findLatestByVerificationId(view.verification().id())
+                .map(attempt -> new AdminCampusVerificationView.CredentialPrecheckView(
+                        attempt.id(), attempt.attemptNo(), attempt.status(), attempt.intelligenceTaskId(),
+                        attempt.provider(), attempt.modelName(), attempt.overallConfidence(),
+                        attempt.extractedSchoolName(), attempt.extractedPersonName(), attempt.credentialType(),
+                        parseConsistencyFlags(attempt.consistencyFlags()), attempt.summary(), attempt.errorCategory(),
+                        attempt.createdAt(), attempt.startedAt(), attempt.completedAt()))
+                .orElse(null);
+        return new AdminCampusVerificationView(view, precheck);
+    }
+
+    private List<String> parseConsistencyFlags(String serialized) {
+        if (serialized == null || serialized.isBlank()) return List.of();
+        try {
+            JsonNode root = objectMapper.readTree(serialized);
+            if (!root.isArray()) return List.of();
+            List<String> flags = new ArrayList<>();
+            for (JsonNode node : root) {
+                if (node.isTextual() && !node.asText().isBlank() && node.asText().length() <= 64) {
+                    flags.add(node.asText());
+                    if (flags.size() == 20) break;
+                }
+            }
+            return List.copyOf(flags);
+        } catch (JsonProcessingException exception) {
+            return List.of();
+        }
     }
 
     private static String normalize(String value) {

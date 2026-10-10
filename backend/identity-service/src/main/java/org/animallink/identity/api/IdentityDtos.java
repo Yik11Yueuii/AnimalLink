@@ -4,9 +4,13 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import org.animallink.identity.application.AdminCampusVerificationView;
+import org.animallink.identity.application.ApplicantCampusVerificationView;
+import org.animallink.identity.application.ApplicantCredentialPrecheckStatus;
 import org.animallink.identity.domain.Campus;
 import org.animallink.identity.domain.CampusMembershipView;
 import org.animallink.identity.domain.CampusVerificationView;
+import org.animallink.identity.domain.CredentialPrecheckStatus;
 import org.animallink.identity.domain.MembershipStatus;
 import org.animallink.identity.domain.MembershipType;
 import org.animallink.identity.domain.UserAccount;
@@ -14,6 +18,7 @@ import org.animallink.identity.domain.VerificationStatus;
 import org.animallink.identity.domain.VolunteerMembership;
 import org.animallink.identity.domain.VolunteerMembershipStatus;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -145,8 +150,10 @@ public final class IdentityDtos {
             String reviewedBy,
             Instant reviewedAt,
             Instant createdAt,
-            Instant updatedAt) {
-        public static CampusVerificationResponse from(CampusVerificationView view) {
+            Instant updatedAt,
+            ApplicantCredentialPrecheckStatus credentialPrecheckStatus) {
+        public static CampusVerificationResponse from(ApplicantCampusVerificationView applicantView) {
+            var view = applicantView.verification();
             var verification = view.verification();
             return new CampusVerificationResponse(
                     verification.id(), verification.userId(), CampusResponse.from(view.campus()),
@@ -154,7 +161,91 @@ public final class IdentityDtos {
                     verification.affiliationNote(), verification.expectedGraduationDate(),
                     verification.materialMediaId(), verification.status(), verification.reviewReason(),
                     verification.reviewedBy(), verification.reviewedAt(), verification.createdAt(),
-                    verification.updatedAt());
+                    verification.updatedAt(), applicantView.credentialPrecheckStatus());
+        }
+    }
+
+    public record AdminCampusVerificationListResponse(
+            String id,
+            String userId,
+            CampusResponse campus,
+            MembershipType requestedMembershipType,
+            String applicantName,
+            String affiliationNote,
+            LocalDate expectedGraduationDate,
+            String materialMediaId,
+            VerificationStatus status,
+            String reviewReason,
+            String reviewedBy,
+            Instant reviewedAt,
+            Instant createdAt,
+            Instant updatedAt,
+            boolean credentialMaterialPresent) {
+        public static AdminCampusVerificationListResponse from(CampusVerificationView view) {
+            var verification = view.verification();
+            return new AdminCampusVerificationListResponse(
+                    verification.id(), verification.userId(), CampusResponse.from(view.campus()),
+                    verification.requestedMembershipType(), verification.applicantName(),
+                    verification.affiliationNote(), verification.expectedGraduationDate(),
+                    verification.materialMediaId(), verification.status(), verification.reviewReason(),
+                    verification.reviewedBy(), verification.reviewedAt(), verification.createdAt(),
+                    verification.updatedAt(), verification.materialMediaId() != null);
+        }
+    }
+
+    public record AdminCampusVerificationResponse(
+            String id,
+            String userId,
+            CampusResponse campus,
+            MembershipType requestedMembershipType,
+            String applicantName,
+            String affiliationNote,
+            LocalDate expectedGraduationDate,
+            String materialMediaId,
+            VerificationStatus status,
+            String reviewReason,
+            String reviewedBy,
+            Instant reviewedAt,
+            Instant createdAt,
+            Instant updatedAt,
+            AdminCredentialPrecheckResponse precheck) {
+        public static AdminCampusVerificationResponse from(AdminCampusVerificationView adminView) {
+            var view = adminView.verification();
+            var verification = view.verification();
+            return new AdminCampusVerificationResponse(
+                    verification.id(), verification.userId(), CampusResponse.from(view.campus()),
+                    verification.requestedMembershipType(), verification.applicantName(),
+                    verification.affiliationNote(), verification.expectedGraduationDate(),
+                    verification.materialMediaId(), verification.status(), verification.reviewReason(),
+                    verification.reviewedBy(), verification.reviewedAt(), verification.createdAt(),
+                    verification.updatedAt(), AdminCredentialPrecheckResponse.from(adminView.precheck()));
+        }
+    }
+
+    public record AdminCredentialPrecheckResponse(
+            String attemptId,
+            int attemptNo,
+            CredentialPrecheckStatus status,
+            String intelligenceTaskId,
+            String provider,
+            String modelName,
+            BigDecimal overallConfidence,
+            String extractedSchoolName,
+            String extractedPersonName,
+            String credentialType,
+            List<String> consistencyFlags,
+            String summary,
+            String errorCategory,
+            Instant createdAt,
+            Instant startedAt,
+            Instant completedAt) {
+        static AdminCredentialPrecheckResponse from(AdminCampusVerificationView.CredentialPrecheckView value) {
+            if (value == null) return null;
+            return new AdminCredentialPrecheckResponse(
+                    value.attemptId(), value.attemptNo(), value.status(), value.intelligenceTaskId(),
+                    value.provider(), value.modelName(), value.overallConfidence(), value.extractedSchoolName(),
+                    value.extractedPersonName(), value.credentialType(), value.consistencyFlags(), value.summary(),
+                    value.errorCategory(), value.createdAt(), value.startedAt(), value.completedAt());
         }
     }
 }

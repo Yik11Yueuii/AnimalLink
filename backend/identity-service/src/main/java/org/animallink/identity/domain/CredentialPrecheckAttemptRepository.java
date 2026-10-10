@@ -7,6 +7,7 @@ import java.time.Instant;
 public interface CredentialPrecheckAttemptRepository {
     void insert(CredentialPrecheckAttempt attempt);
     List<CredentialPrecheckAttempt> findByVerificationId(String verificationId);
+    Optional<CredentialPrecheckAttempt> findLatestByVerificationId(String verificationId);
     List<CredentialPrecheckAttempt> findPendingForDispatch(int limit);
     Optional<CredentialPrecheckAttempt> findAttemptById(String id);
     boolean claimPending(String id, Instant startedAt);

@@ -97,6 +97,16 @@ public class JdbcCredentialMaterialRepository implements CredentialMaterialRepos
     }
 
     @Override
+    public Optional<CredentialPrecheckAttempt> findLatestByVerificationId(String verificationId) {
+        return jdbc.query("""
+                SELECT * FROM credential_precheck_attempt
+                WHERE verification_id = ?
+                ORDER BY attempt_no DESC
+                LIMIT 1
+                """, ATTEMPT, verificationId).stream().findFirst();
+    }
+
+    @Override
     public List<CredentialPrecheckAttempt> findPendingForDispatch(int limit) {
         return jdbc.query("""
                 SELECT * FROM credential_precheck_attempt

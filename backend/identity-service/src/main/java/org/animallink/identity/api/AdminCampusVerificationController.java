@@ -23,33 +23,33 @@ public class AdminCampusVerificationController {
     }
 
     @GetMapping
-    public List<IdentityDtos.CampusVerificationResponse> list(
+    public List<IdentityDtos.AdminCampusVerificationListResponse> list(
             @RequestParam(name = "status", defaultValue = "PENDING_REVIEW") VerificationStatus status,
             @RequestParam(name = "page", defaultValue = "0") int page,
             @RequestParam(name = "size", defaultValue = "20") int size) {
         return service.listForAdmin(status, page, size).stream()
-                .map(IdentityDtos.CampusVerificationResponse::from).toList();
+                .map(IdentityDtos.AdminCampusVerificationListResponse::from).toList();
     }
 
     @GetMapping("/{verificationId}")
-    public IdentityDtos.CampusVerificationResponse detail(
+    public IdentityDtos.AdminCampusVerificationResponse detail(
             @PathVariable("verificationId") String verificationId) {
-        return IdentityDtos.CampusVerificationResponse.from(service.getForAdmin(verificationId));
+        return IdentityDtos.AdminCampusVerificationResponse.from(service.getForAdmin(verificationId));
     }
 
     @PostMapping("/{verificationId}/approve")
-    public IdentityDtos.CampusVerificationResponse approve(
+    public IdentityDtos.AdminCampusVerificationResponse approve(
             @PathVariable("verificationId") String verificationId,
             @Valid @RequestBody(required = false) IdentityDtos.ReviewRequest request) {
         String reason = request == null ? null : request.reviewReason();
-        return IdentityDtos.CampusVerificationResponse.from(service.approve(verificationId, reason));
+        return IdentityDtos.AdminCampusVerificationResponse.from(service.approve(verificationId, reason));
     }
 
     @PostMapping("/{verificationId}/reject")
-    public IdentityDtos.CampusVerificationResponse reject(
+    public IdentityDtos.AdminCampusVerificationResponse reject(
             @PathVariable("verificationId") String verificationId,
             @Valid @RequestBody IdentityDtos.RejectRequest request) {
-        return IdentityDtos.CampusVerificationResponse.from(
+        return IdentityDtos.AdminCampusVerificationResponse.from(
                 service.reject(verificationId, request.reviewReason()));
     }
 }
