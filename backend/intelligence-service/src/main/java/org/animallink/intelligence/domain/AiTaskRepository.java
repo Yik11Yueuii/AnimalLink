@@ -9,6 +9,8 @@ public interface AiTaskRepository {
     void complete(AiTask task, AiResult result);
     void fail(AiTask task);
     Optional<AiTaskBundle> findBundle(String taskId);
+    Optional<CredentialPrecheckTaskBundle> findCredentialPrecheckByIdempotencyKey(String idempotencyKey);
+    void createCredentialPrecheck(AiTask task, String idempotencyKey, String externalReferenceId);
     void confirm(AiTask task, AiConfirmation confirmation);
 
     List<String> findMediaObjectKeys(String taskId);

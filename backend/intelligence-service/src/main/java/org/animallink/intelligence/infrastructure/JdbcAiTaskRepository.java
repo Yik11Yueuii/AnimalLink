@@ -82,6 +82,38 @@ public class JdbcAiTaskRepository implements AiTaskRepository {
     }
 
     @Override
+    public Optional<CredentialPrecheckTaskBundle> findCredentialPrecheckByIdempotencyKey(
+            String idempotencyKey) {
+        return jdbc.query("""
+                SELECT t.*, r.id AS result_id, r.result_type, r.raw_response, r.structured_json,
+                    r.schema_version, r.created_at AS result_created_at,
+                    c.id AS confirmation_id, c.result_id AS confirmation_result_id,
+                    c.confirmed_structured_json, c.was_modified,
+                    c.confirmed_by AS confirmation_confirmed_by, c.confirmed_at AS confirmation_confirmed_at
+                FROM ai_task t
+                LEFT JOIN ai_result r ON r.task_id = t.id
+                LEFT JOIN ai_confirmation c ON c.task_id = t.id
+                WHERE t.task_type = 'CAMPUS_CREDENTIAL_PRECHECK' AND t.idempotency_key = ?
+                """, (rs, rowNum) -> new CredentialPrecheckTaskBundle(
+                mapBundle(rs, rowNum), rs.getString("idempotency_key"),
+                rs.getString("external_reference_id")), idempotencyKey).stream().findFirst();
+    }
+
+    @Override
+    public void createCredentialPrecheck(AiTask task, String idempotencyKey,
+                                         String externalReferenceId) {
+        jdbc.update("""
+                INSERT INTO ai_task (id, user_id, campus_id, task_type, status, model_provider,
+                    model_name, prompt_version, input_summary, idempotency_key,
+                    external_reference_id, created_at, version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, task.id(), task.userId(), task.campusId(), task.taskType().name(),
+                task.status().name(), task.modelProvider(), task.modelName(), task.promptVersion(),
+                task.inputSummary(), idempotencyKey, externalReferenceId,
+                Timestamp.from(task.createdAt()), task.version());
+    }
+
+    @Override
     @Transactional
     public void confirm(AiTask task, AiConfirmation confirmation) {
         int changed = jdbc.update("""
