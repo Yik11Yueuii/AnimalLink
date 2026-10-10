@@ -6,6 +6,7 @@ import org.animallink.identity.domain.CredentialMaterialStatus;
 import org.animallink.identity.domain.CredentialPrecheckAttempt;
 import org.animallink.identity.domain.CredentialPrecheckAttemptRepository;
 import org.animallink.identity.domain.CredentialPrecheckStatus;
+import org.animallink.identity.domain.CredentialPrecheckWriteback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -93,6 +94,44 @@ public class JdbcCredentialMaterialRepository implements CredentialMaterialRepos
     @Override
     public List<CredentialPrecheckAttempt> findByVerificationId(String verificationId) {
         return jdbc.query("SELECT * FROM credential_precheck_attempt WHERE verification_id = ? ORDER BY attempt_no", ATTEMPT, verificationId);
+    }
+
+    @Override
+    public List<CredentialPrecheckAttempt> findPendingForDispatch(int limit) {
+        return jdbc.query("""
+                SELECT * FROM credential_precheck_attempt
+                WHERE status = 'PENDING'
+                ORDER BY created_at, id
+                LIMIT ?
+                """, ATTEMPT, limit);
+    }
+
+    @Override
+    public Optional<CredentialPrecheckAttempt> findAttemptById(String id) {
+        return jdbc.query("SELECT * FROM credential_precheck_attempt WHERE id = ?", ATTEMPT, id).stream().findFirst();
+    }
+
+    @Override
+    public boolean claimPending(String id, Instant startedAt) {
+        return jdbc.update("""
+                UPDATE credential_precheck_attempt
+                SET status = 'PROCESSING', started_at = ?
+                WHERE id = ? AND status = 'PENDING'
+                """, Timestamp.from(startedAt), id) == 1;
+    }
+
+    @Override
+    public boolean completeProcessing(String id, CredentialPrecheckWriteback result, Instant completedAt) {
+        return jdbc.update("""
+                UPDATE credential_precheck_attempt
+                SET intelligence_task_id = ?, status = ?, provider = ?, model_name = ?, overall_confidence = ?,
+                    extracted_school_name = ?, extracted_person_name = ?, credential_type = ?, consistency_flags = ?,
+                    summary = ?, error_category = ?, completed_at = ?
+                WHERE id = ? AND status = 'PROCESSING'
+                """, result.intelligenceTaskId(), result.status().name(), result.provider(), result.modelName(),
+                result.overallConfidence(), result.extractedSchoolName(), result.extractedPersonName(),
+                result.credentialType(), result.consistencyFlags(), result.summary(), result.errorCategory(),
+                Timestamp.from(completedAt), id) == 1;
     }
 
     private Optional<CredentialMaterial> one(String sql, Object... arguments) {
