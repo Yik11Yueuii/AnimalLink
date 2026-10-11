@@ -1,6 +1,7 @@
 package org.animallink.incident.api;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
@@ -116,7 +117,11 @@ public class SupportCampaignService {
     List<Map<String, Object>> rows = jdbc.queryForList("SELECT * FROM support_campaign WHERE case_id=? AND status='ACTIVE' ORDER BY created_at DESC,id DESC LIMIT 1", caseId);
     if (rows.isEmpty()) throw notFound("CAMPAIGN_NOT_FOUND");
     Map<String, Object> r = rows.getFirst();
-    return new PublicCampaign(str(r, "id"), caseId, str(r, "status"), (BigDecimal) r.get("target_amount"), str(r, "currency"), str(r, "purpose"), instant(r, "published_at"));
+    BigDecimal recorded = jdbc.queryForObject("SELECT COALESCE(SUM(amount),0.00) FROM support_contribution WHERE campaign_id=? AND status='RECORDED'", BigDecimal.class, str(r, "id"));
+    long count = jdbc.queryForObject("SELECT COUNT(*) FROM support_contribution WHERE campaign_id=? AND status='RECORDED'", Long.class, str(r, "id"));
+    BigDecimal target = (BigDecimal) r.get("target_amount");
+    BigDecimal progress = recorded.multiply(BigDecimal.valueOf(100)).divide(target, 2, RoundingMode.HALF_UP).min(new BigDecimal("100.00"));
+    return new PublicCampaign(str(r, "id"), caseId, str(r, "status"), target, str(r, "currency"), str(r, "purpose"), instant(r, "published_at"), recorded, count, progress);
   }
 
   public ApplicantApplication applicantRead(String caseId, String actor) {
@@ -235,7 +240,7 @@ public class SupportCampaignService {
   public record DraftInput(BigDecimal targetAmount, String purpose, String applicationNote, String caseEvidenceId) {}
   public record ReasonInput(String reason) {}
   public record CaseContext(String caseId, String campusId) {}
-  public record PublicCampaign(String campaignId, String caseId, String status, BigDecimal targetAmount, String currency, String purpose, Instant publishedAt) {}
+  public record PublicCampaign(String campaignId, String caseId, String status, BigDecimal targetAmount, String currency, String purpose, Instant publishedAt, BigDecimal recordedContributionAmount, long contributionCount, BigDecimal progressPercent) {}
   public record ApplicantApplication(String campaignId, String caseId, String status, BigDecimal targetAmount, String currency, String purpose, String applicationNote, String caseEvidenceId, String reviewReason, Instant publishedAt, Instant createdAt, Instant updatedAt) {}
   public record AdminListItem(String campaignId, String caseId, String status, BigDecimal targetAmount, String currency, String purpose, String requestedByUserId, Instant createdAt) {}
   public record Page(List<AdminListItem> items, int page, int size, long total) {}

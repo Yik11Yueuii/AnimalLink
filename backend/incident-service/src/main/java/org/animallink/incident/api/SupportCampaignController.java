@@ -2,6 +2,12 @@ package org.animallink.incident.api;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
+import org.animallink.incident.api.SupportContributionService.ContributionInput;
+import org.animallink.incident.api.SupportContributionService.ContributionPage;
+import org.animallink.incident.api.SupportContributionService.ContributorRecord;
+import org.animallink.incident.api.SupportContributionService.GovernanceRecord;
+import org.animallink.incident.api.SupportContributionService.VoidInput;
+import org.springframework.http.ResponseEntity;
 import org.animallink.incident.api.SupportCampaignService.AdminDetail;
 import org.animallink.incident.api.SupportCampaignService.ApplicantApplication;
 import org.animallink.incident.api.SupportCampaignService.DraftInput;
@@ -24,11 +30,13 @@ import org.springframework.web.client.RestClientResponseException;
 @RequestMapping("/api/v1")
 public class SupportCampaignController {
   private final SupportCampaignService service;
+  private final SupportContributionService contributions;
   private final RestClient identity;
   private final HttpServletRequest request;
 
-  public SupportCampaignController(SupportCampaignService service, @Qualifier("identityRestClient") RestClient identity, HttpServletRequest request) {
+  public SupportCampaignController(SupportCampaignService service, SupportContributionService contributions, @Qualifier("identityRestClient") RestClient identity, HttpServletRequest request) {
     this.service = service;
+    this.contributions = contributions;
     this.identity = identity;
     this.request = request;
   }
@@ -65,6 +73,19 @@ public class SupportCampaignController {
   @GetMapping("/cases/{caseId}/support/application")
   public ApplicantApplication applicantRead(@PathVariable("caseId") String caseId) { return service.applicantRead(caseId, user().id()); }
 
+  @PostMapping("/cases/{caseId}/support/contributions")
+  public ResponseEntity<?> contribute(@PathVariable("caseId") String caseId,
+                                      @org.springframework.web.bind.annotation.RequestHeader(value = "Idempotency-Key", required = false) String key,
+                                      @RequestBody ContributionInput body) {
+    var result = contributions.create(caseId, user().id(), key, body);
+    return ResponseEntity.status(result.created() ? 201 : 200).body(result.contribution());
+  }
+
+  @GetMapping("/cases/{caseId}/support/contributions/me")
+  public java.util.List<ContributorRecord> ownContributions(@PathVariable("caseId") String caseId) {
+    return contributions.ownHistory(caseId, user().id());
+  }
+
   @GetMapping("/admin/support-campaigns")
   public Page queue(@RequestParam(name = "status", defaultValue = "PENDING_REVIEW") String status,
                     @RequestParam(name = "page", defaultValue = "0") int page,
@@ -75,6 +96,19 @@ public class SupportCampaignController {
 
   @GetMapping("/admin/support-campaigns/{id}")
   public AdminDetail detail(@PathVariable("id") String id) { admin(); return service.adminDetail(id); }
+
+  @GetMapping("/admin/support-campaigns/{id}/contributions")
+  public ContributionPage contributions(@PathVariable("id") String id,
+                                        @RequestParam(name = "page", defaultValue = "0") int page,
+                                        @RequestParam(name = "size", defaultValue = "20") int size) {
+    admin();
+    return contributions.governanceLedger(id, page, size);
+  }
+
+  @PostMapping("/admin/support-contributions/{id}/void")
+  public GovernanceRecord voidContribution(@PathVariable("id") String id, @RequestBody VoidInput body) {
+    return contributions.voidContribution(id, admin(), body);
+  }
 
   @PostMapping("/admin/support-campaigns/{id}/approve")
   public AdminDetail approve(@PathVariable("id") String id, @RequestBody(required = false) ReasonInput body) {
@@ -109,7 +143,7 @@ public class SupportCampaignController {
     try {
       Map<?, ?> body = identity.get().uri("/api/v1/users/me").header("X-User-Id", header).retrieve().body(Map.class);
       if (body == null || body.get("id") == null || !header.equals(body.get("id"))) throw new EventController.Unauthorized("需要登录");
-      if (body.get("status") != null && !"ACTIVE".equals(body.get("status"))) throw new EventController.Unauthorized("需要登录");
+      if (!"ACTIVE".equals(body.get("accountStatus"))) throw new EventController.Unauthorized("需要登录");
       return new Principal(header, String.valueOf(body.get("systemRole")));
     } catch (EventController.Unauthorized ex) {
       throw ex;

@@ -83,7 +83,7 @@ class SupportCampaignIntegrationTest {
   @AfterAll static void stop() { STUB.server.stop(0); }
 
   @Test void freshFlywayAndDatabaseInvariants() {
-    assertEquals(12,jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1 AND version IS NOT NULL",Integer.class));
+    assertEquals(13,jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1 AND version IS NOT NULL",Integer.class));
     assertEquals("phase5d1 support campaign",jdbc.queryForObject("SELECT description FROM flyway_schema_history WHERE version='12'",String.class));
     String c=seed("db","ACTIVE","CLAIMED");
     String id=create(c, OWNER, null);
@@ -165,7 +165,7 @@ class SupportCampaignIntegrationTest {
     String publicBody=mvc.perform(get("/api/v1/cases/{c}/support",c)).andExpect(status().isOk())
         .andExpect(jsonPath("$.purpose").value("support purpose")).andReturn().getResponse().getContentAsString();
     JsonNode visible=json.readTree(publicBody);
-    assertEquals(7,visible.size());
+    assertEquals(10,visible.size());
     for(String field:new String[]{"applicationNote","requestedByUserId","reviewedByUserId","reviewReason","caseEvidenceId","auditLog","objectKey","signedUrl"}) assertFalse(visible.has(field));
     mvc.perform(post("/api/v1/admin/support-campaigns/{id}/cancel",id).header("X-User-Id",ADMIN).contentType("application/json").content("{\"reason\":\"no\"}"))
         .andExpect(status().isConflict());
@@ -271,7 +271,7 @@ class SupportCampaignIntegrationTest {
       String state=members.get(subject);
       String body=path.contains("volunteer-membership")
           ? "{\"exists\":"+(state!=null)+",\"active\":"+"ACTIVE".equals(state)+",\"status\":\""+state+"\"}"
-          : "{\"id\":\""+header+"\",\"status\":\"ACTIVE\",\"systemRole\":\""+(ADMIN.equals(header)?"GOVERNANCE_ADMIN":"USER")+"\"}";
+          : "{\"id\":\""+header+"\",\"accountStatus\":\"ACTIVE\",\"systemRole\":\""+(ADMIN.equals(header)?"GOVERNANCE_ADMIN":"USER")+"\"}";
       byte[] bytes=body.getBytes(StandardCharsets.UTF_8);
       e.getResponseHeaders().set("Content-Type","application/json");
       e.sendResponseHeaders(200,bytes.length);
