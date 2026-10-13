@@ -70,6 +70,9 @@ class SupportCampaignIntegrationTest {
     STUB.members.put(OWNER,"ACTIVE");
     STUB.members.put(PARTICIPANT,"ACTIVE");
     STUB.members.put(OTHER,"ACTIVE");
+    jdbc.update("DELETE FROM support_expense_media");
+    jdbc.update("DELETE FROM support_expense");
+    jdbc.update("DELETE FROM support_contribution");
     jdbc.update("DELETE FROM support_audit_log");
     jdbc.update("DELETE FROM support_campaign");
     jdbc.update("DELETE FROM case_participant");
@@ -165,7 +168,9 @@ class SupportCampaignIntegrationTest {
     String publicBody=mvc.perform(get("/api/v1/cases/{c}/support",c)).andExpect(status().isOk())
         .andExpect(jsonPath("$.purpose").value("support purpose")).andReturn().getResponse().getContentAsString();
     JsonNode visible=json.readTree(publicBody);
-    assertEquals(13,visible.size());
+    assertEquals(14,visible.size());
+    assertTrue(visible.has("completedAt"));
+    assertTrue(visible.get("completedAt").isNull());
     assertEquals(0,visible.required("publishedExpenseAmount").decimalValue().compareTo(BigDecimal.ZERO));
     assertEquals(0,visible.required("expenseCount").asLong());
     assertEquals(0,visible.required("recordedNetBalance").decimalValue().compareTo(BigDecimal.ZERO));
@@ -221,6 +226,101 @@ class SupportCampaignIntegrationTest {
     }
   }
 
+  @Test void governanceCanCompleteActiveCampaignExactlyOnceAndCompletedLedgerRulesApply() throws Exception {
+    String c=seed("complete","ACTIVE","CLAIMED");
+    String id=create(c,OWNER,null);
+    submit(c,OWNER);
+    mvc.perform(post("/api/v1/admin/support-campaigns/{id}/approve",id).header("X-User-Id",ADMIN)).andExpect(status().isOk());
+    mvc.perform(post("/api/v1/admin/support-campaigns/{id}/publish",id).header("X-User-Id",ADMIN)).andExpect(status().isOk());
+    String contribution=json.readTree(mvc.perform(post("/api/v1/cases/{c}/support/contributions",c).header("X-User-Id",OTHER)
+        .header("Idempotency-Key","before-complete").contentType("application/json").content("{\"amount\":12.34}"))
+        .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).required("contributionId").asText();
+    Timestamp now=Timestamp.from(Instant.now());
+    String submitted="expense-submitted",published="expense-published";
+    insertExpense(id,submitted,"SUBMITTED",now);
+    insertExpense(id,published,"PUBLISHED",now);
+
+    mvc.perform(post("/api/v1/admin/support-campaigns/{id}/complete",id).header("X-User-Id",ADMIN))
+        .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    mvc.perform(post("/api/v1/admin/support-campaigns/{id}/complete",id).header("X-User-Id",OWNER)
+        .contentType("application/json").content("{\"reason\":\"done\"}"))
+        .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("FINANCIAL_ACCESS_DENIED"));
+    mvc.perform(post("/api/v1/admin/support-campaigns/{id}/complete",id).contentType("application/json").content("{\"reason\":\"done\"}"))
+        .andExpect(status().isUnauthorized());
+    mvc.perform(post("/api/v1/admin/support-campaigns/{id}/complete",id).header("X-User-Id",ADMIN)
+        .contentType("application/json").content("{\"reason\":\" fundraising finished \"}"))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("COMPLETED")).andExpect(jsonPath("$.completedAt").isNotEmpty());
+    Timestamp completed=jdbc.queryForObject("SELECT completed_at FROM support_campaign WHERE id=?",Timestamp.class,id);
+    assertEquals("ACTIVE",jdbc.queryForObject("SELECT status FROM animal_case WHERE id=?",String.class,c));
+    assertEquals(1,count("SELECT COUNT(*) FROM support_audit_log WHERE campaign_id=? AND action='COMPLETE' AND from_state='ACTIVE' AND to_state='COMPLETED' AND actor_user_id=? AND reason='fundraising finished'",id,ADMIN));
+
+    mvc.perform(post("/api/v1/admin/support-campaigns/{id}/complete",id).header("X-User-Id",ADMIN)
+        .contentType("application/json").content("{\"reason\":\"again\"}"))
+        .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CAMPAIGN_STATE_CONFLICT"));
+    assertEquals(completed,jdbc.queryForObject("SELECT completed_at FROM support_campaign WHERE id=?",Timestamp.class,id));
+    assertEquals(1,count("SELECT COUNT(*) FROM support_audit_log WHERE campaign_id=? AND action='COMPLETE'",id));
+
+    mvc.perform(post("/api/v1/cases/{c}/support/contributions",c).header("X-User-Id",OTHER)
+        .header("Idempotency-Key","after-complete").contentType("application/json").content("{\"amount\":1.00}"))
+        .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CAMPAIGN_NOT_ACCEPTING_SUPPORT"));
+    mvc.perform(post("/api/v1/admin/support-contributions/{id}/void",contribution).header("X-User-Id",ADMIN)
+        .contentType("application/json").content("{\"reason\":\"correction\"}"))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("VOIDED"));
+    mvc.perform(post("/api/v1/cases/{c}/support/expenses/media/upload-url",c).header("X-User-Id",OWNER)
+        .contentType("application/json").content("{\"fileName\":\"x.png\",\"contentType\":\"image/png\",\"sizeBytes\":4}"))
+        .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CAMPAIGN_NOT_ACCEPTING_EXPENSE"));
+    mvc.perform(post("/api/v1/cases/{c}/support/expenses",c).header("X-User-Id",OWNER).header("Idempotency-Key","late-expense")
+        .contentType("application/json").content("{\"item\":\"x\",\"description\":\"x\",\"amount\":1.00,\"occurredAt\":\"2026-10-11T00:00:00Z\",\"media\":[{\"temporaryObjectKey\":\"incident-input/"+OWNER+"/support-expenses/x.png\",\"contentType\":\"image/png\",\"sizeBytes\":4,\"sortOrder\":0}]}"))
+        .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CAMPAIGN_NOT_ACCEPTING_EXPENSE"));
+    mvc.perform(post("/api/v1/admin/support-expenses/{id}/publish",submitted).header("X-User-Id",ADMIN))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("PUBLISHED"));
+    mvc.perform(post("/api/v1/admin/support-expenses/{id}/void",published).header("X-User-Id",ADMIN)
+        .contentType("application/json").content("{\"reason\":\"correction\"}"))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("VOIDED"));
+    mvc.perform(get("/api/v1/cases/{c}/support",c)).andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("COMPLETED")).andExpect(jsonPath("$.completedAt").isNotEmpty());
+  }
+
+  @Test void publicReadsSelectLatestPublicHistoryInsteadOfLaterPrivateCampaign() throws Exception {
+    String c=seed("public-history","ACTIVE","CLAIMED");
+    Timestamp first=Timestamp.from(Instant.now().minusSeconds(2));
+    Timestamp second=Timestamp.from(Instant.now());
+    String historical="historical-settled",privateId="new-private";
+    jdbc.update("INSERT INTO support_campaign(id,case_id,status,target_amount,currency,purpose,application_note,requested_by_user_id,published_at,completed_at,created_at,updated_at) VALUES (?,?,'SETTLED',100,'CNY','history','private',?,?,?,?,?)",
+        historical,c,OWNER,first,first,first,first);
+    jdbc.update("INSERT INTO support_campaign(id,case_id,status,target_amount,currency,purpose,application_note,requested_by_user_id,created_at,updated_at) VALUES (?,?,'DRAFT',100,'CNY','new private','private',?,?,?)",
+        privateId,c,OWNER,second,second);
+    insertExpense(historical,"historical-expense","PUBLISHED",first);
+    mvc.perform(get("/api/v1/cases/{c}/support",c)).andExpect(status().isOk())
+        .andExpect(jsonPath("$.campaignId").value(historical)).andExpect(jsonPath("$.status").value("SETTLED"));
+    mvc.perform(get("/api/v1/cases/{c}/support/expenses",c)).andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].expenseId").value("historical-expense"));
+  }
+
+  @Test void manualCompletionAndContributionRaceHasOnlyLegalOutcomes() throws Exception {
+    String c=seed("manual-race","ACTIVE","CLAIMED");
+    String id=create(c,OWNER,null);
+    submit(c,OWNER);
+    mvc.perform(post("/api/v1/admin/support-campaigns/{id}/approve",id).header("X-User-Id",ADMIN)).andExpect(status().isOk());
+    mvc.perform(post("/api/v1/admin/support-campaigns/{id}/publish",id).header("X-User-Id",ADMIN)).andExpect(status().isOk());
+    try(ExecutorService pool=Executors.newFixedThreadPool(2)) {
+      CountDownLatch go=new CountDownLatch(1);
+      Callable<Integer> contribution=()->{go.await();return mvc.perform(post("/api/v1/cases/{c}/support/contributions",c).header("X-User-Id",OTHER)
+          .header("Idempotency-Key","manual-race").contentType("application/json").content("{\"amount\":1.00}"))
+          .andReturn().getResponse().getStatus();};
+      Callable<Integer> complete=()->{go.await();return mvc.perform(post("/api/v1/admin/support-campaigns/{id}/complete",id).header("X-User-Id",ADMIN)
+          .contentType("application/json").content("{\"reason\":\"race complete\"}"))
+          .andReturn().getResponse().getStatus();};
+      Future<Integer> left=pool.submit(contribution),right=pool.submit(complete);go.countDown();
+      int contributionStatus=left.get();
+      assertEquals(200,right.get());
+      assertTrue(contributionStatus==201||contributionStatus==409);
+      assertEquals(contributionStatus==201?1:0,count("SELECT COUNT(*) FROM support_contribution WHERE campaign_id=?",id));
+    }
+    assertEquals("COMPLETED",jdbc.queryForObject("SELECT status FROM support_campaign WHERE id=?",String.class,id));
+    assertEquals(1,count("SELECT COUNT(*) FROM support_audit_log WHERE campaign_id=? AND action='COMPLETE'",id));
+  }
+
   private String seed(String suffix,String status,String claim) {
     String event="event-"+suffix, draft="draft-"+suffix, c="case-"+suffix;
     Timestamp t=Timestamp.from(Instant.now());
@@ -255,6 +355,12 @@ class SupportCampaignIntegrationTest {
   }
   private void submit(String c,String user) throws Exception {
     mvc.perform(post("/api/v1/cases/{c}/support/submit",c).header("X-User-Id",user)).andExpect(status().isOk());
+  }
+  private void insertExpense(String campaignId,String id,String status,Timestamp at) {
+    String reviewer="SUBMITTED".equals(status)?null:ADMIN;
+    Timestamp reviewed="SUBMITTED".equals(status)?null:at;
+    jdbc.update("INSERT INTO support_expense(id,campaign_id,recorded_by_user_id,item,description,amount,status,idempotency_key,request_hash,occurred_at,created_at,reviewed_by_user_id,reviewed_at) VALUES (?,?,?,?,?,1.00,?,?,?,?,?,?,?)",
+        id,campaignId,OWNER,"item","description",status,"key-"+id,"0".repeat(64),at,at,reviewer,reviewed);
   }
   private int count(String sql,Object... args) { return jdbc.queryForObject(sql,Integer.class,args); }
 

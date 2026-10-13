@@ -113,6 +113,9 @@ class SupportExpenseIntegrationTest {
     jdbc.update("DELETE FROM support_contribution");
     jdbc.update("DELETE FROM support_audit_log");
     jdbc.update("DELETE FROM support_campaign");
+    jdbc.update("DELETE FROM outbox_event");
+    jdbc.update("DELETE FROM case_action_media");
+    jdbc.update("DELETE FROM case_action");
     jdbc.update("DELETE FROM case_participant");
     jdbc.update("DELETE FROM animal_case");
     jdbc.update("DELETE FROM evidence_media");
@@ -364,6 +367,42 @@ class SupportExpenseIntegrationTest {
     assertEquals(0, count("SELECT COUNT(*) FROM support_expense_media"));
     assertEquals(0, permanentCount(fixture.campaignId()));
     mvc.perform(get("/api/v1/cases/{id}/support/expenses", fixture.caseId())).andExpect(status().isOk()).andExpect(content().json("[]"));
+  }
+
+  @Test
+  void expenseCreationAndCaseTerminalizationRaceHasOnlyLegalOutcomes() throws Exception {
+    Fixture fixture = activeFixture("case-terminal-race");
+    MediaRef media = image(OWNER, "race.png", "image/png", png());
+    String body = request("race", "1.00", null, List.of(media));
+    try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
+      CountDownLatch go = new CountDownLatch(1);
+      Callable<Integer> expense = () -> {
+        go.await();
+        return mvc.perform(post("/api/v1/cases/{id}/support/expenses", fixture.caseId()).header("X-User-Id", OWNER)
+            .header("Idempotency-Key", "case-terminal-race").contentType(MediaType.APPLICATION_JSON).content(body))
+            .andReturn().getResponse().getStatus();
+      };
+      Callable<Integer> terminal = () -> {
+        go.await();
+        return mvc.perform(post("/api/v1/cases/{id}/result", fixture.caseId()).header("X-User-Id", OWNER)
+            .contentType(MediaType.APPLICATION_JSON).content("{\"outcome\":\"RESOLVED\",\"summary\":\"done\"}"))
+            .andReturn().getResponse().getStatus();
+      };
+      Future<Integer> left = pool.submit(expense), right = pool.submit(terminal);
+      go.countDown();
+      int expenseStatus = left.get();
+      assertEquals(200, right.get());
+      int rows = count("SELECT COUNT(*) FROM support_expense WHERE campaign_id=?", fixture.campaignId());
+      if (expenseStatus == 201) {
+        assertEquals(1, rows);
+        assertEquals("COMPLETED", jdbc.queryForObject("SELECT status FROM support_campaign WHERE id=?", String.class, fixture.campaignId()));
+      } else {
+        assertEquals(409, expenseStatus);
+        assertEquals(0, rows);
+        assertEquals("CANCELLED", jdbc.queryForObject("SELECT status FROM support_campaign WHERE id=?", String.class, fixture.campaignId()));
+        assertEquals(0, permanentCount(fixture.campaignId()));
+      }
+    }
   }
 
   private JsonNode createAfterCaseRestore(Fixture fixture, String key, String body) throws Exception {

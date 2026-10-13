@@ -114,7 +114,7 @@ public class SupportCampaignService {
   }
 
   public PublicCampaign publicRead(String caseId) {
-    List<Map<String, Object>> rows = jdbc.queryForList("SELECT * FROM support_campaign WHERE case_id=? AND status='ACTIVE' ORDER BY created_at DESC,id DESC LIMIT 1", caseId);
+    List<Map<String, Object>> rows = jdbc.queryForList("SELECT * FROM support_campaign WHERE case_id=? AND status IN ('ACTIVE','COMPLETED','SETTLED') ORDER BY created_at DESC,id DESC LIMIT 1", caseId);
     if (rows.isEmpty()) throw notFound("CAMPAIGN_NOT_FOUND");
     Map<String, Object> r = rows.getFirst();
     BigDecimal recorded = jdbc.queryForObject("SELECT COALESCE(SUM(amount),0.00) FROM support_contribution WHERE campaign_id=? AND status='RECORDED'", BigDecimal.class, str(r, "id"));
@@ -123,7 +123,7 @@ public class SupportCampaignService {
     long expenseCount = jdbc.queryForObject("SELECT COUNT(*) FROM support_expense WHERE campaign_id=? AND status='PUBLISHED'", Long.class, str(r, "id"));
     BigDecimal target = (BigDecimal) r.get("target_amount");
     BigDecimal progress = recorded.multiply(BigDecimal.valueOf(100)).divide(target, 2, RoundingMode.HALF_UP).min(new BigDecimal("100.00"));
-    return new PublicCampaign(str(r, "id"), caseId, str(r, "status"), target, str(r, "currency"), str(r, "purpose"), instant(r, "published_at"), recorded, count, progress,
+    return new PublicCampaign(str(r, "id"), caseId, str(r, "status"), target, str(r, "currency"), str(r, "purpose"), instant(r, "published_at"), instant(r, "completed_at"), recorded, count, progress,
         publishedExpense, expenseCount, recorded.subtract(publishedExpense));
   }
 
@@ -225,10 +225,10 @@ public class SupportCampaignService {
   private static Instant instant(Map<String,Object> row, String key) { Object v = row.get(key); return v == null ? null : ((Timestamp) v).toInstant(); }
 
   private static ApplicantApplication applicant(Map<String,Object> r) {
-    return new ApplicantApplication(str(r,"id"), str(r,"case_id"), str(r,"status"), (BigDecimal) r.get("target_amount"), str(r,"currency"), str(r,"purpose"), str(r,"application_note"), str(r,"case_evidence_id"), str(r,"review_reason"), instant(r,"published_at"), instant(r,"created_at"), instant(r,"updated_at"));
+    return new ApplicantApplication(str(r,"id"), str(r,"case_id"), str(r,"status"), (BigDecimal) r.get("target_amount"), str(r,"currency"), str(r,"purpose"), str(r,"application_note"), str(r,"case_evidence_id"), str(r,"review_reason"), instant(r,"published_at"), instant(r,"completed_at"), instant(r,"created_at"), instant(r,"updated_at"));
   }
   private static AdminDetail admin(Map<String,Object> r) {
-    return new AdminDetail(str(r,"id"), str(r,"case_id"), str(r,"status"), (BigDecimal) r.get("target_amount"), str(r,"currency"), str(r,"purpose"), str(r,"application_note"), str(r,"case_evidence_id"), str(r,"requested_by_user_id"), str(r,"reviewed_by_user_id"), str(r,"review_reason"), instant(r,"published_at"), instant(r,"created_at"), instant(r,"updated_at"));
+    return new AdminDetail(str(r,"id"), str(r,"case_id"), str(r,"status"), (BigDecimal) r.get("target_amount"), str(r,"currency"), str(r,"purpose"), str(r,"application_note"), str(r,"case_evidence_id"), str(r,"requested_by_user_id"), str(r,"reviewed_by_user_id"), str(r,"review_reason"), instant(r,"published_at"), instant(r,"completed_at"), instant(r,"created_at"), instant(r,"updated_at"));
   }
 
   static Failure bad(String code) { return new Failure(code, 400); }
@@ -243,9 +243,9 @@ public class SupportCampaignService {
   public record DraftInput(BigDecimal targetAmount, String purpose, String applicationNote, String caseEvidenceId) {}
   public record ReasonInput(String reason) {}
   public record CaseContext(String caseId, String campusId) {}
-  public record PublicCampaign(String campaignId, String caseId, String status, BigDecimal targetAmount, String currency, String purpose, Instant publishedAt, BigDecimal recordedContributionAmount, long contributionCount, BigDecimal progressPercent, BigDecimal publishedExpenseAmount, long expenseCount, BigDecimal recordedNetBalance) {}
-  public record ApplicantApplication(String campaignId, String caseId, String status, BigDecimal targetAmount, String currency, String purpose, String applicationNote, String caseEvidenceId, String reviewReason, Instant publishedAt, Instant createdAt, Instant updatedAt) {}
+  public record PublicCampaign(String campaignId, String caseId, String status, BigDecimal targetAmount, String currency, String purpose, Instant publishedAt, Instant completedAt, BigDecimal recordedContributionAmount, long contributionCount, BigDecimal progressPercent, BigDecimal publishedExpenseAmount, long expenseCount, BigDecimal recordedNetBalance) {}
+  public record ApplicantApplication(String campaignId, String caseId, String status, BigDecimal targetAmount, String currency, String purpose, String applicationNote, String caseEvidenceId, String reviewReason, Instant publishedAt, Instant completedAt, Instant createdAt, Instant updatedAt) {}
   public record AdminListItem(String campaignId, String caseId, String status, BigDecimal targetAmount, String currency, String purpose, String requestedByUserId, Instant createdAt) {}
   public record Page(List<AdminListItem> items, int page, int size, long total) {}
-  public record AdminDetail(String campaignId, String caseId, String status, BigDecimal targetAmount, String currency, String purpose, String applicationNote, String caseEvidenceId, String requestedByUserId, String reviewedByUserId, String reviewReason, Instant publishedAt, Instant createdAt, Instant updatedAt) {}
+  public record AdminDetail(String campaignId, String caseId, String status, BigDecimal targetAmount, String currency, String purpose, String applicationNote, String caseEvidenceId, String requestedByUserId, String reviewedByUserId, String reviewReason, Instant publishedAt, Instant completedAt, Instant createdAt, Instant updatedAt) {}
 }

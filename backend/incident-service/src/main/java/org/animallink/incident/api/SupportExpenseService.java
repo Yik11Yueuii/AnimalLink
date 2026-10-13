@@ -90,8 +90,7 @@ public class SupportExpenseService {
   }
 
   public List<PublicExpense> publicExpenses(String caseId) {
-    Map<String, Object> campaign = latestCampaign(caseId, false);
-    if (!"ACTIVE".equals(str(campaign, "status"))) throw SupportCampaignService.notFound("CAMPAIGN_NOT_FOUND");
+    Map<String, Object> campaign = latestPublicCampaign(caseId);
     return jdbc.queryForList("SELECT * FROM support_expense WHERE campaign_id=? AND status='PUBLISHED' ORDER BY occurred_at DESC,id DESC",
         str(campaign, "id")).stream().map(this::publicExpense).toList();
   }
@@ -291,6 +290,12 @@ public class SupportExpenseService {
 
   private Map<String, Object> latestCampaign(String caseId, boolean lock) {
     List<Map<String, Object>> rows = jdbc.queryForList("SELECT * FROM support_campaign WHERE case_id=? ORDER BY created_at DESC,id DESC LIMIT 1" + (lock ? " FOR UPDATE" : ""), caseId);
+    if (rows.isEmpty()) throw SupportCampaignService.notFound("CAMPAIGN_NOT_FOUND");
+    return rows.getFirst();
+  }
+
+  private Map<String, Object> latestPublicCampaign(String caseId) {
+    List<Map<String, Object>> rows = jdbc.queryForList("SELECT * FROM support_campaign WHERE case_id=? AND status IN ('ACTIVE','COMPLETED','SETTLED') ORDER BY created_at DESC,id DESC LIMIT 1", caseId);
     if (rows.isEmpty()) throw SupportCampaignService.notFound("CAMPAIGN_NOT_FOUND");
     return rows.getFirst();
   }

@@ -30,12 +30,14 @@ import org.springframework.web.client.RestClientResponseException;
 @RequestMapping("/api/v1")
 public class SupportCampaignController {
   private final SupportCampaignService service;
+  private final SupportLifecycleService lifecycle;
   private final SupportContributionService contributions;
   private final RestClient identity;
   private final HttpServletRequest request;
 
-  public SupportCampaignController(SupportCampaignService service, SupportContributionService contributions, @Qualifier("identityRestClient") RestClient identity, HttpServletRequest request) {
+  public SupportCampaignController(SupportCampaignService service, SupportLifecycleService lifecycle, SupportContributionService contributions, @Qualifier("identityRestClient") RestClient identity, HttpServletRequest request) {
     this.service = service;
+    this.lifecycle = lifecycle;
     this.contributions = contributions;
     this.identity = identity;
     this.request = request;
@@ -129,6 +131,13 @@ public class SupportCampaignController {
   public AdminDetail adminCancel(@PathVariable("id") String id, @RequestBody(required = false) ReasonInput body) {
     String actor = admin();
     return service.adminTransition(id, actor, "ADMIN_CANCEL", body == null ? null : body.reason());
+  }
+
+  @PostMapping("/admin/support-campaigns/{id}/complete")
+  public AdminDetail complete(@PathVariable("id") String id, @RequestBody(required = false) ReasonInput body) {
+    String actor = admin();
+    lifecycle.completeManually(id, actor, body == null ? null : body.reason());
+    return service.adminDetail(id);
   }
 
   private String admin() {

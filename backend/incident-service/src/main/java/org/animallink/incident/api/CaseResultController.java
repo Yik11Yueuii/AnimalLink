@@ -25,8 +25,8 @@ import org.springframework.web.client.RestClient;
 @RestController
 @RequestMapping("/api/v1/cases/{caseId}")
 public class CaseResultController {
-  private final JdbcTemplate jdbc; private final RestClient identity; private final HttpServletRequest request; private final ObjectMapper json;
-  public CaseResultController(JdbcTemplate jdbc,@Qualifier("identityRestClient") RestClient identity,HttpServletRequest request,ObjectMapper json){this.jdbc=jdbc;this.identity=identity;this.request=request;this.json=json;}
+  private final JdbcTemplate jdbc; private final RestClient identity; private final HttpServletRequest request; private final ObjectMapper json; private final SupportLifecycleService supportLifecycle;
+  public CaseResultController(JdbcTemplate jdbc,@Qualifier("identityRestClient") RestClient identity,HttpServletRequest request,ObjectMapper json,SupportLifecycleService supportLifecycle){this.jdbc=jdbc;this.identity=identity;this.request=request;this.json=json;this.supportLifecycle=supportLifecycle;}
 
   @PostMapping("/result") @Transactional
   public ResultResponse submit(@PathVariable("caseId") String caseId,@Valid @RequestBody ResultRequest body) {
@@ -38,6 +38,7 @@ public class CaseResultController {
       next,body.outcome(),body.summary(),caller,Timestamp.from(now),terminal(body.outcome())?Timestamp.from(now):null,Timestamp.from(now),caseId);
     if(updated!=1) throw new EventController.Conflict("CASE_RESULT_STATE_CONFLICT");
     jdbc.update("INSERT INTO case_action(id,case_id,actor_user_id,description,occurred_at,created_at,result_code) VALUES(?,?,?,?,?,?,?)",actionId,caseId,caller,body.summary(),Timestamp.from(now),Timestamp.from(now),body.outcome());
+    if(finalized(body.outcome())) supportLifecycle.onCaseTerminal(caseId,next,caller);
     if(finalized(body.outcome()) && s(c,"animal_id")!=null) outbox(c, body, caller, now);
     return result(one(caseId),actionId);
   }
@@ -50,6 +51,7 @@ public class CaseResultController {
     if(!"RESOLVED".equals(s(c,"status"))||!"CLAIMED".equals(s(c,"claim_status"))) throw new EventController.Conflict("CASE_NOT_RESOLVED");
     Instant now=Instant.now();
     if(jdbc.update("UPDATE animal_case SET status='CLOSED',closed_at=?,version=version+1,updated_at=? WHERE id=? AND status='RESOLVED' AND claim_status='CLAIMED'",Timestamp.from(now),Timestamp.from(now),caseId)!=1) throw new EventController.Conflict("CASE_NOT_RESOLVED");
+    supportLifecycle.onCaseTerminal(caseId,"CLOSED",caller);
     return close(one(caseId));
   }
 
