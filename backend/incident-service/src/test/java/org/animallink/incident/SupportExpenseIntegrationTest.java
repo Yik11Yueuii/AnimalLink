@@ -135,11 +135,11 @@ class SupportExpenseIntegrationTest {
   @AfterAll static void stop() { STUB.server.stop(0); }
 
   @Test
-  void flywayV14CreatesOnlyFrozenExpenseTablesAndConstraints() throws Exception {
-    assertEquals(14, count("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1 AND version IS NOT NULL"));
+  void flywayV14CreatesFrozenExpenseTablesAndConstraints() throws Exception {
+    assertEquals(15, count("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1 AND version IS NOT NULL"));
     assertEquals("phase5d3 support expense", jdbc.queryForObject("SELECT description FROM flyway_schema_history WHERE version='14'", String.class));
     assertEquals(2, count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name IN ('support_expense','support_expense_media')"));
-    assertEquals(0, count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='support_settlement'"));
+    assertEquals(1, count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='support_settlement'"));
     Fixture fixture = activeFixture("schema");
     MediaRef media = image(OWNER, "schema.png", "image/png", png());
     String expense = create(fixture.caseId(), OWNER, "schema-key", request("food", "10.25", null, List.of(media)), 201).required("expenseId").asText();

@@ -18,10 +18,12 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class SupportCampaignService {
   private final JdbcTemplate jdbc;
   private final TransactionTemplate transactions;
+  private final SupportSettlementService settlements;
 
-  public SupportCampaignService(JdbcTemplate jdbc, PlatformTransactionManager manager) {
+  public SupportCampaignService(JdbcTemplate jdbc, PlatformTransactionManager manager, SupportSettlementService settlements) {
     this.jdbc = jdbc;
     this.transactions = new TransactionTemplate(manager);
+    this.settlements = settlements;
   }
 
   public ApplicantApplication create(String caseId, String actor, DraftInput input) {
@@ -227,8 +229,9 @@ public class SupportCampaignService {
   private static ApplicantApplication applicant(Map<String,Object> r) {
     return new ApplicantApplication(str(r,"id"), str(r,"case_id"), str(r,"status"), (BigDecimal) r.get("target_amount"), str(r,"currency"), str(r,"purpose"), str(r,"application_note"), str(r,"case_evidence_id"), str(r,"review_reason"), instant(r,"published_at"), instant(r,"completed_at"), instant(r,"created_at"), instant(r,"updated_at"));
   }
-  private static AdminDetail admin(Map<String,Object> r) {
-    return new AdminDetail(str(r,"id"), str(r,"case_id"), str(r,"status"), (BigDecimal) r.get("target_amount"), str(r,"currency"), str(r,"purpose"), str(r,"application_note"), str(r,"case_evidence_id"), str(r,"requested_by_user_id"), str(r,"reviewed_by_user_id"), str(r,"review_reason"), instant(r,"published_at"), instant(r,"completed_at"), instant(r,"created_at"), instant(r,"updated_at"));
+  private AdminDetail admin(Map<String,Object> r) {
+    String campaignId = str(r,"id");
+    return new AdminDetail(campaignId, str(r,"case_id"), str(r,"status"), (BigDecimal) r.get("target_amount"), str(r,"currency"), str(r,"purpose"), str(r,"application_note"), str(r,"case_evidence_id"), str(r,"requested_by_user_id"), str(r,"reviewed_by_user_id"), str(r,"review_reason"), instant(r,"published_at"), instant(r,"completed_at"), instant(r,"created_at"), instant(r,"updated_at"), settlements.governanceForCampaign(campaignId));
   }
 
   static Failure bad(String code) { return new Failure(code, 400); }
@@ -247,5 +250,5 @@ public class SupportCampaignService {
   public record ApplicantApplication(String campaignId, String caseId, String status, BigDecimal targetAmount, String currency, String purpose, String applicationNote, String caseEvidenceId, String reviewReason, Instant publishedAt, Instant completedAt, Instant createdAt, Instant updatedAt) {}
   public record AdminListItem(String campaignId, String caseId, String status, BigDecimal targetAmount, String currency, String purpose, String requestedByUserId, Instant createdAt) {}
   public record Page(List<AdminListItem> items, int page, int size, long total) {}
-  public record AdminDetail(String campaignId, String caseId, String status, BigDecimal targetAmount, String currency, String purpose, String applicationNote, String caseEvidenceId, String requestedByUserId, String reviewedByUserId, String reviewReason, Instant publishedAt, Instant completedAt, Instant createdAt, Instant updatedAt) {}
+  public record AdminDetail(String campaignId, String caseId, String status, BigDecimal targetAmount, String currency, String purpose, String applicationNote, String caseEvidenceId, String requestedByUserId, String reviewedByUserId, String reviewReason, Instant publishedAt, Instant completedAt, Instant createdAt, Instant updatedAt, SupportSettlementService.GovernanceSettlement settlement) {}
 }

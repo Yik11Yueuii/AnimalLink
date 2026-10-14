@@ -97,11 +97,11 @@ class SupportContributionIntegrationTest {
 
   @Test
   void flywaySchemaAndLedgerConstraints() throws Exception {
-    assertEquals(14, jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1 AND version IS NOT NULL", Integer.class));
+    assertEquals(15, jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1 AND version IS NOT NULL", Integer.class));
     assertEquals("phase5d2 support contribution", jdbc.queryForObject("SELECT description FROM flyway_schema_history WHERE version='13'", String.class));
     assertEquals(1, count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='support_contribution'"));
     assertEquals(1, count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='support_expense'"));
-    assertEquals(0, count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='support_settlement'"));
+    assertEquals(1, count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='support_settlement'"));
     Fixture fixture = activeFixture("schema", "250.00");
     String contributionId = contribute(fixture.caseId(), CONTRIBUTOR, "schema-key", "10.25", 201);
     assertEquals("10.25", jdbc.queryForObject("SELECT CAST(amount AS CHAR) FROM support_contribution WHERE id=?", String.class, contributionId));

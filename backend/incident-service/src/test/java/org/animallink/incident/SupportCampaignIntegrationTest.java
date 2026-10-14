@@ -86,7 +86,7 @@ class SupportCampaignIntegrationTest {
   @AfterAll static void stop() { STUB.server.stop(0); }
 
   @Test void freshFlywayAndDatabaseInvariants() {
-    assertEquals(14,jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1 AND version IS NOT NULL",Integer.class));
+    assertEquals(15,jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1 AND version IS NOT NULL",Integer.class));
     assertEquals("phase5d1 support campaign",jdbc.queryForObject("SELECT description FROM flyway_schema_history WHERE version='12'",String.class));
     String c=seed("db","ACTIVE","CLAIMED");
     String id=create(c, OWNER, null);

@@ -14,6 +14,9 @@ import org.animallink.incident.api.SupportCampaignService.DraftInput;
 import org.animallink.incident.api.SupportCampaignService.Page;
 import org.animallink.incident.api.SupportCampaignService.PublicCampaign;
 import org.animallink.incident.api.SupportCampaignService.ReasonInput;
+import org.animallink.incident.api.SupportSettlementService.GovernanceSettlement;
+import org.animallink.incident.api.SupportSettlementService.PublicSettlement;
+import org.animallink.incident.api.SupportSettlementService.SettlementInput;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -21,6 +24,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestClient;
@@ -31,13 +35,17 @@ import org.springframework.web.client.RestClientResponseException;
 public class SupportCampaignController {
   private final SupportCampaignService service;
   private final SupportLifecycleService lifecycle;
+  private final SupportSettlementService settlements;
   private final SupportContributionService contributions;
   private final RestClient identity;
   private final HttpServletRequest request;
 
-  public SupportCampaignController(SupportCampaignService service, SupportLifecycleService lifecycle, SupportContributionService contributions, @Qualifier("identityRestClient") RestClient identity, HttpServletRequest request) {
+  public SupportCampaignController(SupportCampaignService service, SupportLifecycleService lifecycle,
+                                   SupportSettlementService settlements, SupportContributionService contributions,
+                                   @Qualifier("identityRestClient") RestClient identity, HttpServletRequest request) {
     this.service = service;
     this.lifecycle = lifecycle;
+    this.settlements = settlements;
     this.contributions = contributions;
     this.identity = identity;
     this.request = request;
@@ -71,6 +79,11 @@ public class SupportCampaignController {
 
   @GetMapping("/cases/{caseId}/support")
   public PublicCampaign publicRead(@PathVariable("caseId") String caseId) { return service.publicRead(caseId); }
+
+  @GetMapping("/cases/{caseId}/support/settlement")
+  public PublicSettlement publicSettlement(@PathVariable("caseId") String caseId) {
+    return settlements.publicRead(caseId);
+  }
 
   @GetMapping("/cases/{caseId}/support/application")
   public ApplicantApplication applicantRead(@PathVariable("caseId") String caseId) { return service.applicantRead(caseId, user().id()); }
@@ -138,6 +151,14 @@ public class SupportCampaignController {
     String actor = admin();
     lifecycle.completeManually(id, actor, body == null ? null : body.reason());
     return service.adminDetail(id);
+  }
+
+  @PostMapping("/admin/support-campaigns/{id}/settlement")
+  public ResponseEntity<GovernanceSettlement> settle(@PathVariable("id") String id,
+                                                      @RequestHeader(value = "Idempotency-Key", required = false) String key,
+                                                      @RequestBody SettlementInput body) {
+    var result = settlements.settle(id, admin(), key, body);
+    return ResponseEntity.status(result.created() ? 201 : 200).body(result.settlement());
   }
 
   private String admin() {
