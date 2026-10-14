@@ -48,7 +48,7 @@ class SupportCampaignIntegrationTest {
   @Container static final MySQLContainer<?> MYSQL=new MySQLContainer<>("mysql:8.0.41")
       .withDatabaseName("support_campaign_test").withUsername("test").withPassword("test");
   @DynamicPropertySource static void properties(DynamicPropertyRegistry r) {
-    r.add("spring.datasource.url",MYSQL::getJdbcUrl);
+    r.add("spring.datasource.url",SupportCampaignIntegrationTest::runtimeLikeJdbcUrl);
     r.add("spring.datasource.username",MYSQL::getUsername);
     r.add("spring.datasource.password",MYSQL::getPassword);
     r.add("spring.cloud.nacos.discovery.enabled",()->false);
@@ -84,6 +84,11 @@ class SupportCampaignIntegrationTest {
     jdbc.update("DELETE FROM event_draft");
   }
   @AfterAll static void stop() { STUB.server.stop(0); }
+
+  private static String runtimeLikeJdbcUrl() {
+    String url=MYSQL.getJdbcUrl();
+    return url+(url.contains("?")?"&":"?")+"useUnicode=true&characterEncoding=utf8&connectionTimeZone=UTC";
+  }
 
   @Test void freshFlywayAndDatabaseInvariants() {
     assertEquals(15,jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1 AND version IS NOT NULL",Integer.class));
@@ -178,6 +183,15 @@ class SupportCampaignIntegrationTest {
     mvc.perform(post("/api/v1/admin/support-campaigns/{id}/cancel",id).header("X-User-Id",ADMIN).contentType("application/json").content("{\"reason\":\"no\"}"))
         .andExpect(status().isConflict());
     assertEquals(4,count("SELECT COUNT(*) FROM support_audit_log WHERE campaign_id=?",id));
+  }
+
+  @Test void approvalRequestShapesPersistReviewMetadataAndOneAudit() throws Exception {
+    approveAndAssert("approve-no-body",null,null);
+    approveAndAssert("approve-empty-object","{}",null);
+    approveAndAssert("approve-null-reason","{\"reason\":null}",null);
+    approveAndAssert("approve-empty-reason","{\"reason\":\"\"}","");
+    approveAndAssert("approve-blank-reason","{\"reason\":\"   \"}","");
+    approveAndAssert("approve-note","{\"reason\":\" optional approval note \"}","optional approval note");
   }
 
   @Test void withdrawalRejectionAndAdminCancelAllowHistory() throws Exception {
@@ -355,6 +369,27 @@ class SupportCampaignIntegrationTest {
   }
   private void submit(String c,String user) throws Exception {
     mvc.perform(post("/api/v1/cases/{c}/support/submit",c).header("X-User-Id",user)).andExpect(status().isOk());
+  }
+  private void approveAndAssert(String suffix,String body,String expectedReason) throws Exception {
+    String c=seed(suffix,"ACTIVE","CLAIMED");
+    String id=create(c,OWNER,null);
+    submit(c,OWNER);
+    var request=post("/api/v1/admin/support-campaigns/{id}/approve",id).header("X-User-Id",ADMIN);
+    if(body==null) request.contentType("application/x-www-form-urlencoded");
+    else request.contentType("application/json").content(body);
+    var result=mvc.perform(request).andReturn();
+    if(result.getResponse().getStatus()!=200) {
+      AssertionError failure=new AssertionError("approve status="+result.getResponse().getStatus()+" cause="+result.getResolvedException());
+      if(result.getResolvedException()!=null) failure.initCause(result.getResolvedException());
+      throw failure;
+    }
+    Map<String,Object> campaign=jdbc.queryForMap("SELECT status,reviewed_by_user_id,review_reason,version FROM support_campaign WHERE id=?",id);
+    assertEquals("APPROVED",campaign.get("status"));
+    assertEquals(ADMIN,campaign.get("reviewed_by_user_id"));
+    assertEquals(expectedReason,campaign.get("review_reason"));
+    assertEquals(2,((Number)campaign.get("version")).intValue());
+    assertEquals(1,count("SELECT COUNT(*) FROM support_audit_log WHERE campaign_id=? AND action='APPROVE'",id));
+    assertEquals(expectedReason,jdbc.queryForObject("SELECT reason FROM support_audit_log WHERE campaign_id=? AND action='APPROVE'",String.class,id));
   }
   private void insertExpense(String campaignId,String id,String status,Timestamp at) {
     String reviewer="SUBMITTED".equals(status)?null:ADMIN;

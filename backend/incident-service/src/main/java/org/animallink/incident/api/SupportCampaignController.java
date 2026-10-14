@@ -1,5 +1,7 @@
 package org.animallink.incident.api;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
 import org.animallink.incident.api.SupportContributionService.ContributionInput;
@@ -39,16 +41,19 @@ public class SupportCampaignController {
   private final SupportContributionService contributions;
   private final RestClient identity;
   private final HttpServletRequest request;
+  private final ObjectMapper json;
 
   public SupportCampaignController(SupportCampaignService service, SupportLifecycleService lifecycle,
                                    SupportSettlementService settlements, SupportContributionService contributions,
-                                   @Qualifier("identityRestClient") RestClient identity, HttpServletRequest request) {
+                                   @Qualifier("identityRestClient") RestClient identity, HttpServletRequest request,
+                                   ObjectMapper json) {
     this.service = service;
     this.lifecycle = lifecycle;
     this.settlements = settlements;
     this.contributions = contributions;
     this.identity = identity;
     this.request = request;
+    this.json = json;
   }
 
   @PostMapping("/cases/{caseId}/support")
@@ -126,9 +131,9 @@ public class SupportCampaignController {
   }
 
   @PostMapping("/admin/support-campaigns/{id}/approve")
-  public AdminDetail approve(@PathVariable("id") String id, @RequestBody(required = false) ReasonInput body) {
+  public AdminDetail approve(@PathVariable("id") String id, @RequestBody(required = false) String body) {
     String actor = admin();
-    return service.adminTransition(id, actor, "APPROVE", body == null ? null : body.reason());
+    return service.adminTransition(id, actor, "APPROVE", optionalReason(body));
   }
 
   @PostMapping("/admin/support-campaigns/{id}/reject")
@@ -165,6 +170,15 @@ public class SupportCampaignController {
     Principal p = user();
     if (!"GOVERNANCE_ADMIN".equals(p.role())) throw SupportCampaignService.forbidden("FINANCIAL_ACCESS_DENIED");
     return p.id();
+  }
+
+  private String optionalReason(String body) {
+    if (body == null || body.isBlank()) return null;
+    try {
+      return json.readValue(body, ReasonInput.class).reason();
+    } catch (JsonProcessingException ex) {
+      throw new IllegalArgumentException("VALIDATION_ERROR", ex);
+    }
   }
 
   private Principal user() {
