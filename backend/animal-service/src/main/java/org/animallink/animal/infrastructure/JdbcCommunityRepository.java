@@ -83,18 +83,6 @@ public class JdbcCommunityRepository implements CommunityRepository {
     }
 
     @Override
-    public void updatePost(Post post) {
-        int updated = jdbcTemplate.update("""
-                UPDATE post
-                SET status = ?, version = version + 1, updated_at = CURRENT_TIMESTAMP(6)
-                WHERE id = ? AND version = ?
-                """, post.status().name(), post.id(), post.version());
-        if (updated != 1) {
-            throw new StateConflictException("Post 已被其他操作修改，请刷新后重试");
-        }
-    }
-
-    @Override
     public Optional<Post> findPostById(String postId) {
         return optional("SELECT " + POST_COLUMNS + " FROM post p WHERE p.id = ?", POST_MAPPER, postId);
     }

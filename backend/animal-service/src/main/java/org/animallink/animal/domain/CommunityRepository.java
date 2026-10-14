@@ -9,8 +9,6 @@ public interface CommunityRepository {
 
     void insertPostAndTimeline(Post post, List<PostMedia> media, TimelineEntry timelineEntry);
 
-    void updatePost(Post post);
-
     Optional<Post> findPostById(String postId);
 
     Optional<Post> findActivePublicPostById(String postId);

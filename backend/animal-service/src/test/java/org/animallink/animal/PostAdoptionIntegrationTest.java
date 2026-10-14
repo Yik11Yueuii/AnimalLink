@@ -64,6 +64,7 @@ class PostAdoptionIntegrationTest {
     void reset() {
         IDENTITY.reset();
         ADOPTION.reset();
+        jdbc.update("DELETE FROM community_governance_audit");
         jdbc.update("DELETE FROM post_like");
         jdbc.update("DELETE FROM comment");
         jdbc.update("DELETE FROM post_media");
@@ -104,6 +105,9 @@ class PostAdoptionIntegrationTest {
                 .containsEntry("source_type", "POST").containsEntry("entry_type", "POST_ADOPTION_PUBLISHED")
                 .containsEntry("title", "领养后动态已发布").containsEntry("summary", null)
                 .containsEntry("visibility", "PUBLIC");
+        mvc.perform(get("/api/v1/admin/posts/{postId}", postId).header("X-User-Id", ADMIN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.relationId").value(ADOPTION.relationId));
         assertThat(ADOPTION.calls.get()).isEqualTo(1);
     }
 
@@ -170,13 +174,77 @@ class PostAdoptionIntegrationTest {
     void governanceHidesPostAdoptionAndOrdinaryPostStillRequiresMembership() throws Exception {
         String postId = jsonValue(mvc.perform(publish("待隐藏", "[]", ADOPTER)).andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString(), "id");
-        mvc.perform(post("/api/v1/admin/posts/{postId}/hide", postId).header("X-User-Id", ADMIN))
+        var originalTimeline = jdbc.queryForMap("SELECT id, occurred_at FROM timeline_entry WHERE source_id = ?", postId);
+        mvc.perform(post("/api/v1/admin/posts/{postId}/hide", postId).header("X-User-Id", ADMIN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"领养后内容复核\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("HIDDEN"));
         mvc.perform(get("/api/v1/posts/{postId}", postId)).andExpect(status().isNotFound());
+        mvc.perform(get("/api/v1/animals/{animalId}/timeline", ANIMAL))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(0));
+        assertThat(jdbc.queryForObject("SELECT visibility FROM timeline_entry WHERE source_id = ?",
+                String.class, postId)).isEqualTo("RESTRICTED");
+        mvc.perform(post("/api/v1/admin/posts/{postId}/restore", postId).header("X-User-Id", ADMIN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"复核完成\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ACTIVE"));
+        assertThat(jdbc.queryForMap("SELECT id, occurred_at FROM timeline_entry WHERE source_id = ?", postId))
+                .isEqualTo(originalTimeline);
+        assertThat(jdbc.queryForObject("SELECT visibility FROM timeline_entry WHERE source_id = ?",
+                String.class, postId)).isEqualTo("PUBLIC");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM timeline_entry WHERE source_id = ?",
+                Integer.class, postId)).isOne();
+        mvc.perform(get("/api/v1/animals/{animalId}/timeline", ANIMAL))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(1));
         mvc.perform(post("/api/v1/posts").header("X-User-Id", ADOPTER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"campusId\":\"" + CAMPUS + "\",\"textContent\":\"普通动态\",\"media\":[]}"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void governanceTimelineConflictRollsBackPostAndAudit() throws Exception {
+        String postId = jsonValue(mvc.perform(publish("时间线冲突", "[]", ADOPTER))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "id");
+        jdbc.update("UPDATE timeline_entry SET visibility='RESTRICTED' WHERE source_id = ?", postId);
+
+        mvc.perform(post("/api/v1/admin/posts/{postId}/hide", postId).header("X-User-Id", ADMIN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"应整体回滚\"}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("STATE_CONFLICT"));
+
+        assertThat(jdbc.queryForMap("SELECT status, version FROM post WHERE id = ?", postId))
+                .containsEntry("status", "ACTIVE").containsEntry("version", 0);
+        assertThat(jdbc.queryForObject("SELECT visibility FROM timeline_entry WHERE source_id = ?",
+                String.class, postId)).isEqualTo("RESTRICTED");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM community_governance_audit",
+                Integer.class)).isZero();
+    }
+
+    @Test
+    void governanceAuditFailureRollsBackComment() throws Exception {
+        String postId = jsonValue(mvc.perform(publish("评论审计回滚", "[]", ADOPTER))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "id");
+        String commentId = UUID.randomUUID().toString();
+        jdbc.update("INSERT INTO comment (id, post_id, author_user_id, content, status) "
+                + "VALUES (?, ?, ?, '待回滚', 'ACTIVE')", commentId, postId, ADOPTER);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            String sql = invocation.getArgument(0, String.class);
+            if (sql.contains("INSERT INTO community_governance_audit")) {
+                throw new DataAccessResourceFailureException("forced audit failure");
+            }
+            return invocation.callRealMethod();
+        }).when(jdbc).update(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(Object[].class));
+
+        assertThatThrownBy(() -> mvc.perform(post("/api/v1/admin/comments/{commentId}/hide", commentId)
+                        .header("X-User-Id", ADMIN).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"触发回滚\"}")))
+                .hasRootCauseInstanceOf(DataAccessResourceFailureException.class);
+        assertThat(jdbc.queryForObject("SELECT status FROM comment WHERE id = ?", String.class,
+                commentId)).isEqualTo("ACTIVE");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM community_governance_audit",
+                Integer.class)).isZero();
     }
 
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder publish(

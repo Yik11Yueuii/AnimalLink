@@ -15,20 +15,17 @@ public class CommunityApplicationService {
     private final CommunityRepository communityRepository;
     private final AnimalRepository animalRepository;
     private final CampusMembershipAuthorization membershipAuthorization;
-    private final GovernanceAuthorization governanceAuthorization;
     private final AdoptionRelationGateway adoptionRelationGateway;
     private final TransactionTemplate transactions;
 
     public CommunityApplicationService(CommunityRepository communityRepository,
                                        AnimalRepository animalRepository,
                                        CampusMembershipAuthorization membershipAuthorization,
-                                       GovernanceAuthorization governanceAuthorization,
                                        AdoptionRelationGateway adoptionRelationGateway,
                                        TransactionTemplate transactions) {
         this.communityRepository = communityRepository;
         this.animalRepository = animalRepository;
         this.membershipAuthorization = membershipAuthorization;
-        this.governanceAuthorization = governanceAuthorization;
         this.adoptionRelationGateway = adoptionRelationGateway;
         this.transactions = transactions;
     }
@@ -93,8 +90,12 @@ public class CommunityApplicationService {
     public EngagementResult unlike(String postId) {
         String validPostId = IdRules.requireUuid(postId, "postId");
         String userId = membershipAuthorization.requireActiveUser().id();
-        int deleted = transactions.execute(status -> communityRepository.deleteLike(userId, validPostId));
-        return new EngagementResult(false, communityRepository.countLikes(validPostId));
+        Post post = communityRepository.findPostById(validPostId)
+                .orElseThrow(() -> new ResourceNotFoundException("Post 不存在"));
+        transactions.execute(status -> communityRepository.deleteLike(userId, validPostId));
+        long visibleCount = post.status() == PostStatus.ACTIVE && post.visibility() == Visibility.PUBLIC
+                ? communityRepository.countLikes(validPostId) : 0;
+        return new EngagementResult(false, visibleCount);
     }
 
     public EngagementResult follow(String animalId) {
@@ -115,17 +116,6 @@ public class CommunityApplicationService {
         String userId = membershipAuthorization.requireActiveUser().id();
         transactions.execute(status -> communityRepository.deleteFollow(userId, validAnimalId));
         return new EngagementResult(false, communityRepository.countFollowers(validAnimalId));
-    }
-
-    public Post hide(String postId) {
-        governanceAuthorization.requireAdministrator();
-        String validPostId = IdRules.requireUuid(postId, "postId");
-        return transactions.execute(status -> {
-            Post existing = communityRepository.findPostById(validPostId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Post 不存在"));
-            communityRepository.updatePost(existing.hide());
-            return communityRepository.findPostById(validPostId).orElseThrow();
-        });
     }
 
     private Post activePost(String postId) {

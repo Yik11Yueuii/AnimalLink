@@ -137,12 +137,6 @@ public final class CommunityDtos {
         }
     }
 
-    public record HiddenPostResponse(String id, String status, Instant updatedAt) {
-        static HiddenPostResponse from(Post post) {
-            return new HiddenPostResponse(post.id(), post.status().name(), post.updatedAt());
-        }
-    }
-
     public record PageResponse<T>(List<T> items, int page, int size, long total) {
         static <T> PageResponse<T> from(PageResult<?> page, List<T> items) {
             return new PageResponse<>(items, page.page(), page.size(), page.total());

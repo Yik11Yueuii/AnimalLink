@@ -48,6 +48,14 @@ public record Post(
                 visibility, PostStatus.HIDDEN, version, createdAt, Instant.now());
     }
 
+    public Post restore() {
+        if (status != PostStatus.HIDDEN) {
+            throw new StateConflictException("Post 已处于可见状态");
+        }
+        return new Post(id, campusId, animalId, relationId, authorUserId, postType, textContent,
+                visibility, PostStatus.ACTIVE, version, createdAt, Instant.now());
+    }
+
     private static String required(String value) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException("textContent 不能为空");

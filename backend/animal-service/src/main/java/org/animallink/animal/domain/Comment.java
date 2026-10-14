@@ -19,4 +19,20 @@ public record Comment(
         return new Comment(UUID.randomUUID().toString(), postId, authorUserId, content.trim(),
                 CommentStatus.ACTIVE, now, now);
     }
+
+    public Comment hide() {
+        if (status != CommentStatus.ACTIVE) {
+            throw new StateConflictException("Comment 已隐藏");
+        }
+        return new Comment(id, postId, authorUserId, content, CommentStatus.HIDDEN,
+                createdAt, Instant.now());
+    }
+
+    public Comment restore() {
+        if (status != CommentStatus.HIDDEN) {
+            throw new StateConflictException("Comment 已处于可见状态");
+        }
+        return new Comment(id, postId, authorUserId, content, CommentStatus.ACTIVE,
+                createdAt, Instant.now());
+    }
 }
