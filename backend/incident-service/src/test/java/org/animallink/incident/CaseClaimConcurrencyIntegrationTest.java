@@ -102,6 +102,6 @@ class CaseClaimConcurrencyIntegrationTest {
     final HttpServer server;
     Stub() { try { server = HttpServer.create(new InetSocketAddress(0), 0); server.createContext("/", this::handle); server.start(); } catch (IOException e) { throw new RuntimeException(e); } }
     String url() { return "http://localhost:" + server.getAddress().getPort(); } void stop() { server.stop(0); }
-    void handle(HttpExchange exchange) throws IOException { String path = exchange.getRequestURI().getPath(); String user = exchange.getRequestHeaders().getFirst("X-User-Id"); String json = path.contains("volunteer-membership") ? "{\"exists\":true,\"active\":true,\"status\":\"ACTIVE\"}" : "{\"id\":\"" + user + "\",\"systemRole\":\"USER\"}"; byte[] bytes = json.getBytes(StandardCharsets.UTF_8); exchange.getResponseHeaders().set("Content-Type", "application/json"); exchange.sendResponseHeaders(200, bytes.length); exchange.getResponseBody().write(bytes); exchange.close(); }
+    void handle(HttpExchange exchange) throws IOException { String path = exchange.getRequestURI().getPath(); String user = exchange.getRequestHeaders().getFirst("X-User-Id"); String json = path.contains("volunteer-membership") ? "{\"exists\":true,\"active\":true,\"status\":\"ACTIVE\"}" : "{\"id\":\"" + user + "\",\"accountStatus\":\"ACTIVE\",\"systemRole\":\"USER\"}"; byte[] bytes = json.getBytes(StandardCharsets.UTF_8); exchange.getResponseHeaders().set("Content-Type", "application/json"); exchange.sendResponseHeaders(200, bytes.length); exchange.getResponseBody().write(bytes); exchange.close(); }
   }
 }

@@ -1,6 +1,5 @@
 package org.animallink.incident.api;
 
-import jakarta.servlet.http.HttpServletRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -25,12 +24,12 @@ import org.springframework.web.client.RestClient;
 @RestController
 @RequestMapping("/api/v1/cases/{caseId}")
 public class CaseResultController {
-  private final JdbcTemplate jdbc; private final RestClient identity; private final HttpServletRequest request; private final ObjectMapper json; private final SupportLifecycleService supportLifecycle;
-  public CaseResultController(JdbcTemplate jdbc,@Qualifier("identityRestClient") RestClient identity,HttpServletRequest request,ObjectMapper json,SupportLifecycleService supportLifecycle){this.jdbc=jdbc;this.identity=identity;this.request=request;this.json=json;this.supportLifecycle=supportLifecycle;}
+  private final JdbcTemplate jdbc; private final RestClient identity; private final IncidentCurrentUser currentUser; private final ObjectMapper json; private final SupportLifecycleService supportLifecycle;
+  public CaseResultController(JdbcTemplate jdbc,@Qualifier("identityRestClient") RestClient identity,IncidentCurrentUser currentUser,ObjectMapper json,SupportLifecycleService supportLifecycle){this.jdbc=jdbc;this.identity=identity;this.currentUser=currentUser;this.json=json;this.supportLifecycle=supportLifecycle;}
 
   @PostMapping("/result") @Transactional
   public ResultResponse submit(@PathVariable("caseId") String caseId,@Valid @RequestBody ResultRequest body) {
-    String caller=user(); Map<String,Object> c=oneForUpdate(caseId); active(c);
+    String caller=currentUser.requireActive().id(); Map<String,Object> c=oneForUpdate(caseId); active(c);
     if(!caller.equals(s(c,"owner_user_id"))&&!activeParticipant(caseId,caller)) throw new EventController.Forbidden("CASE_RESULT_ACCESS_REQUIRED");
     volunteer(caller,s(c,"campus_id")); Instant now=Instant.now(); String next=statusFor(body.outcome());
     String actionId=UUID.randomUUID().toString();
@@ -45,7 +44,7 @@ public class CaseResultController {
 
   @PostMapping("/close") @Transactional
   public CloseResponse close(@PathVariable("caseId") String caseId) {
-    String caller=user(); Map<String,Object> c=oneForUpdate(caseId);
+    String caller=currentUser.requireActive().id(); Map<String,Object> c=oneForUpdate(caseId);
     if(!caller.equals(s(c,"owner_user_id"))) throw new EventController.Forbidden("CASE_CLOSE_OWNER_REQUIRED");
     volunteer(caller,s(c,"campus_id"));
     if(!"RESOLVED".equals(s(c,"status"))||!"CLAIMED".equals(s(c,"claim_status"))) throw new EventController.Conflict("CASE_NOT_RESOLVED");
@@ -58,7 +57,6 @@ public class CaseResultController {
   private void active(Map<String,Object> c){if(!"ACTIVE".equals(s(c,"status"))||!"CLAIMED".equals(s(c,"claim_status")))throw new EventController.Conflict("CASE_RESULT_STATE_CONFLICT");}
   private boolean activeParticipant(String caseId,String user){Integer count=jdbc.queryForObject("SELECT COUNT(*) FROM case_participant WHERE case_id=? AND user_id=? AND status='ACTIVE'",Integer.class,caseId,user);return count!=null&&count>0;}
   private void volunteer(String user,String campus){try{Map<?,?> f=identity.get().uri("/internal/v1/users/{u}/campuses/{c}/volunteer-membership",user,campus).header("X-Internal-Service","incident-service").retrieve().body(Map.class);if(f==null||!Boolean.TRUE.equals(f.get("exists"))||!Boolean.TRUE.equals(f.get("active"))||!"ACTIVE".equals(f.get("status")))throw new EventController.Forbidden("ACTIVE_VOLUNTEER_REQUIRED");}catch(EventController.Forbidden e){throw e;}catch(Exception e){throw new EventController.Dependency("IDENTITY_SERVICE_UNAVAILABLE");}}
-  private String user(){String u=request.getHeader("X-User-Id");if(u==null||u.isBlank())throw new EventController.Unauthorized("需要登录");return u;}
   private Map<String,Object> oneForUpdate(String id){List<Map<String,Object>> rows=jdbc.queryForList("SELECT * FROM animal_case WHERE id=? FOR UPDATE",id);if(rows.isEmpty())throw new EventController.NotFound("CASE_NOT_FOUND");return rows.getFirst();}
   private Map<String,Object> one(String id){List<Map<String,Object>> rows=jdbc.queryForList("SELECT * FROM animal_case WHERE id=?",id);if(rows.isEmpty())throw new EventController.NotFound("CASE_NOT_FOUND");return rows.getFirst();}
   private ResultResponse result(Map<String,Object> c,String actionId){return new ResultResponse(s(c,"id"),s(c,"result_code"),s(c,"status"),s(c,"result_summary"),s(c,"result_submitted_by_user_id"),instant(c,"result_submitted_at"),actionId);}

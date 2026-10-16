@@ -51,7 +51,7 @@ class CaseClaimErrorIntegrationTest {
 
   @Autowired MockMvc mvc; @Autowired JdbcTemplate jdbc;
 
-  @BeforeEach void clean() { STUB.memberships.clear(); STUB.unavailable = false; jdbc.update("DELETE FROM animal_case"); jdbc.update("DELETE FROM evidence_media"); jdbc.update("DELETE FROM evidence"); jdbc.update("DELETE FROM event_media"); jdbc.update("DELETE FROM event"); jdbc.update("DELETE FROM event_draft"); }
+  @BeforeEach void clean() { STUB.memberships.clear(); STUB.accounts.clear(); STUB.accounts.put(VOLUNTEER, "ACTIVE"); STUB.unavailable = false; jdbc.update("DELETE FROM animal_case"); jdbc.update("DELETE FROM evidence_media"); jdbc.update("DELETE FROM evidence"); jdbc.update("DELETE FROM event_media"); jdbc.update("DELETE FROM event"); jdbc.update("DELETE FROM event_draft"); }
   @AfterAll static void stop() { STUB.stop(); }
 
   @Test void requiresActiveVolunteerMembershipAndPreservesActiveClaim() throws Exception {
@@ -64,6 +64,17 @@ class CaseClaimErrorIntegrationTest {
   @Test void returnsIdentityUnavailableWhenVolunteerFactCannotBeRead() throws Exception {
     seed("identity-unavailable", "VERIFIED"); STUB.unavailable = true;
     claim("identity-unavailable").andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("IDENTITY_SERVICE_UNAVAILABLE"));
+  }
+
+  @Test void suspendedAndDisabledAccountsCannotClaimDespiteActiveVolunteerMembership() throws Exception {
+    STUB.memberships.put(VOLUNTEER, "ACTIVE");
+    for (String status : List.of("SUSPENDED", "DISABLED")) {
+      String eventId = "account-" + status;
+      seed(eventId, "VERIFIED");
+      STUB.accounts.put(VOLUNTEER, status);
+      claim(eventId).andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+      Assertions.assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM animal_case WHERE event_id=?", Integer.class, eventId));
+    }
   }
 
   @Test void requiresVerifiedEventAndKeepsMissingEventCode() throws Exception {
@@ -81,9 +92,9 @@ class CaseClaimErrorIntegrationTest {
   private void seed(String eventId, String eventStatus) { Timestamp time = Timestamp.from(Instant.parse("2026-10-01T00:00:00Z")); jdbc.update("INSERT INTO event_draft (id,user_id,campus_id,description,occurred_at,public_location_description,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)", "draft-" + eventId, REPORTER, CAMPUS, "draft", time, "public", time, time); jdbc.update("INSERT INTO event (id,source_draft_id,reporter_user_id,campus_id,description,occurred_at,reported_at,public_location_description,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)", eventId, "draft-" + eventId, REPORTER, CAMPUS, "event", time, time, "public", eventStatus, time, time); }
 
   static class Stub {
-    final HttpServer server; final Map<String, String> memberships = new ConcurrentHashMap<>(); volatile boolean unavailable;
+    final HttpServer server; final Map<String, String> memberships = new ConcurrentHashMap<>(); final Map<String, String> accounts = new ConcurrentHashMap<>(); volatile boolean unavailable;
     Stub() { try { server = HttpServer.create(new InetSocketAddress(0), 0); server.createContext("/", this::handle); server.start(); } catch (IOException e) { throw new RuntimeException(e); } }
     String url() { return "http://localhost:" + server.getAddress().getPort(); } void stop() { server.stop(0); }
-    void handle(HttpExchange exchange) throws IOException { String path = exchange.getRequestURI().getPath(); if (unavailable && path.contains("volunteer-membership")) { exchange.sendResponseHeaders(503, -1); exchange.close(); return; } String[] segments = path.split("/"); String user = segments.length > 4 ? segments[4] : ""; String membershipStatus = memberships.get(user); String json = path.contains("volunteer-membership") ? (membershipStatus == null ? "{\"exists\":false,\"active\":false}" : "{\"exists\":true,\"status\":\"" + membershipStatus + "\",\"active\":" + "ACTIVE".equals(membershipStatus) + "}") : "{}"; byte[] bytes = json.getBytes(StandardCharsets.UTF_8); exchange.getResponseHeaders().set("Content-Type", "application/json"); exchange.sendResponseHeaders(200, bytes.length); exchange.getResponseBody().write(bytes); exchange.close(); }
+    void handle(HttpExchange exchange) throws IOException { String path = exchange.getRequestURI().getPath(); if (unavailable && path.contains("volunteer-membership")) { exchange.sendResponseHeaders(503, -1); exchange.close(); return; } String header = exchange.getRequestHeaders().getFirst("X-User-Id"); String[] segments = path.split("/"); String user = path.contains("volunteer-membership") && segments.length > 4 ? segments[4] : header; String membershipStatus = memberships.get(user); String json = path.contains("volunteer-membership") ? (membershipStatus == null ? "{\"exists\":false,\"active\":false}" : "{\"exists\":true,\"status\":\"" + membershipStatus + "\",\"active\":" + "ACTIVE".equals(membershipStatus) + "}") : "{\"id\":\"" + header + "\",\"accountStatus\":\"" + accounts.getOrDefault(header, "ACTIVE") + "\",\"systemRole\":\"USER\"}"; byte[] bytes = json.getBytes(StandardCharsets.UTF_8); exchange.getResponseHeaders().set("Content-Type", "application/json"); exchange.sendResponseHeaders(200, bytes.length); exchange.getResponseBody().write(bytes); exchange.close(); }
   }
 }
