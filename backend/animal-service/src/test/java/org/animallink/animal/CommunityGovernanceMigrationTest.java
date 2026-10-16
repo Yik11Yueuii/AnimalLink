@@ -27,7 +27,7 @@ class CommunityGovernanceMigrationTest {
             .withPassword("test");
 
     @Test
-    void v8BackfillsOnlyHiddenPostAdoptionTimelineAndCreatesGovernanceSchema() throws Exception {
+    void v8BackfillAndV9ContentGovernanceSchemaMigrateFromFreshMysql() throws Exception {
         Flyway.configure().dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())
                 .target("7").load().migrate();
         try (Connection connection = connection(); Statement statement = connection.createStatement()) {
@@ -64,6 +64,38 @@ class CommunityGovernanceMigrationTest {
         assertThat(value("SELECT COUNT(*) FROM community_governance_audit")).isEqualTo("0");
         assertThat(value("SELECT COUNT(*) FROM flyway_schema_history WHERE version='8' AND success=1"))
                 .isEqualTo("1");
+        assertThat(value("SELECT COUNT(*) FROM flyway_schema_history WHERE version='9' AND success=1"))
+                .isEqualTo("1");
+        assertThat(value("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() "
+                + "AND table_name='community_content_report'")).isEqualTo("1");
+        assertThat(value("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() "
+                + "AND table_name='community_content_report' AND column_name='open_marker' "
+                + "AND generation_expression IS NOT NULL")).isEqualTo("1");
+        assertThat(value("SELECT COUNT(DISTINCT index_name) FROM information_schema.statistics "
+                + "WHERE table_schema=DATABASE() AND table_name='community_content_report' "
+                + "AND index_name IN ('uk_content_report_open_reporter_resource',"
+                + "'idx_content_report_status_created','idx_content_report_resource_created')"))
+                .isEqualTo("3");
+        assertThat(value("SELECT COUNT(*) FROM information_schema.referential_constraints "
+                + "WHERE constraint_schema=DATABASE() AND table_name='community_content_report'"))
+                .isEqualTo("0");
+
+        try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+            statement.executeUpdate("UPDATE post SET status='REMOVED' WHERE id='" + ACTIVE_POST + "'");
+            statement.executeUpdate("INSERT INTO community_governance_audit "
+                    + "(id,resource_type,resource_id,`action`,from_state,to_state,actor_user_id,reason) "
+                    + "VALUES ('60000000-0000-0000-0000-000000000801','POST','" + ACTIVE_POST
+                    + "','REMOVE','ACTIVE','REMOVED','00000000-0000-0000-0000-000000000899','治理移除')");
+            statement.executeUpdate(reportSql("70000000-0000-0000-0000-000000000801", "OPEN"));
+            statement.executeUpdate("UPDATE community_content_report SET status='DISMISSED',"
+                    + "resolution_note='已复核',reviewed_by_user_id='00000000-0000-0000-0000-000000000899',"
+                    + "reviewed_at=CURRENT_TIMESTAMP(6),version=version+1 WHERE id="
+                    + "'70000000-0000-0000-0000-000000000801'");
+            statement.executeUpdate(reportSql("70000000-0000-0000-0000-000000000802", "OPEN"));
+        }
+        assertThat(value("SELECT COUNT(*) FROM community_content_report")).isEqualTo("2");
+        assertThat(value("SELECT COUNT(*) FROM community_governance_audit WHERE `action`='REMOVE'"))
+                .isEqualTo("1");
     }
 
     private Connection connection() throws Exception {
@@ -91,5 +123,12 @@ class CommunityGovernanceMigrationTest {
         return "INSERT INTO timeline_entry (id,animal_id,source_type,source_id,entry_type,title,"
                 + "occurred_at,visibility) VALUES ('" + id + "','" + ANIMAL + "','" + sourceType
                 + "','" + sourceId + "','" + entryType + "','迁移事件',CURRENT_TIMESTAMP(6),'PUBLIC')";
+    }
+
+    private String reportSql(String id, String status) {
+        return "INSERT INTO community_content_report "
+                + "(id,resource_type,resource_id,reporter_user_id,description,status) VALUES ('"
+                + id + "','POST','" + HIDDEN_POST
+                + "','00000000-0000-0000-0000-000000000888','举报内容','" + status + "')";
     }
 }

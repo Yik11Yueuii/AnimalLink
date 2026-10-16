@@ -2,5 +2,6 @@ package org.animallink.animal.domain;
 
 public enum CommentStatus {
     ACTIVE,
-    HIDDEN
+    HIDDEN,
+    REMOVED
 }

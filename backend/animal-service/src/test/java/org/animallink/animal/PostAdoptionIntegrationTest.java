@@ -64,6 +64,7 @@ class PostAdoptionIntegrationTest {
     void reset() {
         IDENTITY.reset();
         ADOPTION.reset();
+        jdbc.update("DELETE FROM community_content_report");
         jdbc.update("DELETE FROM community_governance_audit");
         jdbc.update("DELETE FROM post_like");
         jdbc.update("DELETE FROM comment");
@@ -247,12 +248,160 @@ class PostAdoptionIntegrationTest {
                 Integer.class)).isZero();
     }
 
+    @Test
+    void postAdoptionRemovalPreservesTimelineIdentityAndRollsBackOnInconsistency() throws Exception {
+        String postId = jsonValue(mvc.perform(publish("终态移除动态", "[]", ADOPTER))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "id");
+        var originalTimeline = jdbc.queryForMap(
+                "SELECT id,occurred_at FROM timeline_entry WHERE source_id=?", postId);
+        String reportId = jsonValue(mvc.perform(post("/api/v1/posts/{id}/reports", postId)
+                        .header("X-User-Id", ADOPTER).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\":\"需要移除\"}"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(),
+                "reportId");
+        mvc.perform(post("/api/v1/admin/content-reports/{id}/resolve", reportId)
+                        .header("X-User-Id", ADMIN).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"action\":\"REMOVE\",\"resolutionNote\":\"确认移除\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.currentContentStatus")
+                        .value("REMOVED"));
+        assertThat(jdbc.queryForMap("SELECT status,version FROM post WHERE id=?", postId))
+                .containsEntry("status", "REMOVED").containsEntry("version", 1);
+        assertThat(jdbc.queryForMap("SELECT id,occurred_at FROM timeline_entry WHERE source_id=?",
+                postId)).isEqualTo(originalTimeline);
+        assertThat(jdbc.queryForObject("SELECT visibility FROM timeline_entry WHERE source_id=?",
+                String.class, postId)).isEqualTo("RESTRICTED");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM timeline_entry WHERE source_id=?",
+                Integer.class, postId)).isOne();
+
+        String hiddenPost = jsonValue(mvc.perform(publish("先隐藏后移除", "[]", ADOPTER))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "id");
+        var hiddenTimeline = jdbc.queryForMap("SELECT id,occurred_at FROM timeline_entry WHERE source_id=?",
+                hiddenPost);
+        mvc.perform(post("/api/v1/admin/posts/{id}/hide", hiddenPost).header("X-User-Id", ADMIN)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"先隐藏\"}"))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/v1/admin/posts/{id}/remove", hiddenPost).header("X-User-Id", ADMIN)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"再移除\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("REMOVED"));
+        assertThat(jdbc.queryForMap("SELECT id,occurred_at FROM timeline_entry WHERE source_id=?",
+                hiddenPost)).isEqualTo(hiddenTimeline);
+        assertThat(jdbc.queryForObject("SELECT visibility FROM timeline_entry WHERE source_id=?",
+                String.class, hiddenPost)).isEqualTo("RESTRICTED");
+
+        String inconsistent = jsonValue(mvc.perform(publish("时间线冲突移除", "[]", ADOPTER))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "id");
+        String inconsistentReport = jsonValue(mvc.perform(post("/api/v1/posts/{id}/reports", inconsistent)
+                        .header("X-User-Id", ADOPTER).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\":\"冲突测试\"}"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(),
+                "reportId");
+        jdbc.update("UPDATE timeline_entry SET visibility='RESTRICTED' WHERE source_id=?", inconsistent);
+        mvc.perform(post("/api/v1/admin/content-reports/{id}/resolve", inconsistentReport)
+                        .header("X-User-Id", ADMIN).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"action\":\"REMOVE\",\"resolutionNote\":\"应回滚\"}"))
+                .andExpect(status().isConflict());
+        assertThat(jdbc.queryForMap("SELECT status,version FROM post WHERE id=?", inconsistent))
+                .containsEntry("status", "ACTIVE").containsEntry("version", 0);
+        assertThat(jdbc.queryForObject("SELECT status FROM community_content_report WHERE id=?",
+                String.class, inconsistentReport)).isEqualTo("OPEN");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM community_governance_audit "
+                + "WHERE resource_id=?", Integer.class, inconsistent)).isZero();
+    }
+
+    @Test
+    void reportUpdateAndContentAuditFailuresRollbackContentTimelineAndReport() throws Exception {
+        String reportUpdatePost = jsonValue(mvc.perform(publish("举报更新回滚", "[]", ADOPTER))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "id");
+        String reportUpdateId = reportPost(reportUpdatePost);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            String sql = invocation.getArgument(0, String.class);
+            if (sql.contains("UPDATE community_content_report")) {
+                throw new DataAccessResourceFailureException("forced report update failure");
+            }
+            return invocation.callRealMethod();
+        }).when(jdbc).update(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(Object[].class));
+        assertThatThrownBy(() -> resolveRemove(reportUpdateId))
+                .hasRootCauseInstanceOf(DataAccessResourceFailureException.class);
+        assertRemovalRolledBack(reportUpdatePost, reportUpdateId);
+
+        org.mockito.Mockito.reset(jdbc);
+        String auditPost = jsonValue(mvc.perform(publish("审计回滚", "[]", ADOPTER))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "id");
+        String auditReport = reportPost(auditPost);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            String sql = invocation.getArgument(0, String.class);
+            if (sql.contains("INSERT INTO community_governance_audit")) {
+                throw new DataAccessResourceFailureException("forced audit failure");
+            }
+            return invocation.callRealMethod();
+        }).when(jdbc).update(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(Object[].class));
+        assertThatThrownBy(() -> resolveRemove(auditReport))
+                .hasRootCauseInstanceOf(DataAccessResourceFailureException.class);
+        assertRemovalRolledBack(auditPost, auditReport);
+
+        org.mockito.Mockito.reset(jdbc);
+        String directPost = jsonValue(mvc.perform(publish("直接移除回滚", "[]", ADOPTER))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "id");
+        String directComment = UUID.randomUUID().toString();
+        jdbc.update("INSERT INTO comment(id,post_id,author_user_id,content,status) "
+                + "VALUES (?,?,?,'直接评论移除回滚','ACTIVE')", directComment, directPost, ADOPTER);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            String sql = invocation.getArgument(0, String.class);
+            if (sql.contains("INSERT INTO community_governance_audit")) {
+                throw new DataAccessResourceFailureException("forced direct audit failure");
+            }
+            return invocation.callRealMethod();
+        }).when(jdbc).update(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(Object[].class));
+        assertThatThrownBy(() -> mvc.perform(post("/api/v1/admin/posts/{id}/remove", directPost)
+                        .header("X-User-Id", ADMIN).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"应回滚\"}")))
+                .hasRootCauseInstanceOf(DataAccessResourceFailureException.class);
+        assertThat(jdbc.queryForMap("SELECT status,version FROM post WHERE id=?", directPost))
+                .containsEntry("status", "ACTIVE").containsEntry("version", 0);
+        assertThat(jdbc.queryForObject("SELECT visibility FROM timeline_entry WHERE source_id=?",
+                String.class, directPost)).isEqualTo("PUBLIC");
+        assertThatThrownBy(() -> mvc.perform(post("/api/v1/admin/comments/{id}/remove", directComment)
+                        .header("X-User-Id", ADMIN).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"应回滚\"}")))
+                .hasRootCauseInstanceOf(DataAccessResourceFailureException.class);
+        assertThat(jdbc.queryForObject("SELECT status FROM comment WHERE id=?", String.class,
+                directComment)).isEqualTo("ACTIVE");
+    }
+
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder publish(
             String text, String media, String user) {
         return post("/api/v1/animals/{animalId}/post-adoption-posts", ANIMAL)
                 .header("X-User-Id", user).header("Authorization", "Bearer test-token")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"textContent\":\"" + text + "\",\"media\":" + media + "}");
+    }
+
+    private String reportPost(String postId) throws Exception {
+        return jsonValue(mvc.perform(post("/api/v1/posts/{id}/reports", postId)
+                        .header("X-User-Id", ADOPTER).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\":\"回滚测试\"}"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(),
+                "reportId");
+    }
+
+    private void resolveRemove(String reportId) throws Exception {
+        mvc.perform(post("/api/v1/admin/content-reports/{id}/resolve", reportId)
+                .header("X-User-Id", ADMIN).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"action\":\"REMOVE\",\"resolutionNote\":\"触发回滚\"}"));
+    }
+
+    private void assertRemovalRolledBack(String postId, String reportId) {
+        assertThat(jdbc.queryForMap("SELECT status,version FROM post WHERE id=?", postId))
+                .containsEntry("status", "ACTIVE").containsEntry("version", 0);
+        assertThat(jdbc.queryForObject("SELECT visibility FROM timeline_entry WHERE source_id=?",
+                String.class, postId)).isEqualTo("PUBLIC");
+        assertThat(jdbc.queryForObject("SELECT status FROM community_content_report WHERE id=?",
+                String.class, reportId)).isEqualTo("OPEN");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM community_governance_audit "
+                + "WHERE resource_id=?", Integer.class, postId)).isZero();
     }
 
     private void insertAnimal(String identity, String adoption, String context) {

@@ -49,6 +49,21 @@ public final class CommunityDtos {
     public record CreateCommentRequest(@NotBlank @Size(max = 1000) String content) {
     }
 
+    public record ContentReportRequest(String description) {
+    }
+
+    public record ContentReportReceipt(
+            String reportId,
+            GovernanceResourceType resourceType,
+            String resourceId,
+            ContentReportStatus status,
+            Instant createdAt) {
+        static ContentReportReceipt from(ContentReport report) {
+            return new ContentReportReceipt(report.id(), report.resourceType(), report.resourceId(),
+                    report.status(), report.createdAt());
+        }
+    }
+
     public record AuthorResponse(String id, String displayName) {
         static AuthorResponse from(AuthorSummary author) {
             return new AuthorResponse(author.id(), author.displayName());

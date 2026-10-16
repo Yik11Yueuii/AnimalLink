@@ -14,7 +14,24 @@ public interface CommunityGovernanceRepository {
 
     int updatePostAdoptionTimelineVisibility(String postId, Visibility expected, Visibility target);
 
+    long countPostAdoptionTimelines(String postId, Visibility visibility);
+
     void insertAudit(CommunityGovernanceAudit audit);
+
+    void insertReport(ContentReport report);
+
+    Optional<ContentReport> lockReport(String reportId);
+
+    void updateReport(ContentReport report, int expectedVersion);
+
+    List<GovernanceReportView> findReports(ContentReportStatus status,
+                                           GovernanceResourceType resourceType,
+                                           String campusId, int limit, int offset);
+
+    long countReports(ContentReportStatus status, GovernanceResourceType resourceType,
+                      String campusId);
+
+    Optional<GovernanceReportView> findReport(String reportId);
 
     List<GovernancePostView> findPosts(PostStatus status, String campusId, PostType postType,
                                        int limit, int offset);

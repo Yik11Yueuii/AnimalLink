@@ -13,6 +13,12 @@ public final class CommunityGovernanceDtos {
     public record GovernanceReasonRequest(String reason) {
     }
 
+    public record ReportDismissRequest(String resolutionNote) {
+    }
+
+    public record ReportResolveRequest(ReportResolutionAction action, String resolutionNote) {
+    }
+
     public record PostTransitionResponse(String id, PostStatus status, int version,
                                          Instant updatedAt) {
         static PostTransitionResponse from(Post post) {
@@ -122,6 +128,35 @@ public final class CommunityGovernanceDtos {
             return new AuditResponse(audit.id(), audit.resourceType(), audit.resourceId(),
                     audit.action(), audit.fromState(), audit.toState(), audit.actorUserId(),
                     audit.reason(), audit.createdAt());
+        }
+    }
+
+    public record ReportQueueItem(
+            String reportId,
+            GovernanceResourceType resourceType,
+            String resourceId,
+            String reporterUserId,
+            String description,
+            ContentReportStatus status,
+            ReportResolutionAction resolutionAction,
+            String resolutionNote,
+            String reviewedByUserId,
+            Instant reviewedAt,
+            Instant createdAt,
+            Instant updatedAt,
+            String authorUserId,
+            String campusId,
+            String currentContentStatus,
+            String contentText,
+            PostStatus parentPostStatus) {
+        static ReportQueueItem from(GovernanceReportView view) {
+            ContentReport report = view.report();
+            return new ReportQueueItem(report.id(), report.resourceType(), report.resourceId(),
+                    report.reporterUserId(), report.description(), report.status(),
+                    report.resolutionAction(), report.resolutionNote(), report.reviewedByUserId(),
+                    report.reviewedAt(), report.createdAt(), report.updatedAt(),
+                    view.authorUserId(), view.campusId(), view.currentContentStatus(),
+                    view.contentText(), view.parentPostStatus());
         }
     }
 

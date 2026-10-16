@@ -11,11 +11,14 @@ import org.springframework.web.bind.annotation.*;
 public class CommunityController {
     private final CommunityApplicationService applicationService;
     private final CommunityQueryService queryService;
+    private final ContentReportService contentReportService;
 
     public CommunityController(CommunityApplicationService applicationService,
-                               CommunityQueryService queryService) {
+                               CommunityQueryService queryService,
+                               ContentReportService contentReportService) {
         this.applicationService = applicationService;
         this.queryService = queryService;
+        this.contentReportService = contentReportService;
     }
 
     @GetMapping("/campuses/{campusId}/feed")
@@ -66,6 +69,24 @@ public class CommunityController {
             @PathVariable("postId") String postId,
             @Valid @RequestBody CommunityDtos.CreateCommentRequest request) {
         return CommunityDtos.CommentResponse.from(applicationService.comment(postId, request.content()));
+    }
+
+    @PostMapping("/posts/{postId}/reports")
+    @ResponseStatus(HttpStatus.CREATED)
+    public CommunityDtos.ContentReportReceipt reportPost(
+            @PathVariable("postId") String postId,
+            @RequestBody CommunityDtos.ContentReportRequest request) {
+        return CommunityDtos.ContentReportReceipt.from(
+                contentReportService.reportPost(postId, request.description()));
+    }
+
+    @PostMapping("/comments/{commentId}/reports")
+    @ResponseStatus(HttpStatus.CREATED)
+    public CommunityDtos.ContentReportReceipt reportComment(
+            @PathVariable("commentId") String commentId,
+            @RequestBody CommunityDtos.ContentReportRequest request) {
+        return CommunityDtos.ContentReportReceipt.from(
+                contentReportService.reportComment(commentId, request.description()));
     }
 
     @PostMapping("/posts/{postId}/like")

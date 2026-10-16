@@ -31,12 +31,20 @@ public class CommunityGovernanceService {
         return changePost(postId, reason, GovernanceAction.RESTORE);
     }
 
+    public Post removePost(String postId, String reason) {
+        return changePost(postId, reason, GovernanceAction.REMOVE);
+    }
+
     public Comment hideComment(String commentId, String reason) {
         return changeComment(commentId, reason, GovernanceAction.HIDE);
     }
 
     public Comment restoreComment(String commentId, String reason) {
         return changeComment(commentId, reason, GovernanceAction.RESTORE);
+    }
+
+    public Comment removeComment(String commentId, String reason) {
+        return changeComment(commentId, reason, GovernanceAction.REMOVE);
     }
 
     public PageResult<GovernancePostView> posts(PostStatus status, String campusId,
@@ -88,39 +96,66 @@ public class CommunityGovernanceService {
         IdentityGateway.CurrentUser actor = authorization.requireAdministrator();
         String validId = IdRules.requireUuid(postId, "postId");
         String reason = reason(rawReason);
-        return Objects.requireNonNull(transactions.execute(status -> {
-            Post current = repository.lockPost(validId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Post 不存在"));
-            Post changed = action == GovernanceAction.HIDE ? current.hide() : current.restore();
-            repository.updatePostStatus(changed, current.status());
-            if (current.postType() == PostType.POST_ADOPTION) {
-                Visibility expected = action == GovernanceAction.HIDE
-                        ? Visibility.PUBLIC : Visibility.RESTRICTED;
-                Visibility target = action == GovernanceAction.HIDE
-                        ? Visibility.RESTRICTED : Visibility.PUBLIC;
-                if (repository.updatePostAdoptionTimelineVisibility(validId, expected, target) != 1) {
-                    throw new StateConflictException("POST_ADOPTION Timeline 状态不一致");
-                }
-            }
-            repository.insertAudit(audit(GovernanceResourceType.POST, validId, action,
-                    current.status().name(), changed.status().name(), actor.id(), reason));
-            return repository.lockPost(validId).orElseThrow();
-        }));
+        return Objects.requireNonNull(transactions.execute(status ->
+                changePostLocked(validId, reason, action, actor)));
     }
 
     private Comment changeComment(String commentId, String rawReason, GovernanceAction action) {
         IdentityGateway.CurrentUser actor = authorization.requireAdministrator();
         String validId = IdRules.requireUuid(commentId, "commentId");
         String reason = reason(rawReason);
-        return Objects.requireNonNull(transactions.execute(status -> {
-            Comment current = repository.lockComment(validId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Comment 不存在"));
-            Comment changed = action == GovernanceAction.HIDE ? current.hide() : current.restore();
-            repository.updateCommentStatus(changed, current.status());
-            repository.insertAudit(audit(GovernanceResourceType.COMMENT, validId, action,
-                    current.status().name(), changed.status().name(), actor.id(), reason));
-            return repository.lockComment(validId).orElseThrow();
-        }));
+        return Objects.requireNonNull(transactions.execute(status ->
+                changeCommentLocked(validId, reason, action, actor)));
+    }
+
+    Post changePostLocked(String postId, String reason, GovernanceAction action,
+                          IdentityGateway.CurrentUser actor) {
+        Post current = repository.lockPost(postId)
+                .orElseThrow(() -> new ResourceNotFoundException("Post 不存在"));
+        Post changed = switch (action) {
+            case HIDE -> current.hide();
+            case RESTORE -> current.restore();
+            case REMOVE -> current.remove();
+        };
+        repository.updatePostStatus(changed, current.status());
+        synchronizeTimeline(current, action);
+        repository.insertAudit(audit(GovernanceResourceType.POST, postId, action,
+                current.status().name(), changed.status().name(), actor.id(), reason));
+        return repository.lockPost(postId).orElseThrow();
+    }
+
+    Comment changeCommentLocked(String commentId, String reason, GovernanceAction action,
+                                IdentityGateway.CurrentUser actor) {
+        Comment current = repository.lockComment(commentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Comment 不存在"));
+        Comment changed = switch (action) {
+            case HIDE -> current.hide();
+            case RESTORE -> current.restore();
+            case REMOVE -> current.remove();
+        };
+        repository.updateCommentStatus(changed, current.status());
+        repository.insertAudit(audit(GovernanceResourceType.COMMENT, commentId, action,
+                current.status().name(), changed.status().name(), actor.id(), reason));
+        return repository.lockComment(commentId).orElseThrow();
+    }
+
+    private void synchronizeTimeline(Post current, GovernanceAction action) {
+        if (current.postType() != PostType.POST_ADOPTION) {
+            return;
+        }
+        if (action == GovernanceAction.REMOVE && current.status() == PostStatus.HIDDEN) {
+            if (repository.countPostAdoptionTimelines(current.id(), Visibility.RESTRICTED) != 1) {
+                throw new StateConflictException("POST_ADOPTION Timeline 状态不一致");
+            }
+            return;
+        }
+        Visibility expected = action == GovernanceAction.RESTORE
+                ? Visibility.RESTRICTED : Visibility.PUBLIC;
+        Visibility target = action == GovernanceAction.RESTORE
+                ? Visibility.PUBLIC : Visibility.RESTRICTED;
+        if (repository.updatePostAdoptionTimelineVisibility(current.id(), expected, target) != 1) {
+            throw new StateConflictException("POST_ADOPTION Timeline 状态不一致");
+        }
     }
 
     private PageResult<CommunityGovernanceAudit> audits(GovernanceResourceType resourceType,

@@ -56,6 +56,14 @@ public record Post(
                 visibility, PostStatus.ACTIVE, version, createdAt, Instant.now());
     }
 
+    public Post remove() {
+        if (status == PostStatus.REMOVED) {
+            throw new StateConflictException("Post 已被移除");
+        }
+        return new Post(id, campusId, animalId, relationId, authorUserId, postType, textContent,
+                visibility, PostStatus.REMOVED, version, createdAt, Instant.now());
+    }
+
     private static String required(String value) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException("textContent 不能为空");

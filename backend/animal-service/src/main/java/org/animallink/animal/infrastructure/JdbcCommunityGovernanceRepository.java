@@ -34,6 +34,28 @@ public class JdbcCommunityGovernanceRepository implements CommunityGovernanceRep
             FROM comment c
             JOIN post p ON p.id = c.post_id
             """;
+    private static final String REPORT_COLUMNS = """
+            r.id AS report_id, r.resource_type, r.resource_id, r.reporter_user_id,
+            r.description, r.status AS report_status, r.resolution_action, r.resolution_note,
+            r.reviewed_by_user_id, r.reviewed_at, r.version AS report_version,
+            r.created_at AS report_created_at, r.updated_at AS report_updated_at
+            """;
+    private static final String GOVERNANCE_REPORT_SELECT = """
+            SELECT %s,
+                   CASE WHEN r.resource_type = 'POST' THEN rp.author_user_id
+                        ELSE rc.author_user_id END AS resource_author_user_id,
+                   COALESCE(rp.campus_id, cp.campus_id) AS resource_campus_id,
+                   CASE WHEN r.resource_type = 'POST' THEN rp.status
+                        ELSE rc.status END AS current_content_status,
+                   CASE WHEN r.resource_type = 'POST' THEN rp.text_content
+                        ELSE rc.content END AS current_content_text,
+                   CASE WHEN r.resource_type = 'COMMENT' THEN cp.status
+                        ELSE NULL END AS parent_post_status
+            FROM community_content_report r
+            LEFT JOIN post rp ON r.resource_type = 'POST' AND rp.id = r.resource_id
+            LEFT JOIN comment rc ON r.resource_type = 'COMMENT' AND rc.id = r.resource_id
+            LEFT JOIN post cp ON rc.post_id = cp.id
+            """.formatted(REPORT_COLUMNS);
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -93,6 +115,18 @@ public class JdbcCommunityGovernanceRepository implements CommunityGovernanceRep
     }
 
     @Override
+    public long countPostAdoptionTimelines(String postId, Visibility visibility) {
+        Long value = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM timeline_entry
+                WHERE source_type = 'POST'
+                  AND source_id = ?
+                  AND entry_type = 'POST_ADOPTION_PUBLISHED'
+                  AND visibility = ?
+                """, Long.class, postId, visibility.name());
+        return value == null ? 0 : value;
+    }
+
+    @Override
     public void insertAudit(CommunityGovernanceAudit audit) {
         jdbcTemplate.update("""
                 INSERT INTO community_governance_audit
@@ -102,6 +136,74 @@ public class JdbcCommunityGovernanceRepository implements CommunityGovernanceRep
                 """, audit.id(), audit.resourceType().name(), audit.resourceId(),
                 audit.action().name(), audit.fromState(), audit.toState(), audit.actorUserId(),
                 audit.reason(), Timestamp.from(audit.createdAt()));
+    }
+
+    @Override
+    public void insertReport(ContentReport report) {
+        jdbcTemplate.update("""
+                INSERT INTO community_content_report
+                    (id, resource_type, resource_id, reporter_user_id, description, status,
+                     resolution_action, resolution_note, reviewed_by_user_id, reviewed_at,
+                     version, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, report.id(), report.resourceType().name(), report.resourceId(),
+                report.reporterUserId(), report.description(), report.status().name(),
+                enumName(report.resolutionAction()), report.resolutionNote(),
+                report.reviewedByUserId(), timestamp(report.reviewedAt()), report.version(),
+                Timestamp.from(report.createdAt()), Timestamp.from(report.updatedAt()));
+    }
+
+    @Override
+    public Optional<ContentReport> lockReport(String reportId) {
+        return optional("SELECT " + REPORT_COLUMNS
+                        + " FROM community_content_report r WHERE r.id = ? FOR UPDATE",
+                REPORT_MAPPER, reportId);
+    }
+
+    @Override
+    public void updateReport(ContentReport report, int expectedVersion) {
+        int updated = jdbcTemplate.update("""
+                UPDATE community_content_report
+                SET status = ?, resolution_action = ?, resolution_note = ?,
+                    reviewed_by_user_id = ?, reviewed_at = ?, version = version + 1,
+                    updated_at = CURRENT_TIMESTAMP(6)
+                WHERE id = ? AND status = 'OPEN' AND version = ?
+                """, report.status().name(), enumName(report.resolutionAction()),
+                report.resolutionNote(), report.reviewedByUserId(),
+                timestamp(report.reviewedAt()), report.id(), expectedVersion);
+        if (updated != 1) {
+            throw new StateConflictException("举报已被其他治理操作修改，请刷新后重试");
+        }
+    }
+
+    @Override
+    public List<GovernanceReportView> findReports(ContentReportStatus status,
+                                                   GovernanceResourceType resourceType,
+                                                   String campusId, int limit, int offset) {
+        Sql sql = reportFilter(GOVERNANCE_REPORT_SELECT, status, resourceType, campusId);
+        sql.text.append(" ORDER BY r.created_at DESC, r.id DESC LIMIT ? OFFSET ?");
+        sql.args.add(limit);
+        sql.args.add(offset);
+        return jdbcTemplate.query(sql.text.toString(), REPORT_VIEW_MAPPER, sql.args.toArray());
+    }
+
+    @Override
+    public long countReports(ContentReportStatus status, GovernanceResourceType resourceType,
+                             String campusId) {
+        Sql sql = reportFilter("""
+                SELECT COUNT(*)
+                FROM community_content_report r
+                LEFT JOIN post rp ON r.resource_type = 'POST' AND rp.id = r.resource_id
+                LEFT JOIN comment rc ON r.resource_type = 'COMMENT' AND rc.id = r.resource_id
+                LEFT JOIN post cp ON rc.post_id = cp.id
+                """, status, resourceType, campusId);
+        return count(sql);
+    }
+
+    @Override
+    public Optional<GovernanceReportView> findReport(String reportId) {
+        return optional(GOVERNANCE_REPORT_SELECT + " WHERE r.id = ?", REPORT_VIEW_MAPPER,
+                reportId);
     }
 
     @Override
@@ -219,6 +321,25 @@ public class JdbcCommunityGovernanceRepository implements CommunityGovernanceRep
         return sql;
     }
 
+    private Sql reportFilter(String select, ContentReportStatus status,
+                             GovernanceResourceType resourceType, String campusId) {
+        Sql sql = new Sql(select);
+        sql.text.append(" WHERE 1=1");
+        if (status != null) {
+            sql.text.append(" AND r.status = ?");
+            sql.args.add(status.name());
+        }
+        if (resourceType != null) {
+            sql.text.append(" AND r.resource_type = ?");
+            sql.args.add(resourceType.name());
+        }
+        if (campusId != null) {
+            sql.text.append(" AND COALESCE(rp.campus_id, cp.campus_id) = ?");
+            sql.args.add(campusId);
+        }
+        return sql;
+    }
+
     private long count(Sql sql) {
         Long value = jdbcTemplate.queryForObject(sql.text.toString(), Long.class,
                 sql.args.toArray());
@@ -232,6 +353,14 @@ public class JdbcCommunityGovernanceRepository implements CommunityGovernanceRep
     private static Instant instant(ResultSet rs, String column) throws SQLException {
         Timestamp value = rs.getTimestamp(column);
         return value == null ? null : value.toInstant();
+    }
+
+    private static Timestamp timestamp(Instant value) {
+        return value == null ? null : Timestamp.from(value);
+    }
+
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 
     private static Post post(ResultSet rs) throws SQLException {
@@ -273,6 +402,24 @@ public class JdbcCommunityGovernanceRepository implements CommunityGovernanceRep
                     rs.getString("from_state"), rs.getString("to_state"),
                     rs.getString("actor_user_id"), rs.getString("reason"),
                     instant(rs, "created_at"));
+    private static final RowMapper<ContentReport> REPORT_MAPPER = (rs, rowNum) ->
+            new ContentReport(rs.getString("report_id"),
+                    GovernanceResourceType.valueOf(rs.getString("resource_type")),
+                    rs.getString("resource_id"), rs.getString("reporter_user_id"),
+                    rs.getString("description"),
+                    ContentReportStatus.valueOf(rs.getString("report_status")),
+                    rs.getString("resolution_action") == null ? null
+                            : ReportResolutionAction.valueOf(rs.getString("resolution_action")),
+                    rs.getString("resolution_note"), rs.getString("reviewed_by_user_id"),
+                    instant(rs, "reviewed_at"), rs.getInt("report_version"),
+                    instant(rs, "report_created_at"), instant(rs, "report_updated_at"));
+    private static final RowMapper<GovernanceReportView> REPORT_VIEW_MAPPER = (rs, rowNum) -> {
+        String parentStatus = rs.getString("parent_post_status");
+        return new GovernanceReportView(REPORT_MAPPER.mapRow(rs, rowNum),
+                rs.getString("resource_author_user_id"), rs.getString("resource_campus_id"),
+                rs.getString("current_content_status"), rs.getString("current_content_text"),
+                parentStatus == null ? null : PostStatus.valueOf(parentStatus));
+    };
 
     private static final class Sql {
         private final StringBuilder text;

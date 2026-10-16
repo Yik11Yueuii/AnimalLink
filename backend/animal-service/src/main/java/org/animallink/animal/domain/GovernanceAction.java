@@ -2,5 +2,6 @@ package org.animallink.animal.domain;
 
 public enum GovernanceAction {
     HIDE,
-    RESTORE
+    RESTORE,
+    REMOVE
 }

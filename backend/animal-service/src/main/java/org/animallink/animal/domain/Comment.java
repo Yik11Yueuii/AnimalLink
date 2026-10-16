@@ -35,4 +35,12 @@ public record Comment(
         return new Comment(id, postId, authorUserId, content, CommentStatus.ACTIVE,
                 createdAt, Instant.now());
     }
+
+    public Comment remove() {
+        if (status == CommentStatus.REMOVED) {
+            throw new StateConflictException("Comment 已被移除");
+        }
+        return new Comment(id, postId, authorUserId, content, CommentStatus.REMOVED,
+                createdAt, Instant.now());
+    }
 }

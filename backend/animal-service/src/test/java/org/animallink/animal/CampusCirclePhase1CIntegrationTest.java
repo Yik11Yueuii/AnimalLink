@@ -2,6 +2,7 @@ package org.animallink.animal;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -69,9 +70,11 @@ class CampusCirclePhase1CIntegrationTest {
 
     @Autowired MockMvc mockMvc;
     @Autowired JdbcTemplate jdbcTemplate;
+    @Autowired ObjectMapper objectMapper;
 
     @BeforeEach
     void resetDatabase() {
+        jdbcTemplate.update("DELETE FROM community_content_report");
         jdbcTemplate.update("DELETE FROM community_governance_audit");
         jdbcTemplate.update("DELETE FROM post_like");
         jdbcTemplate.update("DELETE FROM comment");
@@ -182,12 +185,13 @@ class CampusCirclePhase1CIntegrationTest {
         mockMvc.perform(post("/api/v1/posts/{postId}/like", postId)
                         .header("X-User-Id", SOCIAL_ID))
                 .andExpect(status().isConflict());
+        jdbcTemplate.update("INSERT INTO post_like (user_id, post_id) VALUES (?, ?)", NON_MEMBER_ID, postId);
         mockMvc.perform(delete("/api/v1/posts/{postId}/like", postId)
                         .header("X-User-Id", SOCIAL_ID))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.count").value(0));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.count").value(1));
         mockMvc.perform(delete("/api/v1/posts/{postId}/like", postId)
                         .header("X-User-Id", SOCIAL_ID))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.count").value(0));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.count").value(1));
     }
 
     @Test
@@ -369,6 +373,12 @@ class CampusCirclePhase1CIntegrationTest {
                 .andExpect(jsonPath("$.count").value(0));
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM post_like WHERE post_id = ?",
                 Integer.class, postId)).isOne();
+        assertThat(jdbcTemplate.queryForList("SELECT user_id FROM post_like WHERE post_id = ?",
+                String.class, postId)).containsExactly(NON_MEMBER_ID);
+        mockMvc.perform(delete("/api/v1/posts/{postId}/like", postId)
+                        .header("X-User-Id", SOCIAL_ID))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.active").value(false))
+                .andExpect(jsonPath("$.count").value(0));
 
         mockMvc.perform(post("/api/v1/admin/posts/{postId}/restore", postId)
                         .header("X-User-Id", ADMIN_ID).contentType(MediaType.APPLICATION_JSON)
@@ -439,8 +449,10 @@ class CampusCirclePhase1CIntegrationTest {
 
         assertInvalidReasons("/api/v1/admin/posts/{id}/hide", activePost);
         assertInvalidReasons("/api/v1/admin/posts/{id}/restore", hiddenPost);
+        assertInvalidReasons("/api/v1/admin/posts/{id}/remove", activePost);
         assertInvalidReasons("/api/v1/admin/comments/{id}/hide", activeComment);
         assertInvalidReasons("/api/v1/admin/comments/{id}/restore", hiddenComment);
+        assertInvalidReasons("/api/v1/admin/comments/{id}/remove", activeComment);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM community_governance_audit",
                 Integer.class)).isZero();
     }
@@ -467,6 +479,7 @@ class CampusCirclePhase1CIntegrationTest {
     void everyGovernanceRouteUsesTheSameAuthorizationGate() throws Exception {
         String postId = insertPost(CAMPUS_ID, ANIMAL_ID, MEMBER_ID, "授权 Post", "ACTIVE");
         String commentId = insertComment(postId, "授权 Comment", "ACTIVE");
+        String reportId = UUID.randomUUID().toString();
         List<Supplier<org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder>> routes = List.of(
                 () -> get("/api/v1/admin/posts"),
                 () -> get("/api/v1/admin/posts/{id}", postId),
@@ -476,14 +489,321 @@ class CampusCirclePhase1CIntegrationTest {
                 () -> get("/api/v1/admin/comments/{id}/governance-actions", commentId),
                 () -> governanceRequest("/api/v1/admin/posts/{id}/hide", postId),
                 () -> governanceRequest("/api/v1/admin/posts/{id}/restore", postId),
+                () -> governanceRequest("/api/v1/admin/posts/{id}/remove", postId),
                 () -> governanceRequest("/api/v1/admin/comments/{id}/hide", commentId),
-                () -> governanceRequest("/api/v1/admin/comments/{id}/restore", commentId));
+                () -> governanceRequest("/api/v1/admin/comments/{id}/restore", commentId),
+                () -> governanceRequest("/api/v1/admin/comments/{id}/remove", commentId),
+                () -> get("/api/v1/admin/content-reports"),
+                () -> get("/api/v1/admin/content-reports/{id}", reportId),
+                () -> post("/api/v1/admin/content-reports/{id}/dismiss", reportId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"resolutionNote\":\"授权验证\"}"),
+                () -> post("/api/v1/admin/content-reports/{id}/resolve", reportId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"action\":\"NONE\",\"resolutionNote\":\"授权验证\"}"));
         for (Supplier<org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder> route : routes) {
             mockMvc.perform(route.get()).andExpect(status().isUnauthorized());
             mockMvc.perform(route.get().header("X-User-Id", MEMBER_ID)).andExpect(status().isForbidden());
             mockMvc.perform(route.get().header("X-User-Id", INACTIVE_ADMIN_ID))
                     .andExpect(status().isForbidden());
         }
+    }
+
+    @Test
+    void contentReportsEnforceVisibilityUniquenessLifecycleAuthorizationAndPrivacy() throws Exception {
+        String postId = insertPost(CAMPUS_ID, ANIMAL_ID, MEMBER_ID, "可举报内容", "ACTIVE");
+        String commentId = insertComment(postId, "可举报评论", "ACTIVE");
+        String hiddenPost = insertPost(CAMPUS_ID, ANIMAL_ID, MEMBER_ID, "隐藏内容", "HIDDEN");
+        String hiddenComment = insertComment(postId, "隐藏评论", "HIDDEN");
+
+        mockMvc.perform(reportPost(postId, null, "未登录"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(reportPost(postId, INACTIVE_ADMIN_ID, "账号不可用"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(reportPost(postId, SOCIAL_ID, "   "))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        mockMvc.perform(reportPost(postId, SOCIAL_ID, "字".repeat(1001)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        String first = reportId(mockMvc.perform(reportPost(postId, SOCIAL_ID, "  需要复核  "))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.resourceType").value("POST"))
+                .andExpect(jsonPath("$.resourceId").value(postId))
+                .andExpect(jsonPath("$.status").value("OPEN"))
+                .andExpect(jsonPath("$.description").doesNotExist())
+                .andExpect(jsonPath("$.reviewedByUserId").doesNotExist())
+                .andReturn().getResponse().getContentAsString());
+        mockMvc.perform(reportPost(postId, SOCIAL_ID, "重复"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("STATE_CONFLICT"));
+        String selfReport = reportId(mockMvc.perform(reportPost(postId, MEMBER_ID, "作者自报"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        String commentReport = reportId(mockMvc.perform(reportComment(commentId, SOCIAL_ID, "评论问题"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.resourceType").value("COMMENT"))
+                .andReturn().getResponse().getContentAsString());
+
+        mockMvc.perform(reportPost(hiddenPost, SOCIAL_ID, "不可探测"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(reportComment(hiddenComment, SOCIAL_ID, "不可探测"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/v1/admin/posts/{postId}/hide", postId)
+                        .header("X-User-Id", ADMIN_ID).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"父内容隐藏\"}"))
+                .andExpect(status().isOk());
+        String child = insertComment(postId, "父内容隐藏后的遗留评论", "ACTIVE");
+        mockMvc.perform(reportComment(child, SOCIAL_ID, "不可探测父状态"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/v1/admin/posts/{postId}/restore", postId)
+                        .header("X-User-Id", ADMIN_ID).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"继续举报测试\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/admin/content-reports"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/admin/content-reports").header("X-User-Id", MEMBER_ID))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/admin/content-reports").header("X-User-Id", ADMIN_ID)
+                        .param("resourceType", "POST").param("campusId", CAMPUS_ID))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(2));
+        mockMvc.perform(get("/api/v1/admin/content-reports/{id}", first)
+                        .header("X-User-Id", ADMIN_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reporterUserId").value(SOCIAL_ID))
+                .andExpect(jsonPath("$.description").value("需要复核"))
+                .andExpect(jsonPath("$.contentText").value("可举报内容"))
+                .andExpect(jsonPath("$.currentContentStatus").value("ACTIVE"));
+        mockMvc.perform(get("/api/v1/posts/{postId}", postId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reportId").doesNotExist())
+                .andExpect(jsonPath("$.reportCount").doesNotExist());
+
+        mockMvc.perform(post("/api/v1/admin/content-reports/{id}/dismiss", first)
+                        .header("X-User-Id", ADMIN_ID).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"resolutionNote\":\"  不需要治理  \"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("DISMISSED"))
+                .andExpect(jsonPath("$.resolutionAction").doesNotExist())
+                .andExpect(jsonPath("$.resolutionNote").value("不需要治理"));
+        mockMvc.perform(post("/api/v1/admin/content-reports/{id}/dismiss", first)
+                        .header("X-User-Id", ADMIN_ID).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"resolutionNote\":\"重复\"}"))
+                .andExpect(status().isConflict());
+        String newReport = reportId(mockMvc.perform(reportPost(postId, SOCIAL_ID, "新问题"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        mockMvc.perform(post("/api/v1/admin/content-reports/{id}/resolve", newReport)
+                        .header("X-User-Id", ADMIN_ID).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"action\":\"HIDE\",\"resolutionNote\":\"举报驱动隐藏\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.currentContentStatus")
+                        .value("HIDDEN"));
+        mockMvc.perform(post("/api/v1/admin/posts/{id}/restore", postId)
+                        .header("X-User-Id", ADMIN_ID).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"恢复继续测试\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/admin/content-reports/{id}/resolve", selfReport)
+                        .header("X-User-Id", ADMIN_ID).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"action\":\"NONE\",\"resolutionNote\":\"无需变更内容\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("RESOLVED"))
+                .andExpect(jsonPath("$.resolutionAction").value("NONE"));
+        assertThat(jdbcTemplate.queryForObject("SELECT version FROM community_content_report WHERE id=?",
+                Integer.class, first)).isOne();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM community_governance_audit",
+                Integer.class)).isEqualTo(4);
+        mockMvc.perform(post("/api/v1/admin/content-reports/{id}/resolve", commentReport)
+                        .header("X-User-Id", ADMIN_ID).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"action\":\"HIDE\",\"resolutionNote\":\"隐藏评论\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("RESOLVED"))
+                .andExpect(jsonPath("$.currentContentStatus").value("HIDDEN"));
+        mockMvc.perform(post("/api/v1/admin/content-reports/{id}/resolve", commentReport)
+                        .header("X-User-Id", ADMIN_ID).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"action\":\"NONE\",\"resolutionNote\":\"重复\"}"))
+                .andExpect(status().isConflict());
+        mockMvc.perform(post("/api/v1/admin/comments/{id}/restore", commentId)
+                        .header("X-User-Id", ADMIN_ID).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"复核恢复\"}"))
+                .andExpect(status().isOk());
+        String secondCommentReport = reportId(mockMvc.perform(
+                        reportComment(commentId, SOCIAL_ID, "再次出现问题"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        mockMvc.perform(post("/api/v1/admin/content-reports/{id}/resolve", secondCommentReport)
+                        .header("X-User-Id", ADMIN_ID).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"action\":\"REMOVE\",\"resolutionNote\":\"终态移除评论\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.currentContentStatus").value("REMOVED"));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM community_governance_audit "
+                + "WHERE resource_id=? AND `action`='REMOVE'", Integer.class, commentId)).isOne();
+    }
+
+    @Test
+    void reportDrivenAndDirectRemovalAreTerminalRetainHistoryAndProtectPublicReads() throws Exception {
+        String postId = insertPost(CAMPUS_ID, ANIMAL_ID, MEMBER_ID, "终态移除内容", "ACTIVE");
+        String childComment = insertComment(postId, "保留状态的子评论", "ACTIVE");
+        jdbcTemplate.update("INSERT INTO post_media "
+                        + "(id,post_id,object_key,content_type,media_type,size_bytes,sort_order,visibility) "
+                        + "VALUES (?,?, 'phase5f/retained.jpg','image/jpeg','IMAGE',12,0,'PUBLIC')",
+                UUID.randomUUID().toString(), postId);
+        jdbcTemplate.update("INSERT INTO post_like(user_id,post_id) VALUES (?,?)", SOCIAL_ID, postId);
+        jdbcTemplate.update("INSERT INTO post_like(user_id,post_id) VALUES (?,?)", NON_MEMBER_ID, postId);
+
+        String reportId = reportId(mockMvc.perform(reportPost(postId, SOCIAL_ID, "应移除"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        String relatedOpen = reportId(mockMvc.perform(reportPost(postId, MEMBER_ID, "独立举报"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        mockMvc.perform(post("/api/v1/admin/content-reports/{id}/resolve", reportId)
+                        .header("X-User-Id", ADMIN_ID).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"action\":\"REMOVE\",\"resolutionNote\":\"严重违规\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("RESOLVED"))
+                .andExpect(jsonPath("$.currentContentStatus").value("REMOVED"));
+        assertThat(jdbcTemplate.queryForObject("SELECT status FROM community_content_report WHERE id=?",
+                String.class, relatedOpen)).isEqualTo("OPEN");
+
+        assertThat(jdbcTemplate.queryForMap("SELECT status,version FROM post WHERE id=?", postId))
+                .containsEntry("status", "REMOVED").containsEntry("version", 1);
+        assertThat(jdbcTemplate.queryForObject("SELECT status FROM comment WHERE id=?",
+                String.class, childComment)).isEqualTo("ACTIVE");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM post_media WHERE post_id=?",
+                Integer.class, postId)).isOne();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM post_like WHERE post_id=?",
+                Integer.class, postId)).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM community_governance_audit "
+                + "WHERE resource_id=? AND `action`='REMOVE' AND from_state='ACTIVE' AND to_state='REMOVED'",
+                Integer.class, postId)).isOne();
+        mockMvc.perform(get("/api/v1/posts/{id}", postId)).andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/posts/{id}/comments", postId)).andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/v1/posts/{id}/like", postId).header("X-User-Id", SOCIAL_ID))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(delete("/api/v1/posts/{id}/like", postId).header("X-User-Id", SOCIAL_ID))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.active").value(false))
+                .andExpect(jsonPath("$.count").value(0));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM post_like WHERE post_id=?",
+                Integer.class, postId)).isOne();
+        mockMvc.perform(get("/api/v1/admin/posts/{id}", postId).header("X-User-Id", ADMIN_ID))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("REMOVED"))
+                .andExpect(jsonPath("$.media[0].objectKey").doesNotExist());
+        for (String action : List.of("hide", "restore", "remove")) {
+            mockMvc.perform(post("/api/v1/admin/posts/{id}/" + action, postId)
+                            .header("X-User-Id", ADMIN_ID).contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"reason\":\"终态不可修改\"}"))
+                    .andExpect(status().isConflict());
+        }
+
+        String hiddenPost = insertPost(CAMPUS_ID, ANIMAL_ID, MEMBER_ID, "历史隐藏", "HIDDEN");
+        mockMvc.perform(post("/api/v1/admin/posts/{id}/remove", hiddenPost)
+                        .header("X-User-Id", ADMIN_ID).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"终态治理\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("REMOVED"));
+        String hiddenComment = insertComment(hiddenPost, "历史隐藏评论", "HIDDEN");
+        mockMvc.perform(post("/api/v1/admin/comments/{id}/remove", hiddenComment)
+                        .header("X-User-Id", ADMIN_ID).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"终态治理\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("REMOVED"));
+        mockMvc.perform(get("/api/v1/admin/comments/{id}", hiddenComment)
+                        .header("X-User-Id", ADMIN_ID))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("REMOVED"))
+                .andExpect(jsonPath("$.parentPostStatus").value("REMOVED"));
+        for (String action : List.of("hide", "restore", "remove")) {
+            mockMvc.perform(post("/api/v1/admin/comments/{id}/" + action, hiddenComment)
+                            .header("X-User-Id", ADMIN_ID).contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"reason\":\"终态不可修改\"}"))
+                    .andExpect(status().isConflict());
+        }
+    }
+
+    @Test
+    void removedPostsAllowCallerUnlikeWithoutLeakingAggregatesForDirectAndReportRemoval() throws Exception {
+        String directPostId = insertPost(CAMPUS_ID, ANIMAL_ID, MEMBER_ID, "直接移除点赞清理", "ACTIVE");
+        jdbcTemplate.update("INSERT INTO post_like(user_id,post_id) VALUES (?,?)", SOCIAL_ID, directPostId);
+        jdbcTemplate.update("INSERT INTO post_like(user_id,post_id) VALUES (?,?)", NON_MEMBER_ID, directPostId);
+        mockMvc.perform(post("/api/v1/admin/posts/{id}/remove", directPostId)
+                        .header("X-User-Id", ADMIN_ID).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"直接移除\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("REMOVED"));
+        assertRemovedUnlikeContract(directPostId, null);
+
+        String reportedPostId = insertPost(CAMPUS_ID, ANIMAL_ID, MEMBER_ID, "举报移除点赞清理", "ACTIVE");
+        jdbcTemplate.update("INSERT INTO post_like(user_id,post_id) VALUES (?,?)", SOCIAL_ID, reportedPostId);
+        jdbcTemplate.update("INSERT INTO post_like(user_id,post_id) VALUES (?,?)", NON_MEMBER_ID, reportedPostId);
+        String reportId = reportId(mockMvc.perform(reportPost(reportedPostId, SOCIAL_ID, "请求移除"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        mockMvc.perform(post("/api/v1/admin/content-reports/{id}/resolve", reportId)
+                        .header("X-User-Id", ADMIN_ID).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"action\":\"REMOVE\",\"resolutionNote\":\"举报移除\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.currentContentStatus").value("REMOVED"));
+        assertRemovedUnlikeContract(reportedPostId, reportId);
+    }
+
+    @Test
+    void concurrentReportsAndRemovalsSerializeWithoutDuplicateRowsOrAudits() throws Exception {
+        String reportPostId = insertPost(CAMPUS_ID, ANIMAL_ID, MEMBER_ID, "并发举报", "ACTIVE");
+        CountDownLatch reportStart = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            List<Future<Integer>> sameReporter = List.of(
+                    executor.submit(() -> reportStatus(reportPostId, SOCIAL_ID, reportStart)),
+                    executor.submit(() -> reportStatus(reportPostId, SOCIAL_ID, reportStart)));
+            reportStart.countDown();
+            assertThat(statuses(sameReporter)).containsExactly(201, 409);
+        } finally {
+            executor.shutdownNow();
+        }
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM community_content_report "
+                + "WHERE resource_id=? AND status='OPEN'", Integer.class, reportPostId)).isOne();
+
+        String differentReporters = insertPost(CAMPUS_ID, ANIMAL_ID, MEMBER_ID,
+                "不同举报人", "ACTIVE");
+        CountDownLatch differentStart = new CountDownLatch(1);
+        ExecutorService differentExecutor = Executors.newFixedThreadPool(2);
+        try {
+            List<Future<Integer>> results = List.of(
+                    differentExecutor.submit(() -> reportStatus(differentReporters, SOCIAL_ID,
+                            differentStart)),
+                    differentExecutor.submit(() -> reportStatus(differentReporters, MEMBER_ID,
+                            differentStart)));
+            differentStart.countDown();
+            assertThat(statuses(results)).containsExactly(201, 201);
+        } finally {
+            differentExecutor.shutdownNow();
+        }
+
+        String removePostId = insertPost(CAMPUS_ID, ANIMAL_ID, MEMBER_ID, "并发移除", "ACTIVE");
+        CountDownLatch removeStart = new CountDownLatch(1);
+        ExecutorService removeExecutor = Executors.newFixedThreadPool(2);
+        try {
+            List<Future<Integer>> results = List.of(
+                    removeExecutor.submit(() -> removeStatus(removePostId, removeStart)),
+                    removeExecutor.submit(() -> removeStatus(removePostId, removeStart)));
+            removeStart.countDown();
+            assertThat(statuses(results)).containsExactly(200, 409);
+        } finally {
+            removeExecutor.shutdownNow();
+        }
+        assertThat(jdbcTemplate.queryForObject("SELECT status FROM post WHERE id=?",
+                String.class, removePostId)).isEqualTo("REMOVED");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM community_governance_audit "
+                + "WHERE resource_id=? AND `action`='REMOVE'", Integer.class, removePostId)).isOne();
+
+        assertConcurrentMixedRemoval("ACTIVE", "hide");
+        assertConcurrentMixedRemoval("HIDDEN", "restore");
+
+        String commentParent = insertPost(CAMPUS_ID, ANIMAL_ID, MEMBER_ID,
+                "评论并发移除", "ACTIVE");
+        String commentId = insertComment(commentParent, "并发移除评论", "ACTIVE");
+        CountDownLatch commentStart = new CountDownLatch(1);
+        ExecutorService commentExecutor = Executors.newFixedThreadPool(2);
+        try {
+            List<Future<Integer>> results = List.of(
+                    commentExecutor.submit(() -> removeCommentStatus(commentId, commentStart)),
+                    commentExecutor.submit(() -> removeCommentStatus(commentId, commentStart)));
+            commentStart.countDown();
+            assertThat(statuses(results)).containsExactly(200, 409);
+        } finally {
+            commentExecutor.shutdownNow();
+        }
+        assertThat(jdbcTemplate.queryForObject("SELECT status FROM comment WHERE id=?",
+                String.class, commentId)).isEqualTo("REMOVED");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM community_governance_audit "
+                + "WHERE resource_id=? AND `action`='REMOVE'", Integer.class, commentId)).isOne();
     }
 
     @Test
@@ -508,6 +828,53 @@ class CampusCirclePhase1CIntegrationTest {
                 VALUES (?, ?, ?, '无效 Post', 'ACTIVE')
                 """, UUID.randomUUID().toString(), UUID.randomUUID().toString(), MEMBER_ID))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    private void assertRemovedUnlikeContract(String postId, String reportId) throws Exception {
+        var postBeforeUnlike = jdbcTemplate.queryForMap(
+                "SELECT status, version FROM post WHERE id = ?", postId);
+        int auditsBeforeUnlike = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM community_governance_audit WHERE resource_id = ?",
+                Integer.class, postId);
+        Integer reportVersionBeforeUnlike = reportId == null ? null : jdbcTemplate.queryForObject(
+                "SELECT version FROM community_content_report WHERE id = ?", Integer.class, reportId);
+
+        mockMvc.perform(get("/api/v1/posts/{id}", postId)).andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/v1/posts/{id}/like", postId).header("X-User-Id", SOCIAL_ID))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(delete("/api/v1/posts/{id}/like", postId).header("X-User-Id", SOCIAL_ID))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.active").value(false))
+                .andExpect(jsonPath("$.count").value(0))
+                .andExpect(jsonPath("$.textContent").doesNotExist())
+                .andExpect(jsonPath("$.status").doesNotExist())
+                .andExpect(jsonPath("$.author").doesNotExist())
+                .andExpect(jsonPath("$.animal").doesNotExist())
+                .andExpect(jsonPath("$.relationId").doesNotExist())
+                .andExpect(jsonPath("$.governanceReason").doesNotExist());
+        assertThat(jdbcTemplate.queryForList("SELECT user_id FROM post_like WHERE post_id = ?",
+                String.class, postId)).containsExactly(NON_MEMBER_ID);
+        assertThat(jdbcTemplate.queryForMap("SELECT status, version FROM post WHERE id = ?", postId))
+                .isEqualTo(postBeforeUnlike);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM community_governance_audit WHERE resource_id = ?",
+                Integer.class, postId)).isEqualTo(auditsBeforeUnlike);
+        if (reportId == null) {
+            assertThat(jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM community_content_report WHERE resource_id = ?",
+                    Integer.class, postId)).isZero();
+        } else {
+            assertThat(jdbcTemplate.queryForObject(
+                    "SELECT version FROM community_content_report WHERE id = ?", Integer.class, reportId))
+                    .isEqualTo(reportVersionBeforeUnlike);
+        }
+
+        mockMvc.perform(delete("/api/v1/posts/{id}/like", postId).header("X-User-Id", SOCIAL_ID))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.active").value(false))
+                .andExpect(jsonPath("$.count").value(0));
+        assertThat(jdbcTemplate.queryForList("SELECT user_id FROM post_like WHERE post_id = ?",
+                String.class, postId)).containsExactly(NON_MEMBER_ID);
+        mockMvc.perform(get("/api/v1/admin/posts/{id}", postId).header("X-User-Id", ADMIN_ID))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("REMOVED"));
     }
 
     private void insertAnimal(String id, String campusId, String name, String species, String status) {
@@ -553,6 +920,88 @@ class CampusCirclePhase1CIntegrationTest {
                         .header("X-User-Id", ADMIN_ID).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"reason\":\"并发隐藏评论\"}"))
                 .andReturn().getResponse().getStatus();
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder reportPost(
+            String postId, String userId, String description) {
+        var request = post("/api/v1/posts/{postId}/reports", postId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"description\":\"" + description + "\"}");
+        return userId == null ? request : request.header("X-User-Id", userId);
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder reportComment(
+            String commentId, String userId, String description) {
+        return post("/api/v1/comments/{commentId}/reports", commentId)
+                .header("X-User-Id", userId).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"description\":\"" + description + "\"}");
+    }
+
+    private String reportId(String json) throws IOException {
+        return objectMapper.readTree(json).path("reportId").asText();
+    }
+
+    private int reportStatus(String postId, String userId, CountDownLatch start) throws Exception {
+        start.await();
+        return mockMvc.perform(reportPost(postId, userId, "并发举报"))
+                .andReturn().getResponse().getStatus();
+    }
+
+    private int removeStatus(String postId, CountDownLatch start) throws Exception {
+        start.await();
+        return mockMvc.perform(post("/api/v1/admin/posts/{id}/remove", postId)
+                        .header("X-User-Id", ADMIN_ID).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"并发移除\"}"))
+                .andReturn().getResponse().getStatus();
+    }
+
+    private int removeCommentStatus(String commentId, CountDownLatch start) throws Exception {
+        start.await();
+        return mockMvc.perform(post("/api/v1/admin/comments/{id}/remove", commentId)
+                        .header("X-User-Id", ADMIN_ID).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"并发移除\"}"))
+                .andReturn().getResponse().getStatus();
+    }
+
+    private void assertConcurrentMixedRemoval(String initialStatus, String competingAction)
+            throws Exception {
+        String postId = insertPost(CAMPUS_ID, ANIMAL_ID, MEMBER_ID,
+                "并发" + competingAction, initialStatus);
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            List<Future<Integer>> results = List.of(
+                    executor.submit(() -> removeStatus(postId, start)),
+                    executor.submit(() -> governanceActionStatus(postId, competingAction, start)));
+            start.countDown();
+            List<Integer> values = statuses(results);
+            assertThat(values).allMatch(value -> value == 200 || value == 409).contains(200);
+        } finally {
+            executor.shutdownNow();
+        }
+        assertThat(jdbcTemplate.queryForObject("SELECT status FROM post WHERE id=?",
+                String.class, postId)).isEqualTo("REMOVED");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM community_governance_audit "
+                + "WHERE resource_id=? AND `action`='REMOVE'", Integer.class, postId)).isOne();
+    }
+
+    private int governanceActionStatus(String postId, String action, CountDownLatch start)
+            throws Exception {
+        start.await();
+        return mockMvc.perform(post("/api/v1/admin/posts/{id}/" + action, postId)
+                        .header("X-User-Id", ADMIN_ID).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"并发治理\"}"))
+                .andReturn().getResponse().getStatus();
+    }
+
+    private List<Integer> statuses(List<Future<Integer>> futures) {
+        return futures.stream().map(result -> {
+            try {
+                return result.get();
+            } catch (Exception exception) {
+                throw new AssertionError(exception);
+            }
+        }).sorted().toList();
     }
 
     private void assertInvalidReasons(String path, String id) throws Exception {
