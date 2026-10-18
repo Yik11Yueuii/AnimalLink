@@ -1,19 +1,24 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { Bell, CollectionTag, DocumentChecked, Files, FirstAidKit, House, School, UserFilled } from '@element-plus/icons-vue'
+import { Bell, CollectionTag, DocumentChecked, Files, FirstAidKit, House, Menu, School, UserFilled } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const isCollapsed = ref(false)
 const mobileNavigationOpen = ref(false)
+const mobileToggle = ref<{ $el: HTMLButtonElement }>()
 const pageTitle = computed(() => route.meta.title ?? 'AnimalLink 治理后台')
 let desktopQuery: MediaQueryList | undefined
 const closeMobileNavigationOnDesktop = (event: MediaQueryListEvent) => {
   if (event.matches) mobileNavigationOpen.value = false
 }
+const restoreMobileToggleFocus = async () => {
+  await nextTick()
+  if (!desktopQuery?.matches) mobileToggle.value?.$el?.focus()
+}
 
 onMounted(() => {
-  desktopQuery = window.matchMedia('(min-width: 721px)')
+  desktopQuery = window.matchMedia('(min-width: 1001px)')
   desktopQuery.addEventListener('change', closeMobileNavigationOnDesktop)
 })
 onUnmounted(() => desktopQuery?.removeEventListener('change', closeMobileNavigationOnDesktop))
@@ -39,13 +44,14 @@ const navigation = [
 </script>
 
 <template>
-  <el-container class="shell">
-    <el-aside :width="isCollapsed ? '68px' : '248px'" class="sidebar desktop-sidebar">
-      <div class="brand">
-        <span class="brand-mark">A</span>
-        <span v-if="!isCollapsed">AnimalLink</span>
+  <el-container class="governance-shell">
+    <el-aside :width="isCollapsed ? '76px' : '252px'" class="governance-sidebar desktop-sidebar">
+      <div class="brand" :class="{ 'brand--collapsed': isCollapsed }">
+        <span class="brand-mark" aria-hidden="true"><span>🐾</span></span>
+        <span v-if="!isCollapsed" class="brand-copy"><strong>AnimalLink</strong><small>校园动物守护计划</small></span>
       </div>
-      <el-menu :collapse="isCollapsed" :default-active="route.path" :collapse-transition="false" router class="menu">
+      <div v-if="!isCollapsed" class="navigation-label">工作台</div>
+      <el-menu :collapse="isCollapsed" :default-active="route.path" :collapse-transition="false" router class="governance-menu">
         <template v-for="item in navigation" :key="item.index">
           <el-sub-menu v-if="item.children" :index="item.index">
             <template #title><el-icon><component :is="item.icon" /></el-icon><span>{{ item.label }}</span></template>
@@ -54,19 +60,21 @@ const navigation = [
           <el-menu-item v-else :index="item.index"><el-icon><component :is="item.icon" /></el-icon><template #title>{{ item.label }}</template></el-menu-item>
         </template>
       </el-menu>
+      <div v-if="!isCollapsed" class="sidebar-care"><span aria-hidden="true">🌿</span><p><strong>温柔治理</strong><small>让每个生命都被看见</small></p></div>
     </el-aside>
-    <el-container>
-      <el-header class="header">
-        <el-button text circle class="desktop-toggle" aria-label="收起或展开导航" @click="isCollapsed = !isCollapsed">☰</el-button>
-        <el-button text circle class="mobile-toggle" aria-label="打开导航" aria-controls="mobile-navigation" :aria-expanded="mobileNavigationOpen" @click="mobileNavigationOpen = true">☰</el-button>
-        <div class="header-title">{{ pageTitle }}</div>
-        <div class="header-actions"><el-icon><Bell /></el-icon><span class="session-status">未认证</span></div>
+    <el-container class="content-shell">
+      <el-header class="governance-header">
+        <el-button text circle class="desktop-toggle" aria-label="收起或展开导航" @click="isCollapsed = !isCollapsed"><el-icon><Menu /></el-icon></el-button>
+        <el-button ref="mobileToggle" text circle class="mobile-toggle" aria-label="打开导航" aria-controls="mobile-navigation" :aria-expanded="mobileNavigationOpen" @click="mobileNavigationOpen = true"><el-icon><Menu /></el-icon></el-button>
+        <div class="header-copy"><span>{{ pageTitle }}</span><small>AnimalLink 治理中心</small></div>
+        <div class="header-actions"><el-button text circle aria-label="查看通知"><el-icon><Bell /></el-icon></el-button><span class="session-status"><i></i> 未认证</span></div>
       </el-header>
-      <el-main class="main"><RouterView /></el-main>
+      <el-main class="governance-main"><RouterView /></el-main>
     </el-container>
   </el-container>
-  <el-drawer id="mobile-navigation" v-model="mobileNavigationOpen" title="导航" direction="ltr" size="min(248px, 100vw)" class="mobile-navigation-drawer">
-    <el-menu :default-active="route.path" router class="menu" @select="mobileNavigationOpen = false">
+  <el-drawer id="mobile-navigation" v-model="mobileNavigationOpen" title="导航" direction="ltr" size="min(286px, 88vw)" class="mobile-navigation-drawer" @closed="restoreMobileToggleFocus">
+    <div class="drawer-brand"><span class="brand-mark" aria-hidden="true"><span>🐾</span></span><span><strong>AnimalLink</strong><small>校园动物守护计划</small></span></div>
+    <el-menu :default-active="route.path" router class="governance-menu" @select="mobileNavigationOpen = false">
       <template v-for="item in navigation" :key="item.index">
         <el-sub-menu v-if="item.children" :index="item.index">
           <template #title><el-icon><component :is="item.icon" /></el-icon><span>{{ item.label }}</span></template>
