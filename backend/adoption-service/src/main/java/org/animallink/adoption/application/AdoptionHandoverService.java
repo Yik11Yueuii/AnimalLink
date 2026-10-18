@@ -32,14 +32,16 @@ public class AdoptionHandoverService {
     private final AdoptionApplicationRepository applications;
     private final AdoptionListingRepository listings;
     private final IdentityGateway identity;
+    private final CanonicalAnimalValidator animalValidator;
     private final ObjectMapper json;
 
-    public AdoptionHandoverService(AdoptionHandoverRepository handovers, AdoptionSelectionRepository selections, AdoptionApplicationRepository applications, AdoptionListingRepository listings, IdentityGateway identity, ObjectMapper json) {
+    public AdoptionHandoverService(AdoptionHandoverRepository handovers, AdoptionSelectionRepository selections, AdoptionApplicationRepository applications, AdoptionListingRepository listings, IdentityGateway identity, CanonicalAnimalValidator animalValidator, ObjectMapper json) {
         this.handovers = handovers;
         this.selections = selections;
         this.applications = applications;
         this.listings = listings;
         this.identity = identity;
+        this.animalValidator = animalValidator;
         this.json = json;
     }
 
@@ -54,9 +56,13 @@ public class AdoptionHandoverService {
         if (selection.status() != SelectionStatus.ACTIVE) throw new SelectionNotActiveException("最终候选已失效");
         var existing = handovers.findBySelectionId(selectionId);
         if (existing.isPresent()) return existing(existing.get());
+        var listing = listings.findById(selection.listingId()).orElseThrow(() -> new ListingNotFoundException("领养信息不存在"));
+        animalValidator.requireCanonical(listing.animalId());
         AdoptionHandover handover = AdoptionHandover.pending(selectionId, when, user.id(), optional(note));
         try {
             handovers.insert(handover);
+            insertHandoverOutbox("ADOPTION_HANDOVER_INITIATED", handover, selection,
+                    listing.animalId(), handover.initiatedAt());
             return new Result(view(handover), true);
         } catch (DuplicateKeyException exception) {
             return existing(handovers.findBySelectionId(selectionId).orElseThrow(() -> exception));
@@ -82,11 +88,12 @@ public class AdoptionHandoverService {
         AdoptionHandover handover = required(handoverId);
         if (handover.status() == HandoverStatus.COMPLETED) return new Result(view(handover), false);
         if (handover.status() != HandoverStatus.PENDING) throw new InvalidHandoverTransitionException("已取消的交接不能完成");
-        Instant at = Instant.now();
-        if (!handovers.complete(handoverId, user.id(), at)) return terminal(handoverId, HandoverStatus.COMPLETED);
         AdoptionSelection selection = selection(handover.selectionId());
         AdoptionApplication application = applications.findById(selection.applicationId()).orElseThrow(() -> new ApplicationNotFoundException("领养申请不存在"));
         var listing = listings.findById(selection.listingId()).orElseThrow(() -> new ListingNotFoundException("领养信息不存在"));
+        animalValidator.requireCanonical(listing.animalId());
+        Instant at = Instant.now();
+        if (!handovers.complete(handoverId, user.id(), at)) return terminal(handoverId, HandoverStatus.COMPLETED);
         AdoptionRelation relation = AdoptionRelation.active(listing.animalId(), application.applicantUserId(), handoverId, at);
         handovers.insertRelation(relation);
         String eventId = UUID.randomUUID().toString();
@@ -94,12 +101,16 @@ public class AdoptionHandoverService {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("eventId", eventId);
             payload.put("eventType", "ADOPTION_COMPLETED");
-            payload.put("eventVersion", 1);
+            payload.put("eventVersion", 2);
             payload.put("occurredAt", at.toString());
             payload.put("relationId", relation.id());
             payload.put("handoverId", handoverId);
+            payload.put("lifecycleStartedAt", handover.initiatedAt().toString());
+            payload.put("selectionId", selection.id());
+            payload.put("listingId", listing.id());
             payload.put("animalId", listing.animalId());
-            handovers.insertOutbox(eventId, relation.id(), "ADOPTION_COMPLETED", json.writeValueAsString(payload), at);
+            handovers.insertOutbox(eventId, "ADOPTION_RELATION", relation.id(),
+                    "ADOPTION_COMPLETED", json.writeValueAsString(payload), at);
         } catch (Exception exception) {
             throw new IllegalStateException("outbox write failed", exception);
         }
@@ -119,7 +130,33 @@ public class AdoptionHandoverService {
         if (selection.status() != SelectionStatus.ACTIVE) throw new SelectionNotActiveException("最终候选已失效");
         if (!handovers.cancel(handoverId, user.id(), at, normalizedReason)) return terminal(handoverId, HandoverStatus.CANCELLED);
         if (!selections.cancel(selection.id(), user.id(), at, normalizedReason)) throw new SelectionNotActiveException("最终候选已失效");
+        var listing = listings.findById(selection.listingId())
+                .orElseThrow(() -> new ListingNotFoundException("领养信息不存在"));
+        insertHandoverOutbox("ADOPTION_HANDOVER_CANCELLED", required(handoverId),
+                selection, listing.animalId(), at);
         return new Result(view(required(handoverId)), true);
+    }
+
+    private void insertHandoverOutbox(String eventType, AdoptionHandover handover,
+                                      AdoptionSelection selection, String animalId,
+                                      Instant occurredAt) {
+        String eventId = UUID.randomUUID().toString();
+        try {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("eventId", eventId);
+            payload.put("eventType", eventType);
+            payload.put("eventVersion", 1);
+            payload.put("occurredAt", occurredAt.toString());
+            payload.put("handoverId", handover.id());
+            payload.put("lifecycleStartedAt", handover.initiatedAt().toString());
+            payload.put("selectionId", selection.id());
+            payload.put("listingId", selection.listingId());
+            payload.put("animalId", animalId);
+            handovers.insertOutbox(eventId, "ADOPTION_HANDOVER", handover.id(),
+                    eventType, json.writeValueAsString(payload), occurredAt);
+        } catch (Exception exception) {
+            throw new IllegalStateException("outbox write failed", exception);
+        }
     }
 
     private Result terminal(String id, HandoverStatus wanted) {

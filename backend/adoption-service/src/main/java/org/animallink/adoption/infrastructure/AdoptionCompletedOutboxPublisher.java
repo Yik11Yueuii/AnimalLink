@@ -62,6 +62,8 @@ public class AdoptionCompletedOutboxPublisher {
 
     private static String routingKey(String eventType) {
         return switch (eventType) {
+            case "ADOPTION_HANDOVER_INITIATED" -> "adoption.handover.initiated";
+            case "ADOPTION_HANDOVER_CANCELLED" -> "adoption.handover.cancelled";
             case "ADOPTION_COMPLETED" -> "adoption.handover.completed";
             case "ADOPTION_RELATION_ENDED" -> "adoption.relation.ended";
             default -> throw new IllegalArgumentException("unsupported outbox event type: " + eventType);

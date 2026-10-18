@@ -21,7 +21,8 @@ public class AdoptionApplicationService {
     private final AdoptionListingRepository listings;
     private final AdoptionSelectionRepository selections;
     private final IdentityGateway identity;
-    public AdoptionApplicationService(AdoptionApplicationRepository applications, AdoptionListingRepository listings, AdoptionSelectionRepository selections, IdentityGateway identity) { this.applications = applications; this.listings = listings; this.selections = selections; this.identity = identity; }
+    private final CanonicalAnimalValidator animalValidator;
+    public AdoptionApplicationService(AdoptionApplicationRepository applications, AdoptionListingRepository listings, AdoptionSelectionRepository selections, IdentityGateway identity, CanonicalAnimalValidator animalValidator) { this.applications = applications; this.listings = listings; this.selections = selections; this.identity = identity; this.animalValidator = animalValidator; }
     @Transactional
     public AdoptionApplication submit(String listingId, String message) {
         validUuid(listingId, "listingId");
@@ -29,6 +30,7 @@ public class AdoptionApplicationService {
         AdoptionListing listing = listings.findById(listingId).orElseThrow(() -> new ListingNotFoundException("领养信息不存在"));
         if (!"PUBLISHED".equals(listing.status().name())) throw new ListingNotOpenForApplicationException("领养信息当前不接受申请");
         if (applicant.id().equals(listing.publisherUserId())) throw new ApplicantNotEligibleException("发布者不能申请自己的领养信息");
+        animalValidator.requireCanonical(listing.animalId());
         AdoptionApplication application = AdoptionApplication.submitted(listingId, applicant.id(), message.trim());
         if (!applications.insertIfListingPublished(application)) throw new ListingNotOpenForApplicationException("领养信息当前不接受申请");
         return application;

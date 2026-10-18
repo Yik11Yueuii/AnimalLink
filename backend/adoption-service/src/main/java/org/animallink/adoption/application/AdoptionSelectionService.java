@@ -24,10 +24,13 @@ public class AdoptionSelectionService {
     private final AdoptionApplicationRepository applications;
     private final AdoptionListingRepository listings;
     private final IdentityGateway identity;
+    private final CanonicalAnimalValidator animalValidator;
 
     public AdoptionSelectionService(AdoptionSelectionRepository selections, AdoptionApplicationRepository applications,
-                                    AdoptionListingRepository listings, IdentityGateway identity) {
+                                    AdoptionListingRepository listings, IdentityGateway identity,
+                                    CanonicalAnimalValidator animalValidator) {
         this.selections = selections; this.applications = applications; this.listings = listings; this.identity = identity;
+        this.animalValidator = animalValidator;
     }
 
     @Transactional
@@ -36,7 +39,6 @@ public class AdoptionSelectionService {
         IdentityGateway.CurrentUser admin = requireGovernance();
         AdoptionListing listing = listings.findByIdForUpdate(listingId)
                 .orElseThrow(() -> new ListingNotFoundException("领养信息不存在"));
-        if (listing.status() == ListingStatus.DRAFT) throw new ListingNotSelectableException("草稿领养信息不能选择最终候选人");
         AdoptionApplication application = applications.findById(applicationId)
                 .orElseThrow(() -> new ApplicationNotFoundException("领养申请不存在"));
         if (!listingId.equals(application.listingId())) throw new IllegalArgumentException("applicationId 不属于 listingId");
@@ -45,6 +47,11 @@ public class AdoptionSelectionService {
         var existing = selections.findActiveByListingId(listingId);
         if (existing.isPresent()) return existingResult(existing.get(), applicationId);
 
+        if (listing.status() != ListingStatus.PUBLISHED) {
+            throw new ListingNotSelectableException("只有已发布的领养信息可以选择最终候选人");
+        }
+
+        animalValidator.requireCanonical(listing.animalId());
         AdoptionSelection selection = AdoptionSelection.active(listingId, applicationId, admin.id(), normalizeNote(note));
         try {
             selections.insert(selection);
@@ -52,7 +59,7 @@ public class AdoptionSelectionService {
             return existingResult(selections.findActiveByListingId(listingId)
                     .orElseThrow(() -> e), applicationId);
         }
-        if (listing.status() == ListingStatus.PUBLISHED && !listings.close(selection.listingId(), selection.selectedAt(), selection.selectedAt())) {
+        if (!listings.close(selection.listingId(), selection.selectedAt(), selection.selectedAt())) {
             throw new InvalidListingTransitionException("领养信息状态已变化，请刷新后重试");
         }
         return new SelectionCommandResult(new SelectionView(selection, application.applicantUserId()), true);

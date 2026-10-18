@@ -2,7 +2,6 @@ package org.animallink.adoption.application;
 
 import java.util.UUID;
 import org.animallink.adoption.domain.AdoptionListing;
-import org.animallink.adoption.domain.AnimalNotEligibleException;
 import org.animallink.adoption.domain.InvalidListingTransitionException;
 import org.animallink.adoption.domain.ListingAccessDeniedException;
 import org.animallink.adoption.domain.ListingNotFoundException;
@@ -13,11 +12,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class AdoptionListingService {
     private static final int MAX_PAGE_SIZE = 100;
     private final AdoptionListingRepository repository;
-    private final AnimalGateway animalGateway;
+    private final CanonicalAnimalValidator animalValidator;
     private final IdentityGateway identityGateway;
 
-    public AdoptionListingService(AdoptionListingRepository repository, AnimalGateway animalGateway, IdentityGateway identityGateway) {
-        this.repository = repository; this.animalGateway = animalGateway; this.identityGateway = identityGateway;
+    public AdoptionListingService(AdoptionListingRepository repository, CanonicalAnimalValidator animalValidator, IdentityGateway identityGateway) {
+        this.repository = repository; this.animalValidator = animalValidator; this.identityGateway = identityGateway;
     }
 
     @Transactional
@@ -68,7 +67,7 @@ public class AdoptionListingService {
         return repository.findById(listingId).orElseThrow(() -> new ListingNotFoundException("领养信息不存在"));
     }
     private void requireEligibleAnimal(String animalId) {
-        if (!animalGateway.requireAnimal(animalId).isEligibleForListing()) throw new AnimalNotEligibleException("当前动物状态不允许发布领养信息");
+        animalValidator.requireCanonicalEligibleForListing(animalId);
     }
     private IdentityGateway.CurrentUser requireGovernanceAdmin() {
         IdentityGateway.CurrentUser user = identityGateway.requireCurrentUser();

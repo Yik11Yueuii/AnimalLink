@@ -99,11 +99,14 @@ class AdoptionRelationTerminationIntegrationTest {
         assertEquals("ADOPTION_RELATION", row.get("aggregate_type"));
         assertEquals(relation, row.get("aggregate_id"));
         var payload = json.readValue(row.get("payload_json").toString(), new TypeReference<java.util.Map<String, Object>>() { });
-        assertEquals(java.util.Set.of("eventId", "eventType", "eventVersion", "occurredAt", "relationId", "animalId"), payload.keySet());
+        assertEquals(java.util.Set.of("eventId", "eventType", "eventVersion", "occurredAt", "relationId", "animalId",
+                "handoverId", "lifecycleStartedAt"), payload.keySet());
         assertEquals(row.get("id"), payload.get("eventId"));
         assertEquals("ADOPTION_RELATION_ENDED", payload.get("eventType"));
-        assertEquals(1, payload.get("eventVersion"));
+        assertEquals(2, payload.get("eventVersion"));
         assertEquals(relation, payload.get("relationId"));
+        assertNotNull(payload.get("handoverId"));
+        assertNotNull(payload.get("lifecycleStartedAt"));
         assertFalse(payload.containsKey("adopterUserId"));
         assertFalse(payload.containsKey("endReason"));
     }
@@ -173,16 +176,21 @@ class AdoptionRelationTerminationIntegrationTest {
     }
 
     @Test
-    void publisherRoutesBothKnownEventsAndLeavesUnknownPending() {
+    void publisherRoutesAllKnownEventsAndLeavesUnknownPending() {
+        String initiated = pendingOutbox("ADOPTION_HANDOVER_INITIATED");
+        String cancelled = pendingOutbox("ADOPTION_HANDOVER_CANCELLED");
         String completed = pendingOutbox("ADOPTION_COMPLETED");
         String ended = pendingOutbox("ADOPTION_RELATION_ENDED");
         RabbitTemplate rabbit = mock(RabbitTemplate.class);
         doAnswer(invocation -> { invocation.getArgument(4, CorrelationData.class).getFuture().complete(new CorrelationData.Confirm(true, null)); return null; })
                 .when(rabbit).convertAndSend(anyString(), anyString(), any(), any(), any(CorrelationData.class));
-        assertEquals(2, new AdoptionCompletedOutboxPublisher(jdbc, rabbit, new TransactionTemplate(transactions)).publishBatch());
+        assertEquals(4, new AdoptionCompletedOutboxPublisher(jdbc, rabbit, new TransactionTemplate(transactions)).publishBatch());
         ArgumentCaptor<String> routing = ArgumentCaptor.forClass(String.class);
-        verify(rabbit, times(2)).convertAndSend(eq("animallink.domain"), routing.capture(), any(), any(), any(CorrelationData.class));
-        assertEquals(java.util.Set.of("adoption.handover.completed", "adoption.relation.ended"), java.util.Set.copyOf(routing.getAllValues()));
+        verify(rabbit, times(4)).convertAndSend(eq("animallink.domain"), routing.capture(), any(), any(), any(CorrelationData.class));
+        assertEquals(java.util.Set.of("adoption.handover.initiated", "adoption.handover.cancelled",
+                "adoption.handover.completed", "adoption.relation.ended"), java.util.Set.copyOf(routing.getAllValues()));
+        assertEquals("PUBLISHED", jdbc.queryForObject("SELECT status FROM outbox_event WHERE id=?", String.class, initiated));
+        assertEquals("PUBLISHED", jdbc.queryForObject("SELECT status FROM outbox_event WHERE id=?", String.class, cancelled));
         assertEquals("PUBLISHED", jdbc.queryForObject("SELECT status FROM outbox_event WHERE id=?", String.class, completed));
         assertEquals("PUBLISHED", jdbc.queryForObject("SELECT status FROM outbox_event WHERE id=?", String.class, ended));
 

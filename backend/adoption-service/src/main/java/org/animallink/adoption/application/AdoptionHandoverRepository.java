@@ -5,6 +5,6 @@ public interface AdoptionHandoverRepository {
  boolean complete(String id,String user,Instant at); boolean cancel(String id,String user,Instant at,String reason);
  void insertRelation(AdoptionRelation relation); Optional<AdoptionRelation> relationByHandover(String handoverId); Optional<AdoptionRelation> findRelationById(String relationId); Optional<AdoptionRelation> findRelationByIdForUpdate(String relationId); Optional<AdoptionRelation> findActiveRelationByAnimalAndAdopter(String animalId, String adopterUserId);
  boolean endRelation(String relationId,Instant endedAt,String endReason);
- void insertOutbox(String id,String aggregateId,String eventType,String payload,Instant at); List<ApplicantHandover> findByApplicant(String userId);
+ void insertOutbox(String id,String aggregateType,String aggregateId,String eventType,String payload,Instant at); List<ApplicantHandover> findByApplicant(String userId);
  record ApplicantHandover(AdoptionHandover handover,String listingId,String applicationId){}
 }

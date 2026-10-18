@@ -17,11 +17,17 @@ public class HttpAnimalGateway implements AnimalGateway {
     public AnimalFact requireAnimal(String animalId) {
         try {
             AnimalPayload payload = client.get().uri("/api/v1/animals/{animalId}", animalId).retrieve().body(AnimalPayload.class);
-            if (payload == null || payload.id() == null) throw new AnimalNotFoundException("Animal 不存在");
-            return new AnimalFact(payload.id(), payload.adoptionStatus());
+            if (payload == null || payload.id() == null || payload.id().isBlank()
+                    || payload.adoptionStatus() == null || payload.adoptionStatus().isBlank()) {
+                throw new DependencyUnavailableException("animal-service 返回无效响应");
+            }
+            String canonicalId = payload.canonicalAnimalId() == null || payload.canonicalAnimalId().isBlank()
+                    ? payload.id() : payload.canonicalAnimalId();
+            return new AnimalFact(payload.id(), canonicalId, payload.adoptionStatus());
         } catch (HttpClientErrorException.NotFound e) { throw new AnimalNotFoundException("Animal 不存在");
-        } catch (AnimalNotFoundException e) { throw e;
+        } catch (AnimalNotFoundException | DependencyUnavailableException e) { throw e;
         } catch (ResourceAccessException | RestClientResponseException e) { throw new DependencyUnavailableException("animal-service 暂不可用"); }
     }
-    private record AnimalPayload(String id, String adoptionStatus) { }
+    private record AnimalPayload(String id, String requestedAnimalId, String canonicalAnimalId,
+                                 String adoptionStatus) { }
 }

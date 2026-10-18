@@ -38,16 +38,21 @@ public class AdoptionRelationService {
         if (!relations.endRelation(relationId, endedAt, normalizedReason)) return afterConcurrentEnd(relationId);
 
         AdoptionRelation ended = required(relationId);
+        var handover = relations.findById(ended.handoverId())
+                .orElseThrow(() -> new IllegalStateException("领养关系对应交接不存在"));
         String eventId = UUID.randomUUID().toString();
         try {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("eventId", eventId);
             payload.put("eventType", ENDED_EVENT);
-            payload.put("eventVersion", 1);
+            payload.put("eventVersion", 2);
             payload.put("occurredAt", endedAt.toString());
             payload.put("relationId", ended.id());
+            payload.put("handoverId", ended.handoverId());
+            payload.put("lifecycleStartedAt", handover.initiatedAt().toString());
             payload.put("animalId", ended.animalId());
-            relations.insertOutbox(eventId, ended.id(), ENDED_EVENT, json.writeValueAsString(payload), endedAt);
+            relations.insertOutbox(eventId, "ADOPTION_RELATION", ended.id(), ENDED_EVENT,
+                    json.writeValueAsString(payload), endedAt);
         } catch (Exception exception) {
             throw new IllegalStateException("outbox write failed", exception);
         }
