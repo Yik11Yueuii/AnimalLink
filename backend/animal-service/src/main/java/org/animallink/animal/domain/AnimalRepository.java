@@ -10,6 +10,8 @@ public interface AnimalRepository {
 
     Optional<Animal> findById(String animalId);
 
+    Optional<Animal> findByIdForUpdate(String animalId);
+
     Optional<Animal> findActiveById(String animalId);
 
     List<Animal> searchActive(String campusId, String query, AnimalSpecies species, int limit, int offset);

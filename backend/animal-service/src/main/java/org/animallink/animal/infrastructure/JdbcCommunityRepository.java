@@ -19,6 +19,7 @@ public class JdbcCommunityRepository implements CommunityRepository {
             """;
     private static final String POST_VIEW_SELECT = """
             SELECT %s,
+                   a.id AS projected_animal_id,
                    a.display_name AS animal_display_name,
                    a.species AS animal_species,
                    a.identity_status AS animal_identity_status,
@@ -32,7 +33,17 @@ public class JdbcCommunityRepository implements CommunityRepository {
                    EXISTS(SELECT 1 FROM post_like mine
                           WHERE mine.post_id = p.id AND mine.user_id = ?) AS liked_by_me
             FROM post p
-            LEFT JOIN animal a ON a.id = p.animal_id
+            LEFT JOIN animal raw_animal ON raw_animal.id = p.animal_id
+            LEFT JOIN animal_merge_record merge_record
+                   ON merge_record.source_animal_id = p.animal_id
+            LEFT JOIN animal merge_target
+                   ON merge_target.id = merge_record.target_animal_id
+            LEFT JOIN animal a ON a.id = CASE
+                WHEN raw_animal.identity_status = 'ACTIVE' THEN raw_animal.id
+                WHEN raw_animal.identity_status = 'MERGED'
+                     AND merge_target.identity_status = 'ACTIVE' THEN merge_target.id
+                ELSE NULL
+            END
             """.formatted(POST_COLUMNS);
 
     private final JdbcTemplate jdbcTemplate;
@@ -264,7 +275,8 @@ public class JdbcCommunityRepository implements CommunityRepository {
 
     private static final RowMapper<Post> POST_MAPPER = (rs, rowNum) -> post(rs);
     private static final RowMapper<CommunityPostView> POST_VIEW_MAPPER = (rs, rowNum) ->
-            new CommunityPostView(post(rs), rs.getString("animal_display_name"),
+            new CommunityPostView(post(rs), rs.getString("projected_animal_id"),
+                    rs.getString("animal_display_name"),
                     rs.getString("animal_species") == null ? null
                             : AnimalSpecies.valueOf(rs.getString("animal_species")),
                     rs.getString("animal_identity_status"), rs.getString("animal_adoption_status"),

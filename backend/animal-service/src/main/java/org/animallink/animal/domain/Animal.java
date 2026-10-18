@@ -58,6 +58,31 @@ public record Animal(
                 createdAt, Instant.now());
     }
 
+    public Animal openAdoption() {
+        requireAdoptionTransition(AdoptionStatus.NOT_OPEN,
+                "只有 ACTIVE + NOT_OPEN + CAMPUS Animal 可以开放领养");
+        return withAdoptionStatus(AdoptionStatus.OPEN);
+    }
+
+    public Animal closeAdoption() {
+        requireAdoptionTransition(AdoptionStatus.OPEN,
+                "只有 ACTIVE + OPEN + CAMPUS Animal 可以关闭领养");
+        return withAdoptionStatus(AdoptionStatus.NOT_OPEN);
+    }
+
+    private Animal withAdoptionStatus(AdoptionStatus newStatus) {
+        return new Animal(id, campusId, displayName, species, sex, coatColor,
+                distinctiveFeatures, description, sterilizationStatus, typicalArea,
+                identityStatus, newStatus, currentContext, version, createdAt, Instant.now());
+    }
+
+    private void requireAdoptionTransition(AdoptionStatus expectedStatus, String message) {
+        if (identityStatus != IdentityStatus.ACTIVE || currentContext != CurrentContext.CAMPUS
+                || adoptionStatus != expectedStatus) {
+            throw new StateConflictException(message);
+        }
+    }
+
     private void requireActive(String message) {
         if (identityStatus != IdentityStatus.ACTIVE) {
             throw new StateConflictException(message);

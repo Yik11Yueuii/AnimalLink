@@ -34,8 +34,8 @@ public class AnimalController {
     }
 
     @GetMapping("/{animalId}")
-    public AnimalDtos.AnimalResponse detail(@PathVariable("animalId") String animalId) {
-        return AnimalDtos.AnimalResponse.from(queryService.detail(animalId));
+    public AnimalDtos.PublicAnimalResponse detail(@PathVariable("animalId") String animalId) {
+        return AnimalDtos.PublicAnimalResponse.from(queryService.detail(animalId));
     }
 
     @GetMapping("/{animalId}/timeline")

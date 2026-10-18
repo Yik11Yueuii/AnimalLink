@@ -7,6 +7,7 @@ import org.animallink.animal.domain.ActiveAdoptionRelationRequiredException;
 import org.animallink.animal.domain.CrossCampusAnimalException;
 import org.animallink.animal.domain.DuplicateFinalizeConflictException;
 import org.animallink.animal.domain.ForbiddenException;
+import org.animallink.animal.domain.IdempotencyKeyReusedException;
 import org.animallink.animal.domain.MediaCopyException;
 import org.animallink.animal.domain.ProposalAlreadyReviewedException;
 import org.animallink.animal.domain.ResourceNotFoundException;
@@ -58,6 +59,13 @@ public class ApiExceptionHandler {
     ResponseEntity<ApiError> conflict(StateConflictException exception,
                                       HttpServletRequest request) {
         return response(HttpStatus.CONFLICT, "STATE_CONFLICT", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(IdempotencyKeyReusedException.class)
+    ResponseEntity<ApiError> idempotencyConflict(IdempotencyKeyReusedException exception,
+                                                 HttpServletRequest request) {
+        return response(HttpStatus.CONFLICT, "IDEMPOTENCY_KEY_REUSED",
+                exception.getMessage(), request);
     }
 
     @ExceptionHandler(SelectedAnimalNotFoundException.class)

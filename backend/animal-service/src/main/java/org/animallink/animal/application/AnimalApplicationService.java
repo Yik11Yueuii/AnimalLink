@@ -12,14 +12,17 @@ public class AnimalApplicationService {
     private final AnimalRepository repository;
     private final IdentityGateway identityGateway;
     private final GovernanceAuthorization authorization;
+    private final AnimalCanonicalResolver canonicalResolver;
     private final TransactionTemplate transactions;
 
     public AnimalApplicationService(AnimalRepository repository, IdentityGateway identityGateway,
                                     GovernanceAuthorization authorization,
+                                    AnimalCanonicalResolver canonicalResolver,
                                     TransactionTemplate transactions) {
         this.repository = repository;
         this.identityGateway = identityGateway;
         this.authorization = authorization;
+        this.canonicalResolver = canonicalResolver;
         this.transactions = transactions;
     }
 
@@ -60,6 +63,12 @@ public class AnimalApplicationService {
             repository.update(archived);
             return findAny(validId);
         });
+    }
+
+    public GovernanceAnimalDetail detailAnyStatus(String animalId) {
+        authorization.requireAdministrator();
+        String validId = IdRules.requireUuid(animalId, "animalId");
+        return canonicalResolver.resolveGovernance(findAny(validId));
     }
 
     private Animal findAny(String animalId) {

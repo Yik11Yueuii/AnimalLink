@@ -2,6 +2,7 @@ package org.animallink.animal.domain;
 
 public record CommunityPostView(
         Post post,
+        String projectedAnimalId,
         String animalDisplayName,
         AnimalSpecies animalSpecies,
         String animalIdentityStatus,

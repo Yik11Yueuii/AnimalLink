@@ -78,10 +78,10 @@ public final class CommunityDtos {
             String adoptionStatus,
             String coverObjectKey) {
         static AnimalCardResponse from(CommunityPostView view) {
-            if (view.post().animalId() == null) {
+            if (view.projectedAnimalId() == null) {
                 return null;
             }
-            return new AnimalCardResponse(view.post().animalId(), view.animalDisplayName(),
+            return new AnimalCardResponse(view.projectedAnimalId(), view.animalDisplayName(),
                     view.animalSpecies(), view.animalIdentityStatus(), view.animalAdoptionStatus(),
                     view.animalCoverObjectKey());
         }

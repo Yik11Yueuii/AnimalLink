@@ -4,10 +4,15 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import org.animallink.animal.application.AnimalDetail;
+import org.animallink.animal.application.AnimalAdoptionLifecycleService;
+import org.animallink.animal.application.AnimalMergeResult;
+import org.animallink.animal.application.GovernanceAnimalDetail;
+import org.animallink.animal.application.PublicAnimalDetail;
 import org.animallink.animal.application.CorrectAnimalCommand;
 import org.animallink.animal.application.CreateAnimalCommand;
 import org.animallink.animal.domain.Animal;
 import org.animallink.animal.domain.AnimalMedia;
+import org.animallink.animal.domain.AnimalMergeRecord;
 import org.animallink.animal.domain.AnimalSex;
 import org.animallink.animal.domain.AnimalSpecies;
 import org.animallink.animal.domain.SterilizationStatus;
@@ -48,6 +53,126 @@ public final class AnimalDtos {
         CorrectAnimalCommand toCommand() {
             return new CorrectAnimalCommand(displayName, species, sex, coatColor,
                     distinctiveFeatures, description, sterilizationStatus, typicalArea);
+        }
+    }
+
+    public record MergeRequest(
+            @NotBlank String targetAnimalId,
+            @NotBlank String reason) {
+    }
+
+    public record AdoptionStatusTransitionRequest(
+            @NotBlank String reason) {
+    }
+
+    public record AdoptionStatusTransitionResponse(
+            String animalId,
+            String action,
+            String fromStatus,
+            String toStatus,
+            int version,
+            String reason,
+            Instant occurredAt,
+            boolean replayed) {
+        static AdoptionStatusTransitionResponse from(AnimalAdoptionLifecycleService.Result result) {
+            return new AdoptionStatusTransitionResponse(result.animalId(), result.action().name(),
+                    result.fromStatus().name(), result.toStatus().name(), result.version(),
+                    result.reason(), result.occurredAt(), result.replayed());
+        }
+    }
+
+    public record MergeResponse(
+            String mergeId,
+            String sourceAnimalId,
+            String targetAnimalId,
+            String sourceStatus,
+            String targetStatus,
+            Instant mergedAt) {
+        static MergeResponse from(AnimalMergeResult result) {
+            return new MergeResponse(result.mergeId(), result.sourceAnimalId(),
+                    result.targetAnimalId(), result.sourceStatus().name(),
+                    result.targetStatus().name(), result.mergedAt());
+        }
+    }
+
+    public record MergeHistoryResponse(
+            String mergeId,
+            String sourceAnimalId,
+            String targetAnimalId,
+            String actorUserId,
+            String reason,
+            Instant createdAt) {
+        static MergeHistoryResponse from(AnimalMergeRecord record) {
+            return new MergeHistoryResponse(record.id(), record.sourceAnimalId(),
+                    record.targetAnimalId(), record.actorUserId(), record.reason(),
+                    record.createdAt());
+        }
+    }
+
+    public record PublicAnimalResponse(
+            String requestedAnimalId,
+            String canonicalAnimalId,
+            String id,
+            String campusId,
+            String displayName,
+            AnimalSpecies species,
+            AnimalSex sex,
+            String coatColor,
+            String distinctiveFeatures,
+            String description,
+            String sterilizationStatus,
+            String typicalArea,
+            String identityStatus,
+            String adoptionStatus,
+            String currentContext,
+            List<AnimalMediaResponse> media,
+            Instant createdAt,
+            Instant updatedAt) {
+        static PublicAnimalResponse from(PublicAnimalDetail detail) {
+            Animal animal = detail.animal();
+            return new PublicAnimalResponse(detail.requestedAnimalId(),
+                    detail.canonicalAnimalId(), animal.id(), animal.campusId(),
+                    animal.displayName(), animal.species(), animal.sex(), animal.coatColor(),
+                    animal.distinctiveFeatures(), animal.description(),
+                    animal.sterilizationStatus().name(), animal.typicalArea(),
+                    animal.identityStatus().name(), animal.adoptionStatus().name(),
+                    animal.currentContext().name(), detail.media().stream()
+                            .map(AnimalMediaResponse::from).toList(),
+                    animal.createdAt(), animal.updatedAt());
+        }
+    }
+
+    public record GovernanceAnimalResponse(
+            String requestedAnimalId,
+            String canonicalAnimalId,
+            String id,
+            String campusId,
+            String displayName,
+            AnimalSpecies species,
+            AnimalSex sex,
+            String coatColor,
+            String distinctiveFeatures,
+            String description,
+            String sterilizationStatus,
+            String typicalArea,
+            String identityStatus,
+            String adoptionStatus,
+            String currentContext,
+            int version,
+            String mergeId,
+            Instant mergedAt,
+            Instant createdAt,
+            Instant updatedAt) {
+        static GovernanceAnimalResponse from(GovernanceAnimalDetail detail) {
+            Animal animal = detail.animal();
+            return new GovernanceAnimalResponse(animal.id(), detail.canonicalAnimalId(),
+                    animal.id(), animal.campusId(), animal.displayName(), animal.species(),
+                    animal.sex(), animal.coatColor(), animal.distinctiveFeatures(),
+                    animal.description(), animal.sterilizationStatus().name(),
+                    animal.typicalArea(), animal.identityStatus().name(),
+                    animal.adoptionStatus().name(), animal.currentContext().name(),
+                    animal.version(), detail.mergeId(), detail.mergedAt(), animal.createdAt(),
+                    animal.updatedAt());
         }
     }
 

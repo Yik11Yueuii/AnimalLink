@@ -84,6 +84,11 @@ public class JdbcAnimalRepository implements AnimalRepository {
     }
 
     @Override
+    public Optional<Animal> findByIdForUpdate(String animalId) {
+        return optional(ANIMAL_COLUMNS + " WHERE id = ? FOR UPDATE", ANIMAL_ROW_MAPPER, animalId);
+    }
+
+    @Override
     public Optional<Animal> findActiveById(String animalId) {
         return optional(ANIMAL_COLUMNS + " WHERE id = ? AND identity_status = 'ACTIVE'",
                 ANIMAL_ROW_MAPPER, animalId);
