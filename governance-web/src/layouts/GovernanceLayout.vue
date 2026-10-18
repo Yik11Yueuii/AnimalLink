@@ -1,11 +1,22 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { Bell, CollectionTag, DocumentChecked, Files, FirstAidKit, House, School, UserFilled } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const isCollapsed = ref(false)
+const mobileNavigationOpen = ref(false)
 const pageTitle = computed(() => route.meta.title ?? 'AnimalLink 治理后台')
+let desktopQuery: MediaQueryList | undefined
+const closeMobileNavigationOnDesktop = (event: MediaQueryListEvent) => {
+  if (event.matches) mobileNavigationOpen.value = false
+}
+
+onMounted(() => {
+  desktopQuery = window.matchMedia('(min-width: 721px)')
+  desktopQuery.addEventListener('change', closeMobileNavigationOnDesktop)
+})
+onUnmounted(() => desktopQuery?.removeEventListener('change', closeMobileNavigationOnDesktop))
 
 const navigation = [
   { index: '/', label: '治理概览', icon: House },
@@ -29,7 +40,7 @@ const navigation = [
 
 <template>
   <el-container class="shell">
-    <el-aside :width="isCollapsed ? '68px' : '248px'" class="sidebar">
+    <el-aside :width="isCollapsed ? '68px' : '248px'" class="sidebar desktop-sidebar">
       <div class="brand">
         <span class="brand-mark">A</span>
         <span v-if="!isCollapsed">AnimalLink</span>
@@ -46,11 +57,23 @@ const navigation = [
     </el-aside>
     <el-container>
       <el-header class="header">
-        <el-button text circle aria-label="收起或展开导航" @click="isCollapsed = !isCollapsed">☰</el-button>
+        <el-button text circle class="desktop-toggle" aria-label="收起或展开导航" @click="isCollapsed = !isCollapsed">☰</el-button>
+        <el-button text circle class="mobile-toggle" aria-label="打开导航" aria-controls="mobile-navigation" :aria-expanded="mobileNavigationOpen" @click="mobileNavigationOpen = true">☰</el-button>
         <div class="header-title">{{ pageTitle }}</div>
         <div class="header-actions"><el-icon><Bell /></el-icon><span class="session-status">未认证</span></div>
       </el-header>
       <el-main class="main"><RouterView /></el-main>
     </el-container>
   </el-container>
+  <el-drawer id="mobile-navigation" v-model="mobileNavigationOpen" title="导航" direction="ltr" size="min(248px, 100vw)" class="mobile-navigation-drawer">
+    <el-menu :default-active="route.path" router class="menu" @select="mobileNavigationOpen = false">
+      <template v-for="item in navigation" :key="item.index">
+        <el-sub-menu v-if="item.children" :index="item.index">
+          <template #title><el-icon><component :is="item.icon" /></el-icon><span>{{ item.label }}</span></template>
+          <el-menu-item v-for="child in item.children" :key="child.index" :index="child.index">{{ child.label }}</el-menu-item>
+        </el-sub-menu>
+        <el-menu-item v-else :index="item.index"><el-icon><component :is="item.icon" /></el-icon><template #title>{{ item.label }}</template></el-menu-item>
+      </template>
+    </el-menu>
+  </el-drawer>
 </template>
