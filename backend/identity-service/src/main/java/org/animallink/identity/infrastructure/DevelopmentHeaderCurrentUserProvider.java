@@ -7,7 +7,10 @@ import org.animallink.identity.domain.UnauthorizedException;
 import org.animallink.identity.domain.UserAccount;
 import org.animallink.identity.domain.UserRepository;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
+import java.util.Arrays;
+import java.util.Set;
 
 @Component
 @Profile({"local", "dev", "test"})
@@ -17,7 +20,17 @@ public class DevelopmentHeaderCurrentUserProvider implements CurrentUserProvider
     private final HttpServletRequest request;
     private final UserRepository userRepository;
 
-    public DevelopmentHeaderCurrentUserProvider(HttpServletRequest request, UserRepository userRepository) {
+    public DevelopmentHeaderCurrentUserProvider(HttpServletRequest request, UserRepository userRepository,
+                                                Environment environment) {
+        String[] profiles = environment.getActiveProfiles();
+        Set<String> allowed = Set.of("local", "dev", "test");
+        if (profiles.length == 0 || Arrays.stream(profiles).anyMatch(p -> !allowed.contains(p))) {
+            throw new IllegalStateException("Development identity cannot run with production profiles");
+        }
+        String address = environment.getProperty("server.address", "");
+        if (!address.equals("127.0.0.1") && !address.equals("::1") && !address.equals("0:0:0:0:0:0:0:1")) {
+            throw new IllegalStateException("Development identity requires a loopback-only listener");
+        }
         this.request = request;
         this.userRepository = userRepository;
     }
