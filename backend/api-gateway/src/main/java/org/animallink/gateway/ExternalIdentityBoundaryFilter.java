@@ -60,7 +60,8 @@ public class ExternalIdentityBoundaryFilter implements WebFilter, Ordered {
         // No CORS policy is configured: OPTIONS, including preflight, is denied.
         // HEAD is allowed only for precisely the same verified public resources as GET.
         boolean publicRead = isPublicRead(method, path);
-        if (!publicRead && !isolatedRequest) {
+        boolean authenticationEndpoint = isAuthenticationEndpoint(method, path);
+        if (!publicRead && !authenticationEndpoint && !isolatedRequest) {
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
             return exchange.getResponse().setComplete();
         }
@@ -79,6 +80,13 @@ public class ExternalIdentityBoundaryFilter implements WebFilter, Ordered {
     static boolean isPublicRead(HttpMethod method, String path) {
         return (HttpMethod.GET.equals(method) || HttpMethod.HEAD.equals(method))
                 && PUBLIC_READS.stream().anyMatch(rule -> rule.matcher(path).matches());
+    }
+
+    static boolean isAuthenticationEndpoint(HttpMethod method, String path) {
+        return (HttpMethod.GET.equals(method) && (AdminAuthenticationController.CSRF_PATH.equals(path)
+                || AdminAuthenticationController.SESSION_PATH.equals(path)))
+                || (HttpMethod.POST.equals(method) && (AdminAuthenticationController.LOGIN_PATH.equals(path)
+                || AdminAuthenticationController.LOGOUT_PATH.equals(path)));
     }
 
     private static boolean isUuid(String value) {

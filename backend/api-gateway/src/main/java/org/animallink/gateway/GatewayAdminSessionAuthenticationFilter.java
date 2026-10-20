@@ -19,19 +19,29 @@ import java.util.List;
 public class GatewayAdminSessionAuthenticationFilter implements WebFilter, Ordered {
     public static final String PRINCIPAL_ATTRIBUTE = GatewayAdminSessionAuthenticationFilter.class.getName()
             + ".principal";
+    public static final String SESSION_TOKEN_ATTRIBUTE = GatewayAdminSessionAuthenticationFilter.class.getName()
+            + ".session-token";
 
     private final AdminSessionCredentialResolver credentialResolver;
     private final AdminSessionValidator identitySessionClient;
+    private final AdminSessionCookieManager cookieManager;
 
     public GatewayAdminSessionAuthenticationFilter(AdminSessionCredentialResolver credentialResolver,
-                                                   AdminSessionValidator identitySessionClient) {
+                                                   AdminSessionValidator identitySessionClient,
+                                                   AdminSessionCookieManager cookieManager) {
         this.credentialResolver = credentialResolver;
         this.identitySessionClient = identitySessionClient;
+        this.cookieManager = cookieManager;
     }
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         ServerWebExchange sanitized = withoutSessionCookie(exchange);
+        String path = exchange.getRequest().getURI().getPath();
+        if (AdminAuthenticationController.CSRF_PATH.equals(path)
+                || AdminAuthenticationController.LOGIN_PATH.equals(path)) {
+            return chain.filter(sanitized);
+        }
         String token;
         try {
             token = credentialResolver.resolve(exchange).orElse(null);
@@ -39,6 +49,8 @@ public class GatewayAdminSessionAuthenticationFilter implements WebFilter, Order
             return authenticationFailure(sanitized, chain, HttpStatus.UNAUTHORIZED, "SESSION_INVALID");
         }
         if (token == null) return chain.filter(sanitized);
+        sanitized.getAttributes().put(SESSION_TOKEN_ATTRIBUTE, token);
+        if (AdminAuthenticationController.LOGOUT_PATH.equals(path)) return chain.filter(sanitized);
 
         return identitySessionClient.validate(token)
                 .flatMap(principal -> {
@@ -59,6 +71,9 @@ public class GatewayAdminSessionAuthenticationFilter implements WebFilter, Order
         if (ExternalIdentityBoundaryFilter.isPublicRead(exchange.getRequest().getMethod(),
                 exchange.getRequest().getURI().getPath())) {
             return chain.filter(exchange);
+        }
+        if (AdminAuthenticationController.SESSION_PATH.equals(exchange.getRequest().getURI().getPath())) {
+            exchange.getResponse().addCookie(cookieManager.expired());
         }
         exchange.getResponse().setStatusCode(protectedStatus);
         exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
