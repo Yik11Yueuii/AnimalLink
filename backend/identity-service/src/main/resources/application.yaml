@@ -33,6 +33,14 @@ management:
       show-components: always
 animallink:
   authentication:
+    service-assertion:
+      expected-issuer: ${AUTH_SERVICE_ASSERTION_ISSUER:api-gateway}
+      expected-subject: ${AUTH_SERVICE_ASSERTION_SUBJECT:api-gateway}
+      expected-audience: ${AUTH_SERVICE_ASSERTION_AUDIENCE:identity-service}
+      maximum-lifetime: ${AUTH_SERVICE_ASSERTION_MAXIMUM_LIFETIME:PT30S}
+      clock-skew: ${AUTH_SERVICE_ASSERTION_CLOCK_SKEW:PT5S}
+      replay-capacity: ${AUTH_SERVICE_ASSERTION_REPLAY_CAPACITY:10000}
+      keys: ${AUTH_SERVICE_ASSERTION_KEYS:}
     session:
       idle-timeout: ${AUTH_SESSION_IDLE_TIMEOUT:PT30M}
       absolute-timeout: ${AUTH_SESSION_ABSOLUTE_TIMEOUT:PT8H}

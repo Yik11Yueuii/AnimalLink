@@ -38,9 +38,9 @@ The identity-service development profile enables its header provider and also
 requires a loopback listener. Neither is authentication; test/dev services must
 never be exposed through a proxy or tunnel.
 
-Future design: add only the precise method/path for a reviewed login endpoint;
-after discarding client-supplied assertions validate the identity-service session
-at the Gateway before route authorization, then produce a verifiable downstream
-assertion. Each service must validate it and enforce resource/relationship
-authorization. Unauthenticated requests yield 401; authenticated principals
-without permission yield 403. This change implements neither step.
+WEB-AUTH-1B-1B-B1 adds the first part of that future path: the Gateway can validate
+an opaque administrator session through the service-authenticated Identity endpoint
+described in TRUSTED-SESSION-CHANNEL.md. A successful result remains an internal
+Gateway attribute only. This stage still does not open protected routes, add login,
+or produce a downstream-trusted user assertion. Each business service must later
+validate service/user assertions and enforce resource/relationship authorization.

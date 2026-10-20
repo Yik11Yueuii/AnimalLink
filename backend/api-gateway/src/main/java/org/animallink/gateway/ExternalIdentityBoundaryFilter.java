@@ -27,7 +27,7 @@ public class ExternalIdentityBoundaryFilter implements WebFilter, Ordered {
     private static final Set<String> DEV_PROFILES = Set.of("local", "dev", "test");
     // Complete path matches only; no prefix grants access to adjacent resources.
     private static final String UUID_SEGMENT = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
-    private static final List<Pattern> PUBLIC_READS = List.of(
+    static final List<Pattern> PUBLIC_READS = List.of(
             Pattern.compile("^/identity/api/v1/campuses$"),
             Pattern.compile("^/identity/api/v1/campuses/" + UUID_SEGMENT + "$"),
             Pattern.compile("^/incident/api/v1/cases/" + UUID_SEGMENT + "/support/expenses$"),
@@ -59,8 +59,7 @@ public class ExternalIdentityBoundaryFilter implements WebFilter, Ordered {
         HttpMethod method = exchange.getRequest().getMethod();
         // No CORS policy is configured: OPTIONS, including preflight, is denied.
         // HEAD is allowed only for precisely the same verified public resources as GET.
-        boolean publicRead = (HttpMethod.GET.equals(method) || HttpMethod.HEAD.equals(method))
-                && PUBLIC_READS.stream().anyMatch(rule -> rule.matcher(path).matches());
+        boolean publicRead = isPublicRead(method, path);
         if (!publicRead && !isolatedRequest) {
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
             return exchange.getResponse().setComplete();
@@ -75,6 +74,11 @@ public class ExternalIdentityBoundaryFilter implements WebFilter, Ordered {
             // Future authenticated assertions must be added here only after verification.
         }).build();
         return chain.filter(exchange.mutate().request(request).build());
+    }
+
+    static boolean isPublicRead(HttpMethod method, String path) {
+        return (HttpMethod.GET.equals(method) || HttpMethod.HEAD.equals(method))
+                && PUBLIC_READS.stream().anyMatch(rule -> rule.matcher(path).matches());
     }
 
     private static boolean isUuid(String value) {
@@ -99,6 +103,6 @@ public class ExternalIdentityBoundaryFilter implements WebFilter, Ordered {
 
     @Override
     public int getOrder() {
-        return Ordered.HIGHEST_PRECEDENCE + 1;
+        return Ordered.HIGHEST_PRECEDENCE + 2;
     }
 }

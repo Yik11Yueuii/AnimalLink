@@ -20,6 +20,7 @@
     <spring-cloud.version>2023.0.4</spring-cloud.version>
     <spring-cloud-alibaba.version>2023.0.3.4</spring-cloud-alibaba.version>
     <minio.version>8.5.17</minio.version>
+    <nimbus-jose-jwt.version>9.37.3</nimbus-jose-jwt.version>
   </properties>
   <dependencyManagement>
     <dependencies>
@@ -53,6 +54,11 @@
         <groupId>org.apache.commons</groupId>
         <artifactId>commons-lang3</artifactId>
         <version>3.14.0</version>
+      </dependency>
+      <dependency>
+        <groupId>com.nimbusds</groupId>
+        <artifactId>nimbus-jose-jwt</artifactId>
+        <version>${nimbus-jose-jwt.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
