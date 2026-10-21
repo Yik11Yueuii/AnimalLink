@@ -1,9 +1,10 @@
-import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { createRouter, createWebHistory, type RouteRecordRaw, type RouterHistory } from 'vue-router'
 import GovernanceLayout from '@/layouts/GovernanceLayout.vue'
 import OverviewPage from '@/views/OverviewPage.vue'
 import PlaceholderPage from '@/views/PlaceholderPage.vue'
 import AccessDeniedPage from '@/views/AccessDeniedPage.vue'
-import AuthenticationRequiredPage from '@/views/AuthenticationRequiredPage.vue'
+import LoginPage from '@/views/LoginPage.vue'
+import { useAdminAuthentication } from '@/composables/useAdminAuthentication'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -25,26 +26,52 @@ const governancePages: RouteRecordRaw[] = [
   { path: 'audits', name: 'audits', component: PlaceholderPage, meta: { title: '审计记录', description: '关键治理操作查询', requiresAuthentication: true } },
 ]
 
-const routes: RouteRecordRaw[] = [
+export const routes: RouteRecordRaw[] = [
   {
     path: '/',
     component: GovernanceLayout,
+    meta: { requiresAuthentication: true },
     children: [
       { path: '', name: 'overview', component: OverviewPage, meta: { title: '治理概览' } },
       ...governancePages,
     ],
   },
-  { path: '/auth-required', name: 'auth-required', component: AuthenticationRequiredPage, meta: { title: '需要认证' } },
+  { path: '/login', name: 'login', component: LoginPage, meta: { title: '管理员登录' } },
+  { path: '/auth-required', redirect: '/login' },
   { path: '/access-denied', name: 'access-denied', component: AccessDeniedPage, meta: { title: '无权限' } },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
-const router = createRouter({ history: createWebHistory(), routes })
-
-router.beforeEach((to) => {
-  if (to.meta.requiresAuthentication) {
-    return { name: 'auth-required', query: { redirect: to.fullPath } }
+export const safePostLoginRedirect = (candidate: unknown): string => {
+  if (typeof candidate !== 'string' || !candidate.startsWith('/') || candidate.startsWith('//') || candidate.includes('\\')) return '/'
+  try {
+    const parsed = new URL(candidate, 'https://governance.animallink.invalid')
+    if (parsed.origin !== 'https://governance.animallink.invalid' || parsed.pathname === '/login') return '/'
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`
+  } catch {
+    return '/'
   }
-})
+}
+
+export const createGovernanceRouter = (history: RouterHistory) => {
+  const router = createRouter({ history, routes })
+  router.beforeEach(async (to) => {
+    const authentication = useAdminAuthentication()
+    await authentication.restore()
+
+    if (to.name === 'login') {
+      if (authentication.isAuthenticated.value) return safePostLoginRedirect(to.query.redirect)
+      return true
+    }
+
+    if (!to.meta.requiresAuthentication) return true
+    if (authentication.isAuthenticated.value) return true
+    if (authentication.state.status === 'forbidden') return { name: 'access-denied' }
+    return { name: 'login', query: { redirect: safePostLoginRedirect(to.fullPath) } }
+  })
+  return router
+}
+
+const router = createGovernanceRouter(createWebHistory())
 
 export default router
