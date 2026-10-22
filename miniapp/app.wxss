@@ -1,0 +1,21 @@
+page {
+  min-height: 100%;
+  color: #4f382c;
+  background: #fbf6ee;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+button::after { border: 0; }
+
+.page-shell { min-height: 100vh; box-sizing: border-box; padding: 32rpx 28rpx 64rpx; }
+.surface { border: 1rpx solid #eaded5; border-radius: 32rpx; background: #fffdfa; box-shadow: 0 14rpx 38rpx rgba(78, 56, 44, .06); }
+.eyebrow { color: #d76545; font-size: 22rpx; font-weight: 700; letter-spacing: 3rpx; }
+.page-title { margin-top: 12rpx; font-size: 46rpx; font-weight: 800; line-height: 1.2; }
+.muted { color: #8b7468; }
+.primary-button { color: #fff; background: #e97757; border-radius: 22rpx; font-size: 28rpx; font-weight: 700; }
+.secondary-button { color: #8b4a34; background: #fff0e9; border: 1rpx solid #f1c6b6; border-radius: 22rpx; font-size: 28rpx; }
+.mode-banner { margin-bottom: 24rpx; padding: 18rpx 22rpx; color: #8b4a34; border: 1rpx solid #f4c7b7; border-radius: 22rpx; background: #fff0e9; font-size: 24rpx; line-height: 1.5; }
+.state-card { margin-top: 24rpx; padding: 64rpx 30rpx; text-align: center; }
+.state-icon { display: block; margin-bottom: 18rpx; font-size: 56rpx; }
+.state-title { display: block; font-size: 30rpx; font-weight: 700; }
+.state-copy { display: block; margin: 14rpx 0 24rpx; color: #8b7468; font-size: 25rpx; line-height: 1.6; }

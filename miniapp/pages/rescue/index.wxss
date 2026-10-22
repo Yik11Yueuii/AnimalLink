@@ -1,0 +1,4 @@
+.skeleton { padding: 54rpx 38rpx; }
+.skeleton text { display: block; }
+.skeleton-copy { margin-top: 28rpx; color: #80685d; font-size: 28rpx; line-height: 1.75; }
+.boundary { margin-top: 38rpx; padding: 24rpx; color: #4e7468; border-radius: 22rpx; background: #edf7f2; font-size: 25rpx; line-height: 1.6; }

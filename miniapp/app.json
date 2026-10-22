@@ -1,0 +1,31 @@
+{
+  "pages": [
+    "pages/circle/index",
+    "pages/animals/index",
+    "pages/rescue/index",
+    "pages/my/index",
+    "pages/campus/index",
+    "pages/animal-detail/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "AnimalLink",
+    "navigationBarBackgroundColor": "#fffaf3",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#fbf6ee",
+    "backgroundTextStyle": "dark"
+  },
+  "tabBar": {
+    "color": "#8b7468",
+    "selectedColor": "#d96849",
+    "backgroundColor": "#fffdfa",
+    "borderStyle": "white",
+    "list": [
+      { "pagePath": "pages/circle/index", "text": "Campus Circle" },
+      { "pagePath": "pages/animals/index", "text": "Animals" },
+      { "pagePath": "pages/rescue/index", "text": "Rescue" },
+      { "pagePath": "pages/my/index", "text": "My" }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}
