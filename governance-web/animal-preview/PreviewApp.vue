@@ -1,8 +1,13 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import AnimalManagementPage from '@/features/animals/AnimalManagementPage.vue'
+import RescueManagementPage from '@/features/rescues/RescueManagementPage.vue'
 import { MockAnimalGovernanceDataSource, previewCampusOptions } from './mockAnimalDataSource'
+import { MockRescueGovernanceDataSource } from './mockRescueDataSource'
 
-const dataSource = new MockAnimalGovernanceDataSource()
+const animalDataSource = new MockAnimalGovernanceDataSource()
+const rescueDataSource = new MockRescueGovernanceDataSource()
+const activeModule = ref<'animals' | 'rescues'>('rescues')
 </script>
 
 <template>
@@ -27,8 +32,14 @@ const dataSource = new MockAnimalGovernanceDataSource()
       show-icon
     />
 
+    <nav class="preview-switch" aria-label="预览模块">
+      <button :class="{ active: activeModule === 'animals' }" @click="activeModule = 'animals'">Animal 档案</button>
+      <button :class="{ active: activeModule === 'rescues' }" @click="activeModule = 'rescues'">救助治理</button>
+    </nav>
+
     <main>
-      <AnimalManagementPage :data-source="dataSource" :campus-options="previewCampusOptions" />
+      <AnimalManagementPage v-if="activeModule === 'animals'" :data-source="animalDataSource" :campus-options="previewCampusOptions" />
+      <RescueManagementPage v-else :data-source="rescueDataSource" :campus-options="previewCampusOptions" />
     </main>
   </div>
 </template>
@@ -65,10 +76,21 @@ const dataSource = new MockAnimalGovernanceDataSource()
   background: #fff0e9; border: 1px solid #f5c3b1; font-size: .84rem; font-weight: 700;
 }
 .preview-notice { width: min(1180px, calc(100% - 36px)); margin: 20px auto 0; }
+.preview-switch {
+  width: min(1180px, calc(100% - 36px)); margin: 16px auto 0; padding: 5px;
+  display: flex; gap: 5px; border: 1px solid #eaded5; border-radius: 16px;
+  background: rgb(255 253 249 / 88%); box-sizing: border-box;
+}
+.preview-switch button {
+  flex: 1; min-height: 42px; border: 0; border-radius: 12px; color: #806d62;
+  background: transparent; font: inherit; font-weight: 700; cursor: pointer;
+}
+.preview-switch button.active { color: #8b3e27; background: #fff0e9; box-shadow: inset 0 0 0 1px #f5c3b1; }
 main { padding-bottom: 40px; }
 @media (max-width: 620px) {
   .preview-header { align-items: flex-start; flex-direction: column; }
   .preview-badge { align-self: stretch; text-align: center; }
   .preview-notice { width: calc(100% - 24px); margin-top: 12px; }
+  .preview-switch { width: calc(100% - 24px); }
 }
 </style>
