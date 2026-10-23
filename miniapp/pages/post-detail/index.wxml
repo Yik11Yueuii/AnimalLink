@@ -1,0 +1,24 @@
+<view class="page-shell">
+  <view wx:if="{{offline}}" class="mode-banner">本地离线演示 · 模拟公开社区数据</view>
+  <view wx:if="{{loading}}" class="state-card surface"><text class="state-icon">⌛</text><text class="state-title">正在读取校园动态</text></view>
+  <view wx:elif="{{errorMessage}}" class="state-card surface"><text class="state-icon">!</text><text class="state-title">动态加载失败</text><text class="state-copy">{{errorMessage}}</text><button class="primary-button" bindtap="onRetry">重试</button></view>
+  <block wx:elif="{{post}}">
+    <view class="post-detail surface">
+      <view class="post-meta"><view class="author-avatar">{{post.authorInitial}}</view><view class="author-copy"><text class="author-name">{{post.author.displayName}}</text><text class="post-time">{{post.createdText}}</text></view><text class="type-chip">{{post.typeText}}</text></view>
+      <text class="post-content">{{post.textContent}}</text>
+      <view wx:if="{{post.hasMediaMetadata}}" class="media-placeholder"><image src="/assets/animal-placeholder.jpg" mode="aspectFill" /><text>媒体对象已记录，可信公开访问地址尚未接入</text></view>
+      <view wx:if="{{post.animal}}" class="animal-link" data-id="{{post.animal.id}}" bindtap="openAnimal"><image src="/assets/animal-placeholder.jpg" mode="aspectFill" /><view><text class="animal-name">{{post.animal.displayName}}</text><text class="animal-species">{{post.animalSpeciesText}} · 查看长期档案</text></view><text class="link-arrow">›</text></view>
+      <view class="engagement"><text>♡ {{post.likeCount}} 次点赞</text><text>○ {{post.commentCount}} 条评论</text></view>
+    </view>
+    <view class="comments-section surface">
+      <view class="comments-heading"><text>公开评论</text><text>{{commentTotal}}</text></view>
+      <view wx:if="{{commentsLoading}}" class="comments-state">正在读取评论…</view>
+      <view wx:elif="{{commentsError && comments.length === 0}}" class="comments-state error"><text>{{commentsError}}</text><text class="retry-link" bindtap="onRetry">重试</text></view>
+      <view wx:elif="{{comments.length === 0}}" class="comments-state">暂无公开评论</view>
+      <view wx:else class="comment-list"><view wx:for="{{comments}}" wx:key="id" class="comment"><view class="comment-avatar">{{item.authorInitial}}</view><view class="comment-body"><view><text class="comment-author">{{item.author.displayName}}</text><text class="comment-time">{{item.createdText}}</text></view><text class="comment-content">{{item.content}}</text></view></view></view>
+      <view wx:if="{{commentsError && comments.length > 0}}" class="comments-state error"><text>{{commentsError}}</text><text class="retry-link" bindtap="loadMoreComments">重试加载</text></view>
+      <button wx:if="{{commentsHasMore}}" class="comments-more" loading="{{commentsLoadingMore}}" disabled="{{commentsLoadingMore}}" bindtap="loadMoreComments">{{commentsLoadingMore ? '加载中' : '加载更多评论'}}</button>
+      <view class="readonly-note">评论发布与点赞需要正式微信身份，本阶段未开放。</view>
+    </view>
+  </block>
+</view>

@@ -1,1 +1,6 @@
-{"navigationBarTitleText":"Campus Circle"}
+{
+  "navigationBarTitleText": "Campus Circle",
+  "enablePullDownRefresh": true,
+  "backgroundColor": "#fff8ef",
+  "backgroundTextStyle": "dark"
+}

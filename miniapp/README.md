@@ -1,6 +1,6 @@
 # AnimalLink 微信小程序 MINI-1A
 
-本目录是原生微信小程序（TypeScript + WXML + WXSS）工程。当前阶段完成 Campus 选择和 Animal 公共档案读取链路；Campus Circle、Rescue、My 仅提供诚实的后续扩展骨架。
+本目录是原生微信小程序（TypeScript + WXML + WXSS）工程。当前阶段完成 Campus 选择、Animal 公共档案读取链路，以及 Campus Circle 社区 Feed、帖子详情与公开评论；Rescue、My 仍只提供诚实的后续扩展骨架。
 
 ## 运行模式
 
@@ -28,5 +28,8 @@ npm test
 - `GET /animal/api/v1/animals`（`campusId` 必填，`page` 从 0 开始）
 - `GET /animal/api/v1/animals/{animalId}`
 - `GET /animal/api/v1/animals/{animalId}/timeline`
+- `GET /animal/api/v1/campuses/{campusId}/feed`
+- `GET /animal/api/v1/posts/{postId}`
+- `GET /animal/api/v1/posts/{postId}/comments`
 
-当前公共 Animal DTO 只提供媒体对象元数据，没有可信的公开媒体访问 URL。页面因此使用本地占位图，不拼接 MinIO 地址。正式微信登录、救助上报、领养操作和个人身份均未实现。
+当前公共 Animal 与 Community DTO 只提供媒体对象元数据，没有可信的公开媒体访问 URL。页面因此使用本地占位图，不拼接 MinIO 地址。正式微信登录、社区发布、点赞、评论写入、救助上报、领养操作和个人身份均未实现。

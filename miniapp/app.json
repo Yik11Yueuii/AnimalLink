@@ -5,7 +5,8 @@
     "pages/rescue/index",
     "pages/my/index",
     "pages/campus/index",
-    "pages/animal-detail/index"
+    "pages/animal-detail/index",
+    "pages/post-detail/index"
   ],
   "window": {
     "navigationBarTitleText": "AnimalLink",

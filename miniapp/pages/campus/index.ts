@@ -9,11 +9,15 @@ Page({
     q: '',
     campuses: [] as CampusResponse[],
     selectedCampusId: '',
+    returnTo: 'animals' as 'animals' | 'circle',
     loading: true,
     errorMessage: '',
   },
-  onLoad() {
-    this.setData({ selectedCampusId: getSelectedCampus()?.id ?? '' })
+  onLoad(options: Record<string, string | undefined>) {
+    this.setData({
+      selectedCampusId: getSelectedCampus()?.id ?? '',
+      returnTo: options.returnTo === 'circle' ? 'circle' : 'animals',
+    })
     void this.loadCampuses()
   },
   onKeywordInput(event: WechatMiniprogram.Input) {
@@ -29,7 +33,7 @@ Page({
     const campus = this.data.campuses.find((item) => item.id === event.currentTarget.dataset.id)
     if (!campus) return
     saveSelectedCampus(campus)
-    wx.switchTab({ url: '/pages/animals/index' })
+    wx.switchTab({ url: this.data.returnTo === 'circle' ? '/pages/circle/index' : '/pages/animals/index' })
   },
   async loadCampuses() {
     this.setData({ loading: true, errorMessage: '' })
