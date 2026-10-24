@@ -36,6 +36,13 @@ describe('post-login redirect', () => {
     expect(router.currentRoute.value.query.redirect).toBe('/animals?campus=one')
   })
 
+  it('keeps the Rescue governance route behind the administrator session guard', async () => {
+    const router = createGovernanceRouter(createMemoryHistory())
+    await router.push('/incidents')
+    expect(router.currentRoute.value.name).toBe('login')
+    expect(router.currentRoute.value.query.redirect).toBe('/incidents')
+  })
+
   it('returns an authenticated administrator from login to the intended internal route', async () => {
     authentication.isAuthenticated.value = true
     authentication.state.status = 'authenticated'

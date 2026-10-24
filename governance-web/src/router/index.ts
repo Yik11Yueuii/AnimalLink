@@ -3,6 +3,7 @@ import GovernanceLayout from '@/layouts/GovernanceLayout.vue'
 import OverviewPage from '@/views/OverviewPage.vue'
 import PlaceholderPage from '@/views/PlaceholderPage.vue'
 import AnimalGovernanceView from '@/features/animals/AnimalGovernanceView.vue'
+import RescueGovernanceView from '@/features/rescues/RescueGovernanceView.vue'
 import AccessDeniedPage from '@/views/AccessDeniedPage.vue'
 import LoginPage from '@/views/LoginPage.vue'
 import { useAdminAuthentication } from '@/composables/useAdminAuthentication'
@@ -20,7 +21,7 @@ const governancePages: RouteRecordRaw[] = [
   { path: 'volunteers', name: 'volunteers', component: PlaceholderPage, meta: { title: '志愿者管理', description: '申请、授权、暂停与撤销', requiresAuthentication: true } },
   { path: 'animals', name: 'animals', component: AnimalGovernanceView, meta: { title: 'Animal 档案治理', description: '核心档案查看与修正', requiresAuthentication: true } },
   { path: 'animal-identity', name: 'animal-identity', component: PlaceholderPage, meta: { title: 'Animal 待确认/合并', description: 'UNKNOWN、候选确认与重复治理', requiresAuthentication: true } },
-  { path: 'incidents', name: 'incidents', component: PlaceholderPage, meta: { title: 'Event / Case 治理', description: '救助流程查看与异常干预', requiresAuthentication: true } },
+  { path: 'incidents', name: 'incidents', component: RescueGovernanceView, meta: { title: 'Event / Case 治理', description: '救助流程查看与异常干预', requiresAuthentication: true } },
   { path: 'support', name: 'support', component: PlaceholderPage, meta: { title: '公益支持管理', description: '申请审核、进度、支出与结算', requiresAuthentication: true } },
   { path: 'adoptions', name: 'adoptions', component: PlaceholderPage, meta: { title: '领养管理', description: '申请、审核、交接、关系与回访', requiresAuthentication: true } },
   { path: 'content', name: 'content', component: PlaceholderPage, meta: { title: '内容治理', description: '内容处置与治理记录', requiresAuthentication: true } },
