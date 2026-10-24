@@ -105,7 +105,7 @@ class PostAdoptionIntegrationTest {
                         + "FROM timeline_entry WHERE source_id = ?", postId))
                 .containsEntry("source_type", "POST").containsEntry("entry_type", "POST_ADOPTION_PUBLISHED")
                 .containsEntry("title", "领养后动态已发布").containsEntry("summary", null)
-                .containsEntry("visibility", "PUBLIC");
+                .containsEntry("visibility", "RESTRICTED");
         mvc.perform(get("/api/v1/admin/posts/{postId}", postId).header("X-User-Id", ADMIN))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.relationId").value(ADOPTION.relationId));
@@ -192,11 +192,11 @@ class PostAdoptionIntegrationTest {
         assertThat(jdbc.queryForMap("SELECT id, occurred_at FROM timeline_entry WHERE source_id = ?", postId))
                 .isEqualTo(originalTimeline);
         assertThat(jdbc.queryForObject("SELECT visibility FROM timeline_entry WHERE source_id = ?",
-                String.class, postId)).isEqualTo("PUBLIC");
+                String.class, postId)).isEqualTo("RESTRICTED");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM timeline_entry WHERE source_id = ?",
                 Integer.class, postId)).isOne();
         mvc.perform(get("/api/v1/animals/{animalId}/timeline", ANIMAL))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(1));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(0));
         mvc.perform(post("/api/v1/posts").header("X-User-Id", ADOPTER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"campusId\":\"" + CAMPUS + "\",\"textContent\":\"普通动态\",\"media\":[]}"))
@@ -207,7 +207,7 @@ class PostAdoptionIntegrationTest {
     void governanceTimelineConflictRollsBackPostAndAudit() throws Exception {
         String postId = jsonValue(mvc.perform(publish("时间线冲突", "[]", ADOPTER))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "id");
-        jdbc.update("UPDATE timeline_entry SET visibility='RESTRICTED' WHERE source_id = ?", postId);
+        jdbc.update("DELETE FROM timeline_entry WHERE source_id = ?", postId);
 
         mvc.perform(post("/api/v1/admin/posts/{postId}/hide", postId).header("X-User-Id", ADMIN)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -216,8 +216,8 @@ class PostAdoptionIntegrationTest {
 
         assertThat(jdbc.queryForMap("SELECT status, version FROM post WHERE id = ?", postId))
                 .containsEntry("status", "ACTIVE").containsEntry("version", 0);
-        assertThat(jdbc.queryForObject("SELECT visibility FROM timeline_entry WHERE source_id = ?",
-                String.class, postId)).isEqualTo("RESTRICTED");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM timeline_entry WHERE source_id = ?",
+                Integer.class, postId)).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM community_governance_audit",
                 Integer.class)).isZero();
     }
@@ -295,7 +295,7 @@ class PostAdoptionIntegrationTest {
                         .content("{\"description\":\"冲突测试\"}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(),
                 "reportId");
-        jdbc.update("UPDATE timeline_entry SET visibility='RESTRICTED' WHERE source_id=?", inconsistent);
+        jdbc.update("DELETE FROM timeline_entry WHERE source_id=?", inconsistent);
         mvc.perform(post("/api/v1/admin/content-reports/{id}/resolve", inconsistentReport)
                         .header("X-User-Id", ADMIN).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"action\":\"REMOVE\",\"resolutionNote\":\"应回滚\"}"))
@@ -362,7 +362,7 @@ class PostAdoptionIntegrationTest {
         assertThat(jdbc.queryForMap("SELECT status,version FROM post WHERE id=?", directPost))
                 .containsEntry("status", "ACTIVE").containsEntry("version", 0);
         assertThat(jdbc.queryForObject("SELECT visibility FROM timeline_entry WHERE source_id=?",
-                String.class, directPost)).isEqualTo("PUBLIC");
+                String.class, directPost)).isEqualTo("RESTRICTED");
         assertThatThrownBy(() -> mvc.perform(post("/api/v1/admin/comments/{id}/remove", directComment)
                         .header("X-User-Id", ADMIN).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"reason\":\"应回滚\"}")))
@@ -397,7 +397,7 @@ class PostAdoptionIntegrationTest {
         assertThat(jdbc.queryForMap("SELECT status,version FROM post WHERE id=?", postId))
                 .containsEntry("status", "ACTIVE").containsEntry("version", 0);
         assertThat(jdbc.queryForObject("SELECT visibility FROM timeline_entry WHERE source_id=?",
-                String.class, postId)).isEqualTo("PUBLIC");
+                String.class, postId)).isEqualTo("RESTRICTED");
         assertThat(jdbc.queryForObject("SELECT status FROM community_content_report WHERE id=?",
                 String.class, reportId)).isEqualTo("OPEN");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM community_governance_audit "

@@ -13,6 +13,9 @@ published support expense paths in ExternalIdentityBoundaryFilter pass:
 - /identity/api/v1/campuses/{campusId}
 - /animal/api/v1/public/animals
 - /animal/api/v1/public/animals/{animalId}
+- /animal/api/v1/public/campuses/{campusId}/feed
+- /animal/api/v1/public/posts/{postId}
+- /animal/api/v1/public/posts/{postId}/comments
 - /incident/api/v1/cases/{caseId}/support/expenses
 
 Actuator health/info GET/HEAD are also retained. The list requires a canonical

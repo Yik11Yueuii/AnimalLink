@@ -13,7 +13,6 @@ export interface CommunityPostView extends CommunityPostResponse {
   createdText: string
   authorInitial: string
   animalSpeciesText: string
-  hasMediaMetadata: boolean
 }
 
 export interface CommunityCommentView extends CommunityCommentResponse {
@@ -34,13 +33,12 @@ export const toCommunityPostView = (post: CommunityPostResponse): CommunityPostV
   ...post,
   typeText: postTypeLabel[post.postType],
   createdText: formatDateTime(post.createdAt),
-  authorInitial: initial(post.author.displayName),
+  authorInitial: initial(post.authorDisplayName),
   animalSpeciesText: post.animal ? speciesLabel[post.animal.species] : '',
-  hasMediaMetadata: post.media.length > 0,
 })
 
 export const toCommunityCommentView = (comment: CommunityCommentResponse): CommunityCommentView => ({
   ...comment,
   createdText: formatDateTime(comment.createdAt),
-  authorInitial: initial(comment.author.displayName),
+  authorInitial: initial(comment.authorDisplayName),
 })

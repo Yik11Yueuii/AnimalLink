@@ -46,7 +46,10 @@ class GatewayRoutingBoundaryIntegrationTest {
         String id = "00000000-0000-0000-0000-000000000001";
         for (String path : new String[] {
                 "/animal/api/v1/public/animals",
-                "/animal/api/v1/public/animals/" + id }) {
+                "/animal/api/v1/public/animals/" + id,
+                "/animal/api/v1/public/campuses/" + id + "/feed",
+                "/animal/api/v1/public/posts/" + id,
+                "/animal/api/v1/public/posts/" + id + "/comments" }) {
             client.get().uri(path).header("Authorization", "Bearer forged")
                     .header("X-User-Id", id).header("X-Internal-Service", "animal-service")
                     .exchange().expectStatus().isOk().expectBody(String.class).isEqualTo("none");
@@ -55,6 +58,10 @@ class GatewayRoutingBoundaryIntegrationTest {
         client.get().uri("/animal/api/v1/public/animals/" + id + "/timeline")
                 .exchange().expectStatus().isUnauthorized();
         client.post().uri("/animal/api/v1/public/animals").exchange().expectStatus().isUnauthorized();
+        client.post().uri("/animal/api/v1/public/posts/" + id).exchange()
+                .expectStatus().isUnauthorized();
+        client.get().uri("/animal/api/v1/public/posts/" + id + "/comments/extra")
+                .exchange().expectStatus().isUnauthorized();
     }
 
     @Test

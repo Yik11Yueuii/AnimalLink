@@ -32,6 +32,9 @@ public class ExternalIdentityBoundaryFilter implements WebFilter, Ordered {
             Pattern.compile("^/identity/api/v1/campuses/" + UUID_SEGMENT + "$"),
             Pattern.compile("^/animal/api/v1/public/animals$"),
             Pattern.compile("^/animal/api/v1/public/animals/" + UUID_SEGMENT + "$"),
+            Pattern.compile("^/animal/api/v1/public/campuses/" + UUID_SEGMENT + "/feed$"),
+            Pattern.compile("^/animal/api/v1/public/posts/" + UUID_SEGMENT + "$"),
+            Pattern.compile("^/animal/api/v1/public/posts/" + UUID_SEGMENT + "/comments$"),
             Pattern.compile("^/incident/api/v1/cases/" + UUID_SEGMENT + "/support/expenses$"),
             Pattern.compile("^/actuator/(?:health(?:/(?:liveness|readiness))?|info)$"));
     private final boolean devSimulation;

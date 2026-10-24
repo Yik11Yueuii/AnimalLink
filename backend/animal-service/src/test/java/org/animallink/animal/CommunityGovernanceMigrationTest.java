@@ -58,7 +58,7 @@ class CommunityGovernanceMigrationTest {
         assertThat(value("SELECT visibility FROM timeline_entry WHERE source_id='" + HIDDEN_POST + "'"))
                 .isEqualTo("RESTRICTED");
         assertThat(value("SELECT visibility FROM timeline_entry WHERE source_id='" + ACTIVE_POST + "'"))
-                .isEqualTo("PUBLIC");
+                .isEqualTo("RESTRICTED");
         assertThat(value("SELECT visibility FROM timeline_entry WHERE source_id='" + ORDINARY_POST + "'"))
                 .isEqualTo("PUBLIC");
         assertThat(value("SELECT COUNT(*) FROM community_governance_audit")).isEqualTo("0");
@@ -66,6 +66,10 @@ class CommunityGovernanceMigrationTest {
                 .isEqualTo("1");
         assertThat(value("SELECT COUNT(*) FROM flyway_schema_history WHERE version='9' AND success=1"))
                 .isEqualTo("1");
+        assertThat(value("SELECT COUNT(*) FROM flyway_schema_history WHERE version='13' AND success=1"))
+                .isEqualTo("1");
+        assertThat(value("SELECT COUNT(*) FROM post WHERE review_status='PENDING'"))
+                .isEqualTo("3");
         assertThat(value("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() "
                 + "AND table_name='community_content_report'")).isEqualTo("1");
         assertThat(value("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() "

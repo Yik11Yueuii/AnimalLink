@@ -13,9 +13,32 @@ import java.util.*;
 
 @Repository
 public class JdbcCommunityRepository implements CommunityRepository {
+    private static final String PUBLIC_POST_SELECT = """
+            SELECT p.id, p.campus_id, p.post_type, p.text_content,
+                   a.id AS animal_id, a.display_name AS animal_display_name,
+                   a.species AS animal_species, a.adoption_status AS animal_adoption_status,
+                   a.current_context AS animal_current_context,
+                   (SELECT COUNT(*) FROM post_like pl WHERE pl.post_id = p.id) AS like_count,
+                   (SELECT COUNT(*) FROM comment c
+                    WHERE c.post_id = p.id AND c.status = 'ACTIVE'
+                      AND c.review_status = 'APPROVED') AS comment_count,
+                   p.created_at, p.updated_at
+            FROM post p
+            LEFT JOIN animal raw_animal ON raw_animal.id = p.animal_id
+            LEFT JOIN animal_merge_record merge_record
+                   ON merge_record.source_animal_id = p.animal_id
+            LEFT JOIN animal merge_target ON merge_target.id = merge_record.target_animal_id
+            LEFT JOIN animal a ON a.id = CASE
+                WHEN raw_animal.identity_status = 'ACTIVE' THEN raw_animal.id
+                WHEN raw_animal.identity_status = 'MERGED'
+                     AND merge_target.identity_status = 'ACTIVE' THEN merge_target.id
+                ELSE NULL
+            END
+            """;
     private static final String POST_COLUMNS = """
             p.id, p.campus_id, p.animal_id, p.relation_id, p.author_user_id, p.post_type, p.text_content,
-            p.visibility, p.status, p.version, p.created_at, p.updated_at
+            p.visibility, p.status, p.review_status, p.reviewed_by_user_id, p.reviewed_at,
+            p.version, p.created_at, p.updated_at
             """;
     private static final String POST_VIEW_SELECT = """
             SELECT %s,
@@ -75,11 +98,13 @@ public class JdbcCommunityRepository implements CommunityRepository {
         jdbcTemplate.update("""
                 INSERT INTO post
                     (id, campus_id, animal_id, relation_id, author_user_id, post_type, text_content,
-                     visibility, status, version, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     visibility, status, review_status, reviewed_by_user_id, reviewed_at,
+                     version, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, post.id(), post.campusId(), post.animalId(), post.relationId(), post.authorUserId(),
                 post.postType().name(), post.textContent(), post.visibility().name(),
-                post.status().name(), post.version(), Timestamp.from(post.createdAt()),
+                post.status().name(), post.reviewStatus().name(), post.reviewedByUserId(),
+                timestamp(post.reviewedAt()), post.version(), Timestamp.from(post.createdAt()),
                 Timestamp.from(post.updatedAt()));
         for (PostMedia item : media) {
             jdbcTemplate.update("""
@@ -153,17 +178,21 @@ public class JdbcCommunityRepository implements CommunityRepository {
     public void insertComment(Comment comment) {
         jdbcTemplate.update("""
                 INSERT INTO comment
-                    (id, post_id, author_user_id, content, status, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (id, post_id, author_user_id, content, status, review_status,
+                     reviewed_by_user_id, reviewed_at, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, comment.id(), comment.postId(), comment.authorUserId(), comment.content(),
-                comment.status().name(), Timestamp.from(comment.createdAt()),
+                comment.status().name(), comment.reviewStatus().name(),
+                comment.reviewedByUserId(), timestamp(comment.reviewedAt()),
+                Timestamp.from(comment.createdAt()),
                 Timestamp.from(comment.updatedAt()));
     }
 
     @Override
     public List<Comment> findComments(String postId, int limit, int offset) {
         return jdbcTemplate.query("""
-                SELECT id, post_id, author_user_id, content, status, created_at, updated_at
+                SELECT id, post_id, author_user_id, content, status, review_status,
+                       reviewed_by_user_id, reviewed_at, created_at, updated_at
                 FROM comment
                 WHERE post_id = ? AND status = 'ACTIVE'
                 ORDER BY created_at ASC, id ASC
@@ -174,6 +203,58 @@ public class JdbcCommunityRepository implements CommunityRepository {
     @Override
     public long countComments(String postId) {
         return count("SELECT COUNT(*) FROM comment WHERE post_id = ? AND status = 'ACTIVE'", postId);
+    }
+
+    @Override
+    public List<PublicCommunityPostView> findPublicFeed(String campusId, int limit, int offset) {
+        return jdbcTemplate.query(PUBLIC_POST_SELECT + """
+                WHERE p.campus_id = ? AND p.status = 'ACTIVE' AND p.visibility = 'PUBLIC'
+                  AND p.review_status = 'APPROVED'
+                ORDER BY p.created_at DESC, p.id DESC
+                LIMIT ? OFFSET ?
+                """, PUBLIC_POST_MAPPER, campusId, limit, offset);
+    }
+
+    @Override
+    public long countPublicFeed(String campusId) {
+        return count("""
+                SELECT COUNT(*) FROM post
+                WHERE campus_id = ? AND status = 'ACTIVE' AND visibility = 'PUBLIC'
+                  AND review_status = 'APPROVED'
+                """, campusId);
+    }
+
+    @Override
+    public Optional<PublicCommunityPostView> findPublicPost(String postId) {
+        return optional(PUBLIC_POST_SELECT + """
+                WHERE p.id = ? AND p.status = 'ACTIVE' AND p.visibility = 'PUBLIC'
+                  AND p.review_status = 'APPROVED'
+                """, PUBLIC_POST_MAPPER, postId);
+    }
+
+    @Override
+    public List<PublicCommunityCommentView> findPublicComments(String postId, int limit, int offset) {
+        return jdbcTemplate.query("""
+                SELECT c.id, c.post_id, c.content, c.created_at
+                FROM comment c
+                JOIN post p ON p.id = c.post_id
+                WHERE c.post_id = ? AND c.status = 'ACTIVE' AND c.review_status = 'APPROVED'
+                  AND p.status = 'ACTIVE' AND p.visibility = 'PUBLIC'
+                  AND p.review_status = 'APPROVED'
+                ORDER BY c.created_at ASC, c.id ASC
+                LIMIT ? OFFSET ?
+                """, PUBLIC_COMMENT_MAPPER, postId, limit, offset);
+    }
+
+    @Override
+    public long countPublicComments(String postId) {
+        return count("""
+                SELECT COUNT(*) FROM comment c
+                JOIN post p ON p.id = c.post_id
+                WHERE c.post_id = ? AND c.status = 'ACTIVE' AND c.review_status = 'APPROVED'
+                  AND p.status = 'ACTIVE' AND p.visibility = 'PUBLIC'
+                  AND p.review_status = 'APPROVED'
+                """, postId);
     }
 
     @Override
@@ -253,11 +334,17 @@ public class JdbcCommunityRepository implements CommunityRepository {
         return value == null ? null : value.toInstant();
     }
 
+    private static Timestamp timestamp(Instant value) {
+        return value == null ? null : Timestamp.from(value);
+    }
+
     private static Post post(ResultSet rs) throws SQLException {
         return new Post(rs.getString("id"), rs.getString("campus_id"), rs.getString("animal_id"),
                 rs.getString("relation_id"), rs.getString("author_user_id"), PostType.valueOf(rs.getString("post_type")),
                 rs.getString("text_content"), Visibility.valueOf(rs.getString("visibility")),
-                PostStatus.valueOf(rs.getString("status")), rs.getInt("version"),
+                PostStatus.valueOf(rs.getString("status")),
+                PublicReviewStatus.valueOf(rs.getString("review_status")),
+                rs.getString("reviewed_by_user_id"), instant(rs, "reviewed_at"), rs.getInt("version"),
                 instant(rs, "created_at"), instant(rs, "updated_at"));
     }
 
@@ -291,10 +378,28 @@ public class JdbcCommunityRepository implements CommunityRepository {
                 rs.getInt("sort_order"), Visibility.valueOf(rs.getString("visibility")),
                 instant(rs, "created_at"));
     };
+    private static final RowMapper<PublicCommunityPostView> PUBLIC_POST_MAPPER = (rs, rowNum) ->
+            new PublicCommunityPostView(rs.getString("id"), rs.getString("campus_id"),
+                    PostType.valueOf(rs.getString("post_type")), rs.getString("text_content"),
+                    rs.getString("animal_id"), rs.getString("animal_display_name"),
+                    rs.getString("animal_species") == null ? null
+                            : AnimalSpecies.valueOf(rs.getString("animal_species")),
+                    rs.getString("animal_adoption_status") == null ? null
+                            : AdoptionStatus.valueOf(rs.getString("animal_adoption_status")),
+                    rs.getString("animal_current_context") == null ? null
+                            : CurrentContext.valueOf(rs.getString("animal_current_context")),
+                    rs.getLong("like_count"), rs.getLong("comment_count"),
+                    instant(rs, "created_at"), instant(rs, "updated_at"));
+    private static final RowMapper<PublicCommunityCommentView> PUBLIC_COMMENT_MAPPER = (rs, rowNum) ->
+            new PublicCommunityCommentView(rs.getString("id"), rs.getString("post_id"),
+                    rs.getString("content"), instant(rs, "created_at"));
     private static final RowMapper<Comment> COMMENT_MAPPER = (rs, rowNum) ->
             new Comment(rs.getString("id"), rs.getString("post_id"),
                     rs.getString("author_user_id"), rs.getString("content"),
-                    CommentStatus.valueOf(rs.getString("status")), instant(rs, "created_at"),
+                    CommentStatus.valueOf(rs.getString("status")),
+                    PublicReviewStatus.valueOf(rs.getString("review_status")),
+                    rs.getString("reviewed_by_user_id"), instant(rs, "reviewed_at"),
+                    instant(rs, "created_at"),
                     instant(rs, "updated_at"));
     private static final RowMapper<FollowedAnimalView> FOLLOW_MAPPER = (rs, rowNum) ->
             new FollowedAnimalView(animal(rs), instant(rs, "followed_at"),

@@ -159,9 +159,9 @@ Campus Circle 是校园内动物近况的主浏览面。Phase 1C 由 `animal-ser
 
 | Method | Path | 用途 | 认证 |
 | --- | --- | --- | --- |
-| GET | `/api/v1/campuses/{campusId}/feed?page=0&size=20` | 按创建时间倒序读取 Campus Feed | Gateway 尚未匿名开放 |
-| GET | `/api/v1/posts/{postId}` | 读取 Post 详情 | Gateway 尚未匿名开放 |
-| GET | `/api/v1/posts/{postId}/comments?page=0&size=50` | 读取评论 | Gateway 尚未匿名开放 |
+| GET | `/api/v1/public/campuses/{campusId}/feed?page=0&size=20` | 读取人工审核通过的匿名 Campus Feed | 仅 ACTIVE + PUBLIC + APPROVED |
+| GET | `/api/v1/public/posts/{postId}` | 读取人工审核通过的匿名 Post 详情 | 仅 ACTIVE + PUBLIC + APPROVED |
+| GET | `/api/v1/public/posts/{postId}/comments?page=0&size=50` | 读取审核通过的公开评论 | 评论及父帖均须公开且 APPROVED |
 | POST | `/api/v1/posts` | 发布 Campus Post | 目标 Campus 有效学生/校友成员 |
 | POST | `/api/v1/posts/{postId}/comments` | 评论公开 Post | Post 所属 Campus 有效学生/校友成员 |
 | POST / DELETE | `/api/v1/posts/{postId}/like` | 点赞 / 取消点赞 | 当前用户 |
@@ -173,7 +173,7 @@ Campus Circle 是校园内动物近况的主浏览面。Phase 1C 由 `animal-ser
 
 ```powershell
 $userHeaders = @{ 'X-User-Id' = '00000000-0000-0000-0000-000000000001' }
-Invoke-RestMethod 'http://localhost:8080/animal/api/v1/campuses/10000000-0000-0000-0000-000000000001/feed'
+Invoke-RestMethod 'http://localhost:8080/animal/api/v1/public/campuses/10000000-0000-0000-0000-000000000001/feed'
 
 $postBody = @{
   campusId = '10000000-0000-0000-0000-000000000001'

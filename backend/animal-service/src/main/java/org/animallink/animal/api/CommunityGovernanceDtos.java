@@ -42,6 +42,9 @@ public final class CommunityGovernanceDtos {
             PostType postType,
             String textContent,
             PostStatus status,
+            PublicReviewStatus reviewStatus,
+            String reviewedByUserId,
+            Instant reviewedAt,
             int version,
             long likeCount,
             long activeCommentCount,
@@ -52,6 +55,7 @@ public final class CommunityGovernanceDtos {
             Post post = view.post();
             return new PostQueueItem(post.id(), post.campusId(), post.animalId(),
                     post.authorUserId(), post.postType(), post.textContent(), post.status(),
+                    post.reviewStatus(), post.reviewedByUserId(), post.reviewedAt(),
                     post.version(), view.likeCount(), view.activeCommentCount(),
                     view.hiddenCommentCount(), post.createdAt(), post.updatedAt());
         }
@@ -79,6 +83,9 @@ public final class CommunityGovernanceDtos {
             PostType postType,
             String textContent,
             PostStatus status,
+            PublicReviewStatus reviewStatus,
+            String reviewedByUserId,
+            Instant reviewedAt,
             int version,
             Instant createdAt,
             Instant updatedAt,
@@ -90,7 +97,8 @@ public final class CommunityGovernanceDtos {
             Post post = view.post();
             return new PostDetailResponse(post.id(), post.campusId(), post.animalId(),
                     post.relationId(), post.authorUserId(), post.postType(), post.textContent(),
-                    post.status(), post.version(), post.createdAt(), post.updatedAt(),
+                    post.status(), post.reviewStatus(), post.reviewedByUserId(), post.reviewedAt(),
+                    post.version(), post.createdAt(), post.updatedAt(),
                     view.likeCount(), view.activeCommentCount(), view.hiddenCommentCount(),
                     view.media().stream().map(GovernanceMediaResponse::from).toList());
         }
@@ -103,6 +111,9 @@ public final class CommunityGovernanceDtos {
             String authorUserId,
             String content,
             CommentStatus status,
+            PublicReviewStatus reviewStatus,
+            String reviewedByUserId,
+            Instant reviewedAt,
             PostStatus parentPostStatus,
             Instant createdAt,
             Instant updatedAt) {
@@ -110,6 +121,7 @@ public final class CommunityGovernanceDtos {
             Comment comment = view.comment();
             return new CommentQueueItem(comment.id(), comment.postId(), view.campusId(),
                     comment.authorUserId(), comment.content(), comment.status(),
+                    comment.reviewStatus(), comment.reviewedByUserId(), comment.reviewedAt(),
                     view.parentPostStatus(), comment.createdAt(), comment.updatedAt());
         }
     }
