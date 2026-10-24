@@ -1,12 +1,27 @@
 <view class="page-shell">
-  <view class="hero surface">
-    <text class="eyebrow">ANIMALLINK</text>
-    <text class="page-title">Campus Circle</text>
-    <text class="hero-copy">校园动物观察与社区内容将在后续阶段接入。本阶段先完成公开 Animal 档案浏览。</text>
-    <button class="primary-button" bindtap="goAnimals">查看 Animal 档案</button>
+  <view wx:if="{{offline}}" class="mode-banner">本地离线演示 · 以下为明确标注的模拟社区数据</view>
+  <view class="circle-heading">
+    <view><text class="eyebrow">CAMPUS CIRCLE</text><text class="page-title">校园动态</text></view>
+    <button class="campus-button" bindtap="changeCampus">{{campus ? campus.shortName : '选择 Campus'}}⌄</button>
   </view>
-  <view class="notice surface">
-    <text class="notice-title">页面骨架</text>
-    <text class="muted">没有模拟动态，也没有开放记录或求助入口。</text>
+  <view class="circle-intro surface">
+    <text>在同一个 Campus 里，持续记录动物的日常、救助和领养后近况。</text>
+    <text class="readonly-note">当前仅开放公开阅读，发布、点赞和评论尚未开放。</text>
+  </view>
+  <view class="result-meta"><text>{{campus.name}}</text><text>{{total}} 条动态</text></view>
+  <view wx:if="{{loading}}" class="state-card surface"><text class="state-icon">⌛</text><text class="state-title">正在读取校园动态</text></view>
+  <view wx:elif="{{errorMessage && posts.length === 0}}" class="state-card surface"><text class="state-icon">!</text><text class="state-title">社区加载失败</text><text class="state-copy">{{errorMessage}}</text><button class="primary-button" bindtap="onRetry">重试</button></view>
+  <view wx:elif="{{posts.length === 0}}" class="state-card surface"><text class="state-icon">○</text><text class="state-title">当前 Campus 暂无公开动态</text><text class="state-copy">可以切换 Campus 查看其他校园。</text></view>
+  <view wx:else class="feed-list">
+    <view wx:for="{{posts}}" wx:key="id" class="post-card surface" data-id="{{item.id}}" bindtap="openPost">
+      <view class="post-meta"><view class="author-avatar">{{item.authorInitial}}</view><view class="author-copy"><text class="author-name">{{item.author.displayName}}</text><text class="post-time">{{item.createdText}}</text></view><text class="type-chip type-{{item.postType}}">{{item.typeText}}</text></view>
+      <text class="post-content">{{item.textContent}}</text>
+      <view wx:if="{{item.hasMediaMetadata}}" class="media-placeholder"><image src="/assets/animal-placeholder.jpg" mode="aspectFill" /><text>媒体元数据已存在 · 公开访问地址尚未接入</text></view>
+      <view wx:if="{{item.animal}}" class="animal-link" data-id="{{item.animal.id}}" catchtap="openAnimal"><image src="/assets/animal-placeholder.jpg" mode="aspectFill" /><view><text class="animal-name">{{item.animal.displayName}}</text><text class="animal-species">关联 Animal · {{item.animalSpeciesText}}</text></view><text class="link-arrow">›</text></view>
+      <view class="engagement"><text>♡ {{item.likeCount}}</text><text>○ {{item.commentCount}} 条评论</text><text class="detail-link">查看全文 ›</text></view>
+    </view>
+    <view wx:if="{{errorMessage}}" class="inline-error"><text>{{errorMessage}}</text><text class="retry-link" bindtap="loadMore">重试加载</text></view>
+    <button wx:if="{{hasMore}}" class="load-more" loading="{{loadingMore}}" disabled="{{loadingMore}}" bindtap="loadMore">{{loadingMore ? '加载中' : '加载更多动态'}}</button>
+    <text wx:else class="list-end">已展示当前 Campus 的全部动态</text>
   </view>
 </view>
