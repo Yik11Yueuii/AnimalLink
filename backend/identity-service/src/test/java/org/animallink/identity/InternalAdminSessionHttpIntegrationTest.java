@@ -55,8 +55,8 @@ class InternalAdminSessionHttpIntegrationTest {
         registry.add("spring.datasource.username", MYSQL::getUsername);
         registry.add("spring.datasource.password", MYSQL::getPassword);
         registry.add("animallink.authentication.service-assertion.keys", () -> CONFIGURED_KEY);
-        registry.add("animallink.authentication.login-protection.maximum-attempts", () -> "100");
-        registry.add("animallink.authentication.login-protection.maximum-source-attempts", () -> "100");
+        registry.add("animallink.authentication.login-protection.maximum-attempts", () -> "5");
+        registry.add("animallink.authentication.login-protection.maximum-source-attempts", () -> "20");
     }
 
     @Autowired TestRestTemplate http;
@@ -141,6 +141,74 @@ class InternalAdminSessionHttpIntegrationTest {
         assertThat(validate(sessionToken, freshAssertion()).getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 
+    @Test
+    void authenticatedGatewayCanCreateAndRevokeSessionThroughRealHttp() throws Exception {
+        var login = login("admin.root", PASSWORD, "ip:127.0.0.1", freshAssertion());
+
+        assertThat(login.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(login.getBody()).containsEntry("userId", ADMIN)
+                .containsEntry("systemRole", "GOVERNANCE_ADMIN")
+                .containsKey("token").doesNotContainKey("passwordHash");
+        String token = (String) login.getBody().get("token");
+        assertThat(token).matches("[A-Za-z0-9_-]{43}");
+        assertThat(validate(token, freshAssertion()).getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        var revoked = revoke(token, freshAssertion());
+        assertThat(revoked.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(revoked.getBody()).containsEntry("revoked", true);
+        assertThat(validate(token, freshAssertion()).getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM authentication_audit_event "
+                + "WHERE event_type='SESSION_REVOKED' AND session_id IS NOT NULL", Integer.class)).isOne();
+    }
+
+    @Test
+    void loginAndRevokeRequireCryptographicallyAuthenticatedGateway() throws Exception {
+        assertThat(login("admin.root", PASSWORD, "ip:127.0.0.1", null).getStatusCode())
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(revoke(sessionToken, null).getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+
+        HttpHeaders forged = new HttpHeaders();
+        forged.set("X-Internal-Service", "api-gateway");
+        assertThat(http.exchange("/internal/v1/auth/sessions/login", HttpMethod.POST,
+                new HttpEntity<>(Map.of("username", "admin.root", "password", PASSWORD,
+                        "trustedSource", "ip:127.0.0.1"), forged), Map.class).getStatusCode())
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void wrongPasswordUnknownUserRoleAndStatusShareTheSamePublicFailure() throws Exception {
+        assertCredentialFailure("admin.root", "wrong-password");
+        assertCredentialFailure("missing.user", "wrong-password");
+
+        jdbc.update("UPDATE `user` SET system_role='USER' WHERE id=?", ADMIN);
+        assertCredentialFailure("admin.root", PASSWORD);
+        jdbc.update("UPDATE `user` SET system_role='GOVERNANCE_ADMIN', account_status='DISABLED' WHERE id=?", ADMIN);
+        assertCredentialFailure("admin.root", PASSWORD);
+    }
+
+    @Test
+    void sixthBadCredentialRequestIsRateLimitedThroughInternalHttp() throws Exception {
+        for (int attempt = 1; attempt <= 5; attempt++) {
+            assertThat(login("admin.root", "wrong-password", "ip:127.0.0.2", freshAssertion())
+                    .getStatusCode()).as("failure %s", attempt).isEqualTo(HttpStatus.UNAUTHORIZED);
+        }
+        var limited = login("admin.root", "wrong-password", "ip:127.0.0.2", freshAssertion());
+        assertThat(limited.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        assertThat(limited.getBody()).containsEntry("code", "LOGIN_RATE_LIMITED");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM authentication_audit_event "
+                + "WHERE event_type='ADMIN_LOGIN_FAILURE'", Integer.class)).isEqualTo(5);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM authentication_audit_event "
+                + "WHERE event_type='ADMIN_LOGIN_RATE_LIMITED'", Integer.class)).isOne();
+    }
+
+    @Test
+    void malformedInternalRequestsAreRejectedWithoutCreatingSessions() throws Exception {
+        int before = jdbc.queryForObject("SELECT COUNT(*) FROM admin_session", Integer.class);
+        var malformed = login("admin.root", PASSWORD, "client-supplied", freshAssertion());
+        assertThat(malformed.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM admin_session", Integer.class)).isEqualTo(before);
+    }
+
     private org.springframework.http.ResponseEntity<Map> validate(String token, String assertion) {
         HttpHeaders headers = new HttpHeaders();
         if (assertion != null) headers.setBearerAuth(assertion);
@@ -150,6 +218,28 @@ class InternalAdminSessionHttpIntegrationTest {
     private org.springframework.http.ResponseEntity<Map> post(String token, HttpHeaders headers) {
         return http.exchange("/internal/v1/auth/sessions/validate", HttpMethod.POST,
                 new HttpEntity<>(Map.of("token", token), headers), Map.class);
+    }
+
+    private org.springframework.http.ResponseEntity<Map> login(String username, String password,
+                                                               String source, String assertion) {
+        HttpHeaders headers = new HttpHeaders();
+        if (assertion != null) headers.setBearerAuth(assertion);
+        return http.exchange("/internal/v1/auth/sessions/login", HttpMethod.POST,
+                new HttpEntity<>(Map.of("username", username, "password", password,
+                        "trustedSource", source), headers), Map.class);
+    }
+
+    private org.springframework.http.ResponseEntity<Map> revoke(String token, String assertion) {
+        HttpHeaders headers = new HttpHeaders();
+        if (assertion != null) headers.setBearerAuth(assertion);
+        return http.exchange("/internal/v1/auth/sessions/revoke", HttpMethod.POST,
+                new HttpEntity<>(Map.of("token", token), headers), Map.class);
+    }
+
+    private void assertCredentialFailure(String username, String password) throws Exception {
+        var response = login(username, password, "ip:127.0.0.3", freshAssertion());
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(response.getBody()).containsEntry("code", "CREDENTIALS_INVALID");
     }
 
     private String freshAssertion() throws Exception {

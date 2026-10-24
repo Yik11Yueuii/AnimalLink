@@ -84,6 +84,65 @@ class IdentitySessionClientHttpTest {
                 .isInstanceOf(IdentitySessionClient.IdentitySessionUnavailableException.class);
     }
 
+    @Test
+    void loginAndRevocationUseFreshServiceAssertionsOverRealNonBlockingHttp() throws Exception {
+        AtomicReference<String> loginAuthorization = new AtomicReference<>();
+        AtomicReference<String> revokeAuthorization = new AtomicReference<>();
+        AtomicReference<String> loginBody = new AtomicReference<>();
+        AtomicReference<String> revokeBody = new AtomicReference<>();
+        server = HttpServer.create().host("127.0.0.1").port(0).handle((request, response) ->
+                request.receive().aggregate().asString().flatMap(body -> {
+                    if (request.uri().endsWith("/login")) {
+                        loginAuthorization.set(request.requestHeaders().get("Authorization"));
+                        loginBody.set(body);
+                        return response.status(200).header("Content-Type", "application/json")
+                                .sendString(Mono.just("{\"token\":\"" + TOKEN + "\","
+                                        + "\"sessionId\":\"session-1\",\"userId\":\"user-1\","
+                                        + "\"systemRole\":\"GOVERNANCE_ADMIN\","
+                                        + "\"idleExpiresAt\":\"2026-10-20T12:30:00Z\","
+                                        + "\"absoluteExpiresAt\":\"2026-10-20T20:00:00Z\"}"))
+                                .then();
+                    }
+                    revokeAuthorization.set(request.requestHeaders().get("Authorization"));
+                    revokeBody.set(body);
+                    return response.status(200).header("Content-Type", "application/json")
+                            .sendString(Mono.just("{\"revoked\":true}")).then();
+                })).bindNow();
+
+        var client = client(Duration.ofSeconds(2));
+        var issued = client.login("admin.root", "password value", "ip:127.0.0.1").block();
+        var revoked = client.revoke(TOKEN).block();
+
+        assertThat(issued.token()).isEqualTo(TOKEN);
+        assertThat(revoked.revoked()).isTrue();
+        assertThat(loginBody.get()).contains("admin.root", "password value", "ip:127.0.0.1");
+        assertThat(revokeBody.get()).contains(TOKEN);
+        assertThat(loginAuthorization.get()).startsWith("Bearer ");
+        assertThat(revokeAuthorization.get()).startsWith("Bearer ")
+                .isNotEqualTo(loginAuthorization.get());
+        assertThat(SignedJWT.parse(loginAuthorization.get().substring(7)).verify(new MACVerifier(KEY))).isTrue();
+        assertThat(SignedJWT.parse(revokeAuthorization.get().substring(7)).verify(new MACVerifier(KEY))).isTrue();
+    }
+
+    @Test
+    void loginAndRevocationMapCredentialAndServiceFailuresWithoutFailingOpen() {
+        server = fixedResponse(401, "{\"code\":\"CREDENTIALS_INVALID\"}", Duration.ZERO);
+        assertThatThrownBy(() -> client(Duration.ofSeconds(1))
+                .login("missing", "wrong", "ip:127.0.0.1").block())
+                .isInstanceOf(IdentitySessionClient.LoginRejectedException.class);
+        server.disposeNow();
+
+        server = fixedResponse(429, "{\"code\":\"LOGIN_RATE_LIMITED\"}", Duration.ZERO);
+        assertThatThrownBy(() -> client(Duration.ofSeconds(1))
+                .login("admin.root", "wrong", "ip:127.0.0.1").block())
+                .isInstanceOf(IdentitySessionClient.LoginRateLimitedException.class);
+        server.disposeNow();
+
+        server = fixedResponse(401, "{\"code\":\"SERVICE_AUTHENTICATION_FAILED\"}", Duration.ZERO);
+        assertThatThrownBy(() -> client(Duration.ofSeconds(1)).revoke(TOKEN).block())
+                .isInstanceOf(IdentitySessionClient.IdentitySessionUnavailableException.class);
+    }
+
     private DisposableServer fixedResponse(int status, String body, Duration delay) {
         return HttpServer.create().host("127.0.0.1").port(0).handle((request, response) ->
                 Mono.delay(delay).then(response.status(status).header("Content-Type", "application/json")

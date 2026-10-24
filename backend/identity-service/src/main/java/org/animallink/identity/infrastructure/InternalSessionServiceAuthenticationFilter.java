@@ -11,10 +11,14 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Set;
 
 @Component
 public class InternalSessionServiceAuthenticationFilter extends OncePerRequestFilter {
     public static final String PATH = "/internal/v1/auth/sessions/validate";
+    public static final String LOGIN_PATH = "/internal/v1/auth/sessions/login";
+    public static final String REVOKE_PATH = "/internal/v1/auth/sessions/revoke";
+    private static final Set<String> PROTECTED_PATHS = Set.of(PATH, LOGIN_PATH, REVOKE_PATH);
     public static final String PRINCIPAL_ATTRIBUTE = InternalSessionServiceAuthenticationFilter.class.getName()
             + ".principal";
 
@@ -26,7 +30,7 @@ public class InternalSessionServiceAuthenticationFilter extends OncePerRequestFi
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !PATH.equals(request.getRequestURI());
+        return !PROTECTED_PATHS.contains(request.getRequestURI());
     }
 
     @Override

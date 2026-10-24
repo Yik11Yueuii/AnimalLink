@@ -89,6 +89,71 @@ class GatewayAdminSessionAuthenticationFilterTest {
         assertThat(calls).hasValue(0);
     }
 
+    @Test
+    void loginIgnoresAndRemovesAnExpiredOrMalformedSessionCookie() {
+        AtomicInteger calls = new AtomicInteger();
+        var authentication = filter(token -> {
+            calls.incrementAndGet();
+            return Mono.just(principal());
+        });
+        var exchange = MockServerWebExchange.from(MockServerHttpRequest.post("/auth/admin/login")
+                .cookie(new HttpCookie("ANIMALLINK_ADMIN_SESSION", "expired"))
+                .cookie(new HttpCookie("theme", "warm"))
+                .build());
+        AtomicReference<ServerWebExchange> downstream = new AtomicReference<>();
+
+        authentication.filter(exchange, routed -> {
+            downstream.set(routed);
+            return Mono.empty();
+        }).block();
+
+        assertThat(calls).hasValue(0);
+        assertThat(downstream.get()).isNotNull();
+        assertThat(downstream.get().getRequest().getHeaders().getFirst(HttpHeaders.COOKIE))
+                .isEqualTo("theme=warm");
+    }
+
+    @Test
+    void logoutCarriesTheRawTokenOnlyInPrivateExchangeStateWithoutValidatingIt() {
+        AtomicInteger calls = new AtomicInteger();
+        var authentication = filter(token -> {
+            calls.incrementAndGet();
+            return Mono.just(principal());
+        });
+        var exchange = request(HttpMethod.POST, "/auth/admin/logout", true);
+        AtomicReference<ServerWebExchange> downstream = new AtomicReference<>();
+
+        authentication.filter(exchange, routed -> {
+            downstream.set(routed);
+            return Mono.empty();
+        }).block();
+
+        assertThat(calls).hasValue(0);
+        assertThat((Object) downstream.get().getAttribute(
+                GatewayAdminSessionAuthenticationFilter.SESSION_TOKEN_ATTRIBUTE)).isEqualTo(TOKEN);
+        assertThat(downstream.get().getRequest().getHeaders().getFirst(HttpHeaders.COOKIE)).isNull();
+    }
+
+    @Test
+    void duplicateSessionCookiesAreRejectedBeforeAnyIdentityCall() {
+        AtomicInteger calls = new AtomicInteger();
+        var authentication = filter(token -> {
+            calls.incrementAndGet();
+            return Mono.just(principal());
+        });
+        var exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/auth/admin/session")
+                .cookie(new HttpCookie("ANIMALLINK_ADMIN_SESSION", TOKEN))
+                .cookie(new HttpCookie("ANIMALLINK_ADMIN_SESSION", "B".repeat(43)))
+                .build());
+
+        authentication.filter(exchange, ignored -> Mono.empty()).block();
+
+        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(calls).hasValue(0);
+        assertThat(exchange.getResponse().getCookies().getFirst("ANIMALLINK_ADMIN_SESSION").getMaxAge())
+                .isZero();
+    }
+
     private MockServerWebExchange request(HttpMethod method, String path, boolean session) {
         var builder = MockServerHttpRequest.method(method, path)
                 .remoteAddress(new InetSocketAddress("127.0.0.1", 12345))
@@ -105,7 +170,8 @@ class GatewayAdminSessionAuthenticationFilterTest {
     }
 
     private GatewayAdminSessionAuthenticationFilter filter(AdminSessionValidator validator) {
+        var resolver = new AdminSessionCredentialResolver("ANIMALLINK_ADMIN_SESSION");
         return new GatewayAdminSessionAuthenticationFilter(
-                new AdminSessionCredentialResolver("ANIMALLINK_ADMIN_SESSION"), validator);
+                resolver, validator, new AdminSessionCookieManager(resolver));
     }
 }

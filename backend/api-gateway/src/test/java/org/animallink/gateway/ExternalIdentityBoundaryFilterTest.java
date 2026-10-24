@@ -66,6 +66,32 @@ class ExternalIdentityBoundaryFilterTest {
     }
 
     @Test
+    void formalModeAllowsOnlyExactAuthenticationMethodsAndPaths() {
+        var filter = new ExternalIdentityBoundaryFilter(new MockEnvironment());
+        for (var allowed : new Object[][] {
+                {HttpMethod.GET, "/auth/admin/csrf"},
+                {HttpMethod.POST, "/auth/admin/login"},
+                {HttpMethod.GET, "/auth/admin/session"},
+                {HttpMethod.POST, "/auth/admin/logout"}}) {
+            var exchange = MockServerWebExchange.from(MockServerHttpRequest
+                    .method((HttpMethod) allowed[0], (String) allowed[1]).build());
+            assertNotNull(run(filter, exchange).get(), (String) allowed[1]);
+        }
+
+        for (var denied : new Object[][] {
+                {HttpMethod.POST, "/auth/admin/csrf"},
+                {HttpMethod.GET, "/auth/admin/login"},
+                {HttpMethod.GET, "/auth/admin/logout"},
+                {HttpMethod.GET, "/auth/admin/session/child"},
+                {HttpMethod.GET, "/auth/anything"}}) {
+            var exchange = MockServerWebExchange.from(MockServerHttpRequest
+                    .method((HttpMethod) denied[0], (String) denied[1]).build());
+            assertNull(run(filter, exchange).get(), (String) denied[1]);
+            assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
+        }
+    }
+
+    @Test
     void localSimulationRequiresExplicitOptInLoopbackListenerAndLoopbackPeer() {
         Environment env = dev("local", "127.0.0.1");
         var filter = new ExternalIdentityBoundaryFilter(env);

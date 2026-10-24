@@ -44,3 +44,12 @@ described in TRUSTED-SESSION-CHANNEL.md. A successful result remains an internal
 Gateway attribute only. This stage still does not open protected routes, add login,
 or produce a downstream-trusted user assertion. Each business service must later
 validate service/user assertions and enforce resource/relationship authorization.
+
+WEB-AUTH-1B-1B-B2 adds four exact administrator HTTP endpoints for CSRF bootstrap,
+login, session recovery and logout, documented in ADMIN-HTTP-AUTH.md. Credentials
+and raw session tokens cross only the authenticated Gateway-to-Identity channel;
+the browser receives the token only as a hardened HttpOnly cookie. This addition
+does not change public business reads, does not open any protected governance route,
+and does not create a downstream-trusted user assertion. Production HTTPS, shared
+multi-instance replay protection, key operations and business-service authorization
+remain separate deployment and later-stage requirements.

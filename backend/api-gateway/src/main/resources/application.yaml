@@ -1,6 +1,9 @@
 spring:
   application:
     name: api-gateway
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.security.reactive.ReactiveUserDetailsServiceAutoConfiguration
   profiles:
     default: secure
   config:
@@ -37,6 +40,15 @@ spring:
           filters: [StripPrefix=1]
 server:
   port: ${SERVER_PORT:8080}
+  reactive:
+    session:
+      timeout: ${AUTH_CSRF_SESSION_TIMEOUT:PT30M}
+      cookie:
+        name: __Host-ANIMALLINK-CSRF-SESSION
+        secure: true
+        http-only: true
+        same-site: strict
+        path: /
 management:
   endpoints:
     web:
@@ -62,3 +74,6 @@ animallink:
       cookie-name: ${ADMIN_SESSION_COOKIE_NAME:ANIMALLINK_ADMIN_SESSION}
     trusted-source:
       trusted-proxies: ${TRUSTED_ENTRY_PROXIES:}
+    browser:
+      allowed-origins: ${AUTH_ADMIN_ALLOWED_ORIGINS:}
+      maximum-login-body-bytes: ${AUTH_ADMIN_MAXIMUM_LOGIN_BODY_BYTES:4096}
