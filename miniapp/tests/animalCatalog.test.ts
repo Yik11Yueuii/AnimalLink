@@ -5,9 +5,8 @@ import type { PublicAnimalDataSource } from '../services/dataSource'
 import type { AnimalSearchCriteria, AnimalSummaryResponse, PageResponse } from '../types/api'
 
 const animal = (id: string, campusId: string): AnimalSummaryResponse => ({
-  id, campusId, displayName: id, species: 'CAT', sex: 'UNKNOWN', coatColor: '橘色', distinctiveFeatures: '测试特征',
-  sterilizationStatus: 'UNKNOWN', typicalArea: '测试区域', identityStatus: 'ACTIVE', adoptionStatus: 'NOT_OPEN',
-  currentContext: 'CAMPUS', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
+  id, campusId, displayName: id, species: 'CAT', sex: 'UNKNOWN', coatColor: '橘色',
+  adoptionStatus: 'NOT_OPEN', currentContext: 'CAMPUS', updatedAt: '2026-01-01T00:00:00Z',
 })
 
 const sourceWithSearch = (search: (criteria: AnimalSearchCriteria) => Promise<PageResponse<AnimalSummaryResponse>>): PublicAnimalDataSource => ({

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ApiCommunityDataSource } from '../services/communityDataSource'
 import { OfflineCommunityDataSource, offlineCommunityPosts } from '../services/offlineCommunityDataSource'
-import { getCommunityDataSource, isOfflineDemo } from '../services/sourceFactory'
+import { getCommunityDataSource, isCommunityOfflineDemo } from '../services/sourceFactory'
 import type { JsonRequester, QueryValue } from '../services/apiClient'
 
 test('community API adapter uses public GET paths and zero-based pagination', async () => {
@@ -50,6 +50,6 @@ test('offline post detail and comments remain separate paged reads', async () =>
 })
 
 test('runtime source selection is explicit offline mode with no API fallback', () => {
-  assert.equal(isOfflineDemo(), true)
+  assert.equal(isCommunityOfflineDemo(), true)
   assert.ok(getCommunityDataSource() instanceof OfflineCommunityDataSource)
 })

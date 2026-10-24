@@ -1,11 +1,11 @@
-import { getPublicAnimalDataSource, isOfflineDemo } from '../../services/sourceFactory'
+import { getPublicAnimalDataSource, isAnimalOfflineDemo } from '../../services/sourceFactory'
 import { getSelectedCampus, saveSelectedCampus } from '../../state/campus'
 import type { CampusResponse } from '../../types/api'
 import { readableError } from '../../utils/presentation'
 
 Page({
   data: {
-    offline: isOfflineDemo(),
+    offline: isAnimalOfflineDemo(),
     q: '',
     campuses: [] as CampusResponse[],
     selectedCampusId: '',

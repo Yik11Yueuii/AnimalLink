@@ -112,6 +112,23 @@ public class JdbcAnimalRepository implements AnimalRepository {
     }
 
     @Override
+    public List<Animal> searchPublicActive(String campusId, String query, AnimalSpecies species,
+                                           int limit, int offset) {
+        QueryParts parts = publicFilters(campusId, query, species);
+        return jdbcTemplate.query(ANIMAL_COLUMNS + parts.where()
+                        + " ORDER BY display_name ASC, id ASC LIMIT ? OFFSET ?",
+                ANIMAL_ROW_MAPPER, append(parts.args(), limit, offset));
+    }
+
+    @Override
+    public long countPublicActive(String campusId, String query, AnimalSpecies species) {
+        QueryParts parts = publicFilters(campusId, query, species);
+        Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM animal" + parts.where(),
+                Long.class, parts.args().toArray());
+        return count == null ? 0 : count;
+    }
+
+    @Override
     public List<AnimalMedia> findPublicMedia(String animalId) {
         return jdbcTemplate.query("""
                 SELECT id, animal_id, object_key, content_type, media_type, size_bytes,
@@ -198,6 +215,23 @@ public class JdbcAnimalRepository implements AnimalRepository {
                     + " OR LOWER(distinctive_features) LIKE ?)");
             String pattern = "%" + query.toLowerCase() + "%";
             args.add(pattern);
+            args.add(pattern);
+            args.add(pattern);
+        }
+        if (species != null) {
+            where.append(" AND species = ?");
+            args.add(species.name());
+        }
+        return new QueryParts(where.toString(), args);
+    }
+
+    private QueryParts publicFilters(String campusId, String query, AnimalSpecies species) {
+        StringBuilder where = new StringBuilder(" WHERE campus_id = ? AND identity_status = 'ACTIVE'");
+        List<Object> args = new ArrayList<>();
+        args.add(campusId);
+        if (query != null && !query.isBlank()) {
+            where.append(" AND (LOWER(display_name) LIKE ? OR LOWER(coat_color) LIKE ?)");
+            String pattern = "%" + query.toLowerCase() + "%";
             args.add(pattern);
             args.add(pattern);
         }

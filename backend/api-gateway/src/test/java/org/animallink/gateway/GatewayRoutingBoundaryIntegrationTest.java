@@ -42,6 +42,22 @@ class GatewayRoutingBoundaryIntegrationTest {
     }
 
     @Test
+    void gatewayRoutesOnlyTheExactAnonymousAnimalProjectionAndStripsSpoofedHeaders() {
+        String id = "00000000-0000-0000-0000-000000000001";
+        for (String path : new String[] {
+                "/animal/api/v1/public/animals",
+                "/animal/api/v1/public/animals/" + id }) {
+            client.get().uri(path).header("Authorization", "Bearer forged")
+                    .header("X-User-Id", id).header("X-Internal-Service", "animal-service")
+                    .exchange().expectStatus().isOk().expectBody(String.class).isEqualTo("none");
+        }
+        client.get().uri("/animal/api/v1/animals/" + id).exchange().expectStatus().isUnauthorized();
+        client.get().uri("/animal/api/v1/public/animals/" + id + "/timeline")
+                .exchange().expectStatus().isUnauthorized();
+        client.post().uri("/animal/api/v1/public/animals").exchange().expectStatus().isUnauthorized();
+    }
+
+    @Test
     void routingDeniesProtectedReadsEvenWhenCatchAllDownstreamWouldAnswer() {
         String id = "00000000-0000-0000-0000-000000000001";
         for (String path : new String[] {
@@ -75,6 +91,10 @@ class GatewayRoutingBoundaryIntegrationTest {
                     .path("/identity/api/v1/campuses")
                     .filters(filters -> filters.setPath("/test-gateway-probe"))
                     .uri("forward:/test-gateway-probe"))
+                    .route("test-animal-catch-all", route -> route.order(-100)
+                    .path("/animal/**")
+                    .filters(filters -> filters.setPath("/test-gateway-probe"))
+                    .uri("forward:/test-gateway-probe"))
                     .route("test-incident-catch-all", route -> route.order(-100)
                     .path("/incident/**")
                     .filters(filters -> filters.setPath("/test-gateway-probe"))
@@ -85,7 +105,8 @@ class GatewayRoutingBoundaryIntegrationTest {
         RouterFunction<ServerResponse> probe() {
             return RouterFunctions.route(GET("/test-gateway-probe"), request ->
                     ServerResponse.ok().bodyValue(request.headers().firstHeader("X-User-Id") == null
-                            && request.headers().firstHeader("X-Internal-Service") == null ? "none" : "spoofed"));
+                            && request.headers().firstHeader("X-Internal-Service") == null
+                            && request.headers().firstHeader("Authorization") == null ? "none" : "spoofed"));
         }
     }
 }

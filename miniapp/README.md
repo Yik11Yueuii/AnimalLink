@@ -4,10 +4,11 @@
 
 ## 运行模式
 
-默认配置位于 `config/runtime.ts`：
+默认配置位于 `config/runtime.ts`。Animal 与 Community 使用独立开关，允许只把已审核的 Animal 读取切到真实 API，而让尚未开放的 Community 保持离线演示：
 
-- `offline-demo`：只使用本目录中的明确标注模拟数据，不访问网络；页面顶部始终显示“本地离线演示”。
-- `api`：通过配置的 Gateway Base URL 调用现有公共读取接口。切换此模式前，需要把 `gatewayBaseUrl` 设置为开发环境实际地址，并在微信开发者工具中按开发环境要求配置合法域名。
+- `animalDataMode`：`offline-demo` 或 `api`。
+- `communityDataMode`：`offline-demo` 或 `api`；当前 Gateway 未开放 Community 公共读取，默认保持 `offline-demo`。
+- `gatewayBaseUrl`：`api` 模式使用的 Gateway 地址。
 
 代码不会发送 `X-User-Id`、`X-Internal-Service` 或伪造认证信息。离线模式也不会静默回退：API 模式请求失败时直接显示错误与重试。
 
@@ -25,11 +26,11 @@ npm test
 ## 接口边界
 
 - `GET /identity/api/v1/campuses`
-- `GET /animal/api/v1/animals`（`campusId` 必填，`page` 从 0 开始）
-- `GET /animal/api/v1/animals/{animalId}`
-- `GET /animal/api/v1/animals/{animalId}/timeline`
+- `GET /animal/api/v1/public/animals`（`campusId` 必填，`page` 从 0 开始）
+- `GET /animal/api/v1/public/animals/{animalId}`
+- `GET /animal/api/v1/animals/{animalId}/timeline`（当前未匿名开放；详情仍显示 Animal，并明确提示“动态暂未开放”）
 - `GET /animal/api/v1/campuses/{campusId}/feed`
 - `GET /animal/api/v1/posts/{postId}`
 - `GET /animal/api/v1/posts/{postId}/comments`
 
-当前公共 Animal 与 Community DTO 只提供媒体对象元数据，没有可信的公开媒体访问 URL。页面因此使用本地占位图，不拼接 MinIO 地址。正式微信登录、社区发布、点赞、评论写入、救助上报、领养操作和个人身份均未实现。
+匿名 Animal DTO 不提供媒体对象、位置、自由文本、内部身份状态或合并映射；页面使用本地占位图，不拼接 MinIO 地址。Community 接口仍未在 Gateway 匿名开放。正式微信登录、社区发布、点赞、评论写入、救助上报、领养操作和个人身份均未实现。

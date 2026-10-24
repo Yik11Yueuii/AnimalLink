@@ -1,13 +1,15 @@
 export type DataMode = 'api' | 'offline-demo'
 
 export interface RuntimeConfig {
-  dataMode: DataMode
+  animalDataMode: DataMode
+  communityDataMode: DataMode
   gatewayBaseUrl: string
 }
 
-// Offline demo is explicit and visibly labelled in every data-backed page.
-// For real local reads, set dataMode to 'api' and configure the local Gateway URL.
+// Modes are feature-scoped so enabling the reviewed Animal API never sends the
+// still-protected Campus Circle requests to Gateway by accident.
 export const runtimeConfig: RuntimeConfig = {
-  dataMode: 'offline-demo',
+  animalDataMode: 'offline-demo',
+  communityDataMode: 'offline-demo',
   gatewayBaseUrl: '',
 }

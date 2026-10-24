@@ -6,15 +6,21 @@ exist yet. This stage is not production security acceptance; production deployme
 and governance writes must not be opened on its basis. Do not assume protected reads
 are safe through direct backend ports. Network isolation remains mandatory.
 
-By default only GET and HEAD for the exact public campus list/detail and
-published support expense list paths in ExternalIdentityBoundaryFilter pass:
+By default only GET and HEAD for the exact reviewed public campus, Animal and
+published support expense paths in ExternalIdentityBoundaryFilter pass:
 
 - /identity/api/v1/campuses
 - /identity/api/v1/campuses/{campusId}
+- /animal/api/v1/public/animals
+- /animal/api/v1/public/animals/{animalId}
 - /incident/api/v1/cases/{caseId}/support/expenses
 
 Actuator health/info GET/HEAD are also retained. The list requires a canonical
-UUID-shaped segment; an adjacent child path is not public. All other requests,
+UUID-shaped segment; Animal detail also requires a canonical UUID-shaped segment.
+The Animal projection contains only identity-neutral profile fields and excludes
+free text, precise/typical location, internal identity state, merge mappings and
+media object keys. Legacy Animal list/detail and Timeline routes remain protected.
+An adjacent child path is not public. All other requests,
 including unknown routes, protected and unconfirmed reads, are 401. OPTIONS,
 including CORS preflight, is denied in formal mode: there is no configured CORS policy. A future
 CORS policy must explicitly validate origin, requested method and headers and

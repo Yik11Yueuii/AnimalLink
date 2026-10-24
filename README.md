@@ -117,7 +117,7 @@ Phase 1B 的正式业务归属为 `animal-service`，已实现：
 - `animal` 核心主档，独立保存身份状态、领养投影状态和当前生活场景，避免单一超级状态枚举。
 - `animal_media` 媒体元数据与公开查询基础；对象内容仍由 MinIO 保存，本阶段不包含上传流程。
 - `timeline_entry` 最小只读投影模型，使用来源类型和来源 ID 保证未来投影幂等；Timeline 不是 Event、Case 或 Adoption 的事实源。
-- 按 Campus 浏览、名称/外观关键词搜索、物种筛选、稳定排序和分页，以及公开详情和 Timeline 查询。
+- 按 Campus 浏览、名称/毛色关键词搜索、物种筛选、稳定排序和分页；匿名入口使用独立最小字段投影，Timeline 仍等待单独的公开性审查。
 - 治理管理员创建、修正和归档主档；归档不会物理删除数据。
 - 创建 Animal 时由 `animal-service` 同步调用 `identity-service` 验证 Campus，且治理权限也由 identity-service 返回的当前用户事实判定。客户端提交角色请求头不能授予管理员权限，identity-service 不可用时敏感写操作返回 `503`。
 
@@ -129,29 +129,23 @@ Phase 1B 不包含正式媒体上传、AI、Event、Case、Adoption 流程、Ani
 
 | Method | Path | 用途 | 认证 |
 | --- | --- | --- | --- |
-| GET | `/api/v1/animals?campusId=...&q=...&species=CAT&page=0&size=20` | 按 Campus 分页浏览与搜索 ACTIVE Animal | 公开 |
-| GET | `/api/v1/animals/{animalId}` | 查看公开主档与公开媒体元数据 | 公开 |
-| GET | `/api/v1/animals/{animalId}/timeline?page=0&size=20` | 按时间倒序查看公开 Timeline | 公开 |
+| GET / HEAD | `/api/v1/public/animals?campusId=...&q=...&species=CAT&page=0&size=20` | 匿名分页浏览 ACTIVE Animal 最小字段投影 | 匿名公开 |
+| GET / HEAD | `/api/v1/public/animals/{animalId}` | 查看匿名 Animal 最小字段详情；不含位置、自由文本、媒体 key 或内部状态 | 匿名公开 |
+| GET | `/api/v1/animals?campusId=...`、`/api/v1/animals/{animalId}` | 旧版富字段读取接口 | Gateway 默认拒绝 |
+| GET | `/api/v1/animals/{animalId}/timeline?page=0&size=20` | 按时间倒序查看 Timeline | Gateway 默认拒绝，尚未匿名开放 |
 | POST | `/api/v1/admin/animals` | 创建并绑定已启用 Campus 的 Animal | 治理管理员 |
 | PATCH | `/api/v1/admin/animals/{animalId}` | 修正允许修改的核心资料 | 治理管理员 |
 | POST | `/api/v1/admin/animals/{animalId}/archive` | 将 ACTIVE Animal 归档 | 治理管理员 |
 
 `local` / `dev` 环境会初始化三只示例 Animal：东校区的“小橘”“墨墨”和西校区的“阿黄”，并为其中两只加入少量 Timeline 示例。示例数据只保存 MinIO objectKey 语义，不写入外部随机图片 URL，也不会进入 production 默认 migration。
 
-服务启动后，可通过 Gateway 查询与创建：
+服务启动后，可通过 Gateway 匿名查询经过审查的最小字段投影：
 
 ```powershell
-Invoke-RestMethod 'http://localhost:8080/animal/api/v1/animals?campusId=10000000-0000-0000-0000-000000000001&page=0&size=20'
-
-$adminHeaders = @{ 'X-User-Id' = '00000000-0000-0000-0000-000000000002' }
-$body = @{
-  campusId = '10000000-0000-0000-0000-000000000001'
-  displayName = '新校园成员'
-  species = 'CAT'
-  sex = 'UNKNOWN'
-} | ConvertTo-Json
-Invoke-RestMethod 'http://localhost:8080/animal/api/v1/admin/animals' -Method Post -Headers $adminHeaders -ContentType 'application/json' -Body $body
+Invoke-RestMethod 'http://localhost:8080/animal/api/v1/public/animals?campusId=10000000-0000-0000-0000-000000000001&page=0&size=20'
 ```
+
+治理写接口仍要求正式可信身份与服务端授权，不能通过客户端提交 `X-User-Id` 获得权限。
 
 ## Phase 1C Campus Circle 基础社区与关注
 
@@ -165,9 +159,9 @@ Campus Circle 是校园内动物近况的主浏览面。Phase 1C 由 `animal-ser
 
 | Method | Path | 用途 | 认证 |
 | --- | --- | --- | --- |
-| GET | `/api/v1/campuses/{campusId}/feed?page=0&size=20` | 按创建时间倒序读取公开 Campus Feed | 公开 |
-| GET | `/api/v1/posts/{postId}` | 读取公开 Post 详情 | 公开 |
-| GET | `/api/v1/posts/{postId}/comments?page=0&size=50` | 读取公开评论 | 公开 |
+| GET | `/api/v1/campuses/{campusId}/feed?page=0&size=20` | 按创建时间倒序读取 Campus Feed | Gateway 尚未匿名开放 |
+| GET | `/api/v1/posts/{postId}` | 读取 Post 详情 | Gateway 尚未匿名开放 |
+| GET | `/api/v1/posts/{postId}/comments?page=0&size=50` | 读取评论 | Gateway 尚未匿名开放 |
 | POST | `/api/v1/posts` | 发布 Campus Post | 目标 Campus 有效学生/校友成员 |
 | POST | `/api/v1/posts/{postId}/comments` | 评论公开 Post | Post 所属 Campus 有效学生/校友成员 |
 | POST / DELETE | `/api/v1/posts/{postId}/like` | 点赞 / 取消点赞 | 当前用户 |

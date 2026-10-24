@@ -116,6 +116,80 @@ class AnimalPhase1BIntegrationTest {
     }
 
     @Test
+    void anonymousProjectionUsesAFieldWhitelistAndDoesNotSearchHiddenFreeText() throws Exception {
+        jdbcTemplate.update("""
+                UPDATE animal
+                SET coat_color='橘白', distinctive_features='hidden-feature-token',
+                    description='hidden-description-token', sterilization_status='STERILIZED',
+                    typical_area='hidden-exact-location'
+                WHERE id=?
+                """, ANIMAL_ONE);
+        insertMedia(ANIMAL_ONE, "PUBLIC", 0);
+
+        mockMvc.perform(get("/api/v1/public/animals")
+                        .param("campusId", CAMPUS_ID).param("q", "橘白"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(ANIMAL_ONE))
+                .andExpect(jsonPath("$.items[0].campusId").value(CAMPUS_ID))
+                .andExpect(jsonPath("$.items[0].displayName").value("小橘"))
+                .andExpect(jsonPath("$.items[0].species").value("CAT"))
+                .andExpect(jsonPath("$.items[0].sex").value("UNKNOWN"))
+                .andExpect(jsonPath("$.items[0].coatColor").value("橘白"))
+                .andExpect(jsonPath("$.items[0].adoptionStatus").value("NOT_OPEN"))
+                .andExpect(jsonPath("$.items[0].currentContext").value("CAMPUS"))
+                .andExpect(jsonPath("$.items[0].updatedAt").exists())
+                .andExpect(jsonPath("$.items[0].distinctiveFeatures").doesNotExist())
+                .andExpect(jsonPath("$.items[0].description").doesNotExist())
+                .andExpect(jsonPath("$.items[0].sterilizationStatus").doesNotExist())
+                .andExpect(jsonPath("$.items[0].typicalArea").doesNotExist())
+                .andExpect(jsonPath("$.items[0].identityStatus").doesNotExist())
+                .andExpect(jsonPath("$.items[0].media").doesNotExist());
+
+        mockMvc.perform(get("/api/v1/public/animals")
+                        .param("campusId", CAMPUS_ID).param("q", "hidden-feature-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(0));
+
+        mockMvc.perform(get("/api/v1/public/animals/{id}", ANIMAL_ONE))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(ANIMAL_ONE))
+                .andExpect(jsonPath("$.createdAt").exists())
+                .andExpect(jsonPath("$.updatedAt").exists())
+                .andExpect(jsonPath("$.requestedAnimalId").doesNotExist())
+                .andExpect(jsonPath("$.canonicalAnimalId").doesNotExist())
+                .andExpect(jsonPath("$.distinctiveFeatures").doesNotExist())
+                .andExpect(jsonPath("$.description").doesNotExist())
+                .andExpect(jsonPath("$.sterilizationStatus").doesNotExist())
+                .andExpect(jsonPath("$.typicalArea").doesNotExist())
+                .andExpect(jsonPath("$.identityStatus").doesNotExist())
+                .andExpect(jsonPath("$.media").doesNotExist());
+
+        mockMvc.perform(get("/api/v1/public/animals/{id}", ANIMAL_TWO))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/public/animals/not-a-uuid"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void anonymousProjectionPaginatesFiltersAndValidatesCampusId() throws Exception {
+        String dog = UUID.randomUUID().toString();
+        insertAnimal(dog, CAMPUS_ID, "小白", "DOG", "ACTIVE");
+
+        mockMvc.perform(get("/api/v1/public/animals").param("campusId", CAMPUS_ID)
+                        .param("species", "DOG").param("page", "0").param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(1))
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(dog));
+
+        mockMvc.perform(get("/api/v1/public/animals").param("campusId", "not-a-uuid"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void detailReturnsOnlyPublicMediaMetadata() throws Exception {
         insertMedia(ANIMAL_ONE, "PUBLIC", 2);
         insertMedia(ANIMAL_ONE, "RESTRICTED", 1);
