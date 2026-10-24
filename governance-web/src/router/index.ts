@@ -2,6 +2,7 @@ import { createRouter, createWebHistory, type RouteRecordRaw, type RouterHistory
 import GovernanceLayout from '@/layouts/GovernanceLayout.vue'
 import OverviewPage from '@/views/OverviewPage.vue'
 import PlaceholderPage from '@/views/PlaceholderPage.vue'
+import AnimalGovernanceView from '@/features/animals/AnimalGovernanceView.vue'
 import AccessDeniedPage from '@/views/AccessDeniedPage.vue'
 import LoginPage from '@/views/LoginPage.vue'
 import { useAdminAuthentication } from '@/composables/useAdminAuthentication'
@@ -17,7 +18,7 @@ declare module 'vue-router' {
 const governancePages: RouteRecordRaw[] = [
   { path: 'identity-verifications', name: 'identity-verifications', component: PlaceholderPage, meta: { title: '校园身份审核', description: 'AI 预审与人工审核', requiresAuthentication: true } },
   { path: 'volunteers', name: 'volunteers', component: PlaceholderPage, meta: { title: '志愿者管理', description: '申请、授权、暂停与撤销', requiresAuthentication: true } },
-  { path: 'animals', name: 'animals', component: PlaceholderPage, meta: { title: 'Animal 档案治理', description: '核心档案查看与修正', requiresAuthentication: true } },
+  { path: 'animals', name: 'animals', component: AnimalGovernanceView, meta: { title: 'Animal 档案治理', description: '核心档案查看与修正', requiresAuthentication: true } },
   { path: 'animal-identity', name: 'animal-identity', component: PlaceholderPage, meta: { title: 'Animal 待确认/合并', description: 'UNKNOWN、候选确认与重复治理', requiresAuthentication: true } },
   { path: 'incidents', name: 'incidents', component: PlaceholderPage, meta: { title: 'Event / Case 治理', description: '救助流程查看与异常干预', requiresAuthentication: true } },
   { path: 'support', name: 'support', component: PlaceholderPage, meta: { title: '公益支持管理', description: '申请审核、进度、支出与结算', requiresAuthentication: true } },
