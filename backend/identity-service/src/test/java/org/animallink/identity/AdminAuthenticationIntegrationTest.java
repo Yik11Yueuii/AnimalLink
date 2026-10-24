@@ -1,6 +1,8 @@
 package org.animallink.identity;
 
+import io.minio.MinioClient;
 import org.animallink.identity.application.AdminAuthenticationService;
+import org.animallink.identity.application.AdminBootstrapService;
 import org.animallink.identity.application.AuthenticationClock;
 import org.animallink.identity.application.OpaqueSessionTokenCodec;
 import org.animallink.identity.domain.UnauthorizedException;
@@ -9,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
@@ -67,6 +70,7 @@ class AdminAuthenticationIntegrationTest {
     @Autowired OpaqueSessionTokenCodec tokenCodec;
     @Autowired JdbcTemplate jdbc;
     @Autowired MutableAuthenticationClock clock;
+    @Autowired ApplicationContext applicationContext;
 
     @BeforeEach
     void reset() {
@@ -262,6 +266,11 @@ class AdminAuthenticationIntegrationTest {
                 .isEqualTo(START.plus(Duration.ofHours(8)));
     }
 
+    @Test
+    void normalIdentityContextExcludesBootstrapButRetainsObjectStorageInfrastructure() {
+        assertThat(applicationContext.getBeansOfType(AdminBootstrapService.class)).isEmpty();
+        assertThat(applicationContext.getBeansOfType(MinioClient.class)).hasSize(1);
+    }
     private void user(String id, String name, String status, String role) {
         jdbc.update("INSERT INTO `user` (id,display_name,account_status,system_role) VALUES (?,?,?,?)",
                 id, name, status, role);
