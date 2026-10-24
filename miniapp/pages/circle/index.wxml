@@ -1,0 +1,12 @@
+<view class="page-shell">
+  <view class="hero surface">
+    <text class="eyebrow">ANIMALLINK</text>
+    <text class="page-title">Campus Circle</text>
+    <text class="hero-copy">校园动物观察与社区内容将在后续阶段接入。本阶段先完成公开 Animal 档案浏览。</text>
+    <button class="primary-button" bindtap="goAnimals">查看 Animal 档案</button>
+  </view>
+  <view class="notice surface">
+    <text class="notice-title">页面骨架</text>
+    <text class="muted">没有模拟动态，也没有开放记录或求助入口。</text>
+  </view>
+</view>

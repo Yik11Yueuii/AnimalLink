@@ -1,0 +1,21 @@
+.profile { display: flex; overflow: hidden; }
+.profile image { width: 250rpx; height: 250rpx; background: #f3e3d7; }
+.profile-body { display: flex; flex: 1; flex-direction: column; justify-content: center; padding: 28rpx; }
+.animal-name { margin: 12rpx 0 18rpx; font-size: 42rpx; font-weight: 800; }
+.profile-body .muted { font-size: 24rpx; line-height: 1.5; }
+.media-note { margin: 18rpx 4rpx 0; color: #8b7468; font-size: 22rpx; line-height: 1.5; }
+.section { margin-top: 24rpx; padding: 30rpx; }
+.section-title { display: block; margin-bottom: 24rpx; font-size: 31rpx; font-weight: 800; }
+.description { margin-bottom: 26rpx; color: #6f5a50; font-size: 27rpx; line-height: 1.75; }
+.facts view { display: flex; justify-content: space-between; gap: 26rpx; padding: 18rpx 0; border-top: 1rpx solid #f0e7e0; font-size: 25rpx; }
+.facts view text:first-child { color: #927c70; }
+.facts view text:last-child { text-align: right; }
+.empty-timeline { padding: 36rpx 0; color: #927c70; text-align: center; font-size: 25rpx; }
+.timeline-item { display: flex; gap: 22rpx; min-height: 140rpx; }
+.dot { flex: 0 0 auto; margin-top: 12rpx; width: 18rpx; height: 18rpx; border: 7rpx solid #e6f3ee; border-radius: 50%; background: #66a58f; }
+.timeline-body { padding-bottom: 28rpx; }
+.timeline-body text { display: block; }
+.timeline-date { color: #8f796e; font-size: 22rpx; }
+.timeline-title { margin-top: 8rpx; font-size: 27rpx; font-weight: 700; }
+.timeline-summary { margin-top: 8rpx; color: #746158; font-size: 24rpx; line-height: 1.6; }
+.record-id { padding: 28rpx 0; color: #a18c81; text-align: center; font-size: 21rpx; }

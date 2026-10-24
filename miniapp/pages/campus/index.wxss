@@ -1,0 +1,12 @@
+.intro text { display: block; }
+.intro-copy { margin-top: 20rpx; font-size: 26rpx; line-height: 1.65; }
+.search { display: flex; gap: 16rpx; margin-top: 30rpx; padding: 18rpx; }
+.search input { flex: 1; min-width: 0; padding: 0 18rpx; font-size: 27rpx; }
+.search button { margin: 0; width: 150rpx; }
+.campus-list { margin-top: 24rpx; }
+.campus { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18rpx; padding: 28rpx; }
+.campus.selected { border-color: #79aa98; background: #f2faf6; }
+.campus-name, .campus-location { display: block; }
+.campus-name { font-size: 30rpx; font-weight: 700; }
+.campus-location { margin-top: 10rpx; color: #8b7468; font-size: 24rpx; }
+.choose { color: #d76545; font-size: 25rpx; font-weight: 700; }

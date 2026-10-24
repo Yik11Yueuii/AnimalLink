@@ -1,0 +1,5 @@
+.profile { padding: 54rpx 38rpx; text-align: center; }
+.profile text { display: block; }
+.avatar { display: flex; align-items: center; justify-content: center; margin: 0 auto 28rpx; width: 110rpx; height: 110rpx; color: #fff; border-radius: 50%; background: #e97757; font-weight: 800; }
+.profile-copy { margin-top: 24rpx; color: #80685d; font-size: 28rpx; }
+.boundary { margin-top: 36rpx; padding: 24rpx; color: #4e7468; border-radius: 22rpx; background: #edf7f2; font-size: 25rpx; line-height: 1.6; }

@@ -1,0 +1,8 @@
+<view class="page-shell">
+  <view class="profile surface">
+    <view class="avatar">AL</view>
+    <text class="page-title">My</text>
+    <text class="profile-copy">微信登录与个人身份尚未接入。</text>
+    <view class="boundary">本阶段不模拟用户身份，也不展示虚假的校园成员或志愿者权限。</view>
+  </view>
+</view>

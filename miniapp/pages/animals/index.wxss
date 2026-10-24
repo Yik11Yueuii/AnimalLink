@@ -1,0 +1,25 @@
+.heading { display: flex; align-items: flex-start; justify-content: space-between; }
+.heading text { display: block; }
+.campus-button { margin: 2rpx 0 0 20rpx; padding: 0 22rpx; min-width: 170rpx; color: #4f7468; border: 1rpx solid #b8d8cc; border-radius: 22rpx; background: #eff8f4; font-size: 24rpx; }
+.search-panel { margin-top: 28rpx; padding: 18rpx; }
+.search-row { display: flex; gap: 12rpx; }
+.search-row input { flex: 1; min-width: 0; padding: 0 14rpx; height: 76rpx; border-radius: 18rpx; background: #f8f3ed; font-size: 25rpx; }
+.search-row button { margin: 0; width: 132rpx; height: 76rpx; color: #fff; border-radius: 18rpx; background: #e97757; font-size: 26rpx; line-height: 76rpx; }
+.species-picker { margin-top: 14rpx; padding: 18rpx; color: #715d52; border-radius: 18rpx; background: #f1f8f5; font-size: 25rpx; }
+.result-meta { display: flex; justify-content: space-between; padding: 24rpx 4rpx 12rpx; color: #8b7468; font-size: 24rpx; }
+.animal-card { display: flex; align-items: center; margin-bottom: 18rpx; padding: 18rpx; }
+.animal-image { flex: 0 0 auto; width: 150rpx; height: 150rpx; border-radius: 24rpx; background: #f3e3d7; }
+.animal-body { flex: 1; min-width: 0; padding: 0 20rpx; }
+.animal-title-row, .status-row { display: flex; align-items: center; gap: 12rpx; }
+.animal-name { overflow: hidden; max-width: 250rpx; font-size: 32rpx; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.species-chip { padding: 6rpx 14rpx; color: #9a543d; border-radius: 999rpx; background: #fff0e9; font-size: 21rpx; }
+.animal-feature, .animal-area { display: block; overflow: hidden; margin-top: 12rpx; color: #80685d; font-size: 23rpx; text-overflow: ellipsis; white-space: nowrap; }
+.status-row { margin-top: 16rpx; }
+.status { padding: 6rpx 12rpx; border-radius: 10rpx; font-size: 20rpx; }
+.adoption { color: #a45438; background: #fff0e9; }
+.context { color: #3f7765; background: #eaf6f1; }
+.chevron { color: #c49582; font-size: 42rpx; }
+.inline-error { display: flex; justify-content: space-between; margin: 10rpx 0 18rpx; padding: 20rpx; color: #a45438; border-radius: 18rpx; background: #fff0e9; font-size: 23rpx; }
+.retry-link { font-weight: 700; }
+.load-more { color: #8b4a34; border-radius: 22rpx; background: #fff0e9; font-size: 26rpx; }
+.list-end { display: block; padding: 26rpx; color: #9a857a; text-align: center; font-size: 23rpx; }

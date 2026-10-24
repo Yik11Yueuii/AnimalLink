@@ -1,0 +1,21 @@
+<view class="page-shell">
+  <view wx:if="{{offline}}" class="mode-banner">本地离线演示 · 数据不会发送到后端</view>
+  <view class="intro">
+    <text class="eyebrow">CAMPUS CONTEXT</text>
+    <text class="page-title">选择校园</text>
+    <text class="muted intro-copy">Animal 列表始终限定在当前 Campus，切换后会清空旧校区结果。</text>
+  </view>
+  <view class="search surface">
+    <input value="{{q}}" placeholder="搜索校园名称或城市" confirm-type="search" bindinput="onKeywordInput" bindconfirm="onSearch" />
+    <button class="secondary-button" bindtap="onSearch">搜索</button>
+  </view>
+  <view wx:if="{{loading}}" class="state-card surface"><text class="state-icon">⌛</text><text class="state-title">正在读取 Campus</text></view>
+  <view wx:elif="{{errorMessage}}" class="state-card surface"><text class="state-icon">!</text><text class="state-title">加载失败</text><text class="state-copy">{{errorMessage}}</text><button class="primary-button" bindtap="onRetry">重试</button></view>
+  <view wx:elif="{{campuses.length === 0}}" class="state-card surface"><text class="state-icon">⌕</text><text class="state-title">没有匹配的校园</text><text class="state-copy">换一个关键词再试试。</text></view>
+  <view wx:else class="campus-list">
+    <view wx:for="{{campuses}}" wx:key="id" class="campus surface {{item.id === selectedCampusId ? 'selected' : ''}}" data-id="{{item.id}}" bindtap="chooseCampus">
+      <view><text class="campus-name">{{item.name}}</text><text class="campus-location">{{item.city}} · {{item.region}}</text></view>
+      <text class="choose">{{item.id === selectedCampusId ? '当前' : '选择'}} ›</text>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,7 @@
+.hero { padding: 54rpx 38rpx; }
+.hero text { display: block; }
+.hero-copy { margin: 28rpx 0 36rpx; color: #80685d; font-size: 28rpx; line-height: 1.75; }
+.primary-button { margin: 0; width: 320rpx; }
+.notice { margin-top: 24rpx; padding: 32rpx; }
+.notice text { display: block; }
+.notice-title { margin-bottom: 12rpx; font-size: 28rpx; font-weight: 700; }
