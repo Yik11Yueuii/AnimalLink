@@ -1,0 +1,17 @@
+spring:
+  cloud:
+    nacos:
+      config:
+        enabled: false
+      discovery:
+        enabled: false
+
+management:
+  health:
+    nacos:
+      enabled: false
+
+animallink:
+  credential-precheck:
+    dispatcher:
+      enabled: false

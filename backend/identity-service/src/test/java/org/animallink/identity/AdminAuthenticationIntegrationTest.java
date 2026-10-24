@@ -59,6 +59,8 @@ class AdminAuthenticationIntegrationTest {
         registry.add("spring.datasource.password", MYSQL::getPassword);
         registry.add("animallink.authentication.session.idle-timeout", () -> "PT30M");
         registry.add("animallink.authentication.session.absolute-timeout", () -> "PT8H");
+        registry.add("animallink.authentication.login-protection.maximum-attempts", () -> "100");
+        registry.add("animallink.authentication.login-protection.maximum-source-attempts", () -> "100");
     }
 
     @Autowired AdminAuthenticationService service;
@@ -245,6 +247,9 @@ class AdminAuthenticationIntegrationTest {
         assertThatThrownBy(() -> service.validateAdminSession(olderSession.rawToken()))
                 .isInstanceOf(UnauthorizedException.class);
         assertThat(service.validateAdminSession(upgradedSession.rawToken()).user().id()).isEqualTo(ADMIN);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM authentication_audit_event "
+                + "WHERE event_type='CREDENTIAL_UPGRADED' AND subject_user_id=?", Integer.class, ADMIN))
+                .isOne();
     }
 
     @Test

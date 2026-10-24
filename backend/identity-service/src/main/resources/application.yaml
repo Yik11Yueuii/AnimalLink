@@ -36,6 +36,17 @@ animallink:
     session:
       idle-timeout: ${AUTH_SESSION_IDLE_TIMEOUT:PT30M}
       absolute-timeout: ${AUTH_SESSION_ABSOLUTE_TIMEOUT:PT8H}
+    login-protection:
+      maximum-attempts: ${AUTH_LOGIN_MAXIMUM_ATTEMPTS:5}
+      maximum-source-attempts: ${AUTH_LOGIN_MAXIMUM_SOURCE_ATTEMPTS:20}
+      attempt-window: ${AUTH_LOGIN_ATTEMPT_WINDOW:PT15M}
+      block-duration: ${AUTH_LOGIN_BLOCK_DURATION:PT15M}
+    retention:
+      audit: ${AUTH_AUDIT_RETENTION:P180D}
+      login-attempt-state: ${AUTH_LOGIN_ATTEMPT_RETENTION:P1D}
+      cleanup-batch-size: ${AUTH_RETENTION_CLEANUP_BATCH_SIZE:1000}
+      initial-delay-ms: ${AUTH_RETENTION_INITIAL_DELAY_MS:3600000}
+      fixed-delay-ms: ${AUTH_RETENTION_FIXED_DELAY_MS:3600000}
   intelligence:
     base-url: ${INTELLIGENCE_BASE_URL:http://localhost:8085}
     connect-timeout-ms: ${INTELLIGENCE_CONNECT_TIMEOUT_MS:2000}
@@ -57,5 +68,5 @@ logging:
 spring:
   config:
     activate:
-      on-profile: "!test"
+      on-profile: "!test & !admin-bootstrap"
     import: optional:nacos:${spring.application.name}.yaml

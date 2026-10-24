@@ -1,11 +1,17 @@
 package org.animallink.identity;
 
 import org.animallink.identity.application.AdminAuthenticationService;
+import org.animallink.identity.application.AdminBootstrapService;
+import org.animallink.identity.application.AdminLoginProtectionService;
+import org.animallink.identity.application.AdminLoginAttemptTransaction;
+import org.animallink.identity.application.AdminSessionIssuer;
 import org.animallink.identity.application.AuthenticationClock;
+import org.animallink.identity.application.AuthenticationAuditRecorder;
 import org.animallink.identity.application.PasswordHasher;
 import org.animallink.identity.domain.AccountStatus;
 import org.animallink.identity.domain.AdminAuthenticationRepository;
 import org.animallink.identity.domain.AdminSessionClientType;
+import org.animallink.identity.domain.AuthenticationSecurityRepository;
 import org.animallink.identity.domain.SystemRole;
 import org.animallink.identity.domain.UnauthorizedException;
 import org.animallink.identity.domain.UserAccount;
@@ -14,6 +20,8 @@ import org.animallink.identity.infrastructure.Argon2idPasswordHasher;
 import org.animallink.identity.infrastructure.SecureOpaqueSessionTokenCodec;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.web.context.support.StaticWebApplicationContext;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -39,6 +47,7 @@ class AdminAuthenticationServiceTest {
     private final MutableUsers users = new MutableUsers();
     private InMemoryAuthenticationRepository repository;
     private FastPasswordHasher passwordHasher;
+    private InMemorySecurityRepository securityRepository;
     private AdminAuthenticationService service;
 
     @BeforeEach
@@ -46,9 +55,16 @@ class AdminAuthenticationServiceTest {
         clock.value = START;
         users.put(account(AccountStatus.ACTIVE, SystemRole.GOVERNANCE_ADMIN));
         repository = new InMemoryAuthenticationRepository(users);
+        securityRepository = new InMemorySecurityRepository();
         passwordHasher = new FastPasswordHasher();
-        service = new AdminAuthenticationService(repository, users, passwordHasher,
-                new SecureOpaqueSessionTokenCodec(), clock, Duration.ofMinutes(30), Duration.ofHours(8));
+        var tokenCodec = new SecureOpaqueSessionTokenCodec();
+        var attemptTransaction = new AdminLoginAttemptTransaction(securityRepository, clock);
+        var protection = new AdminLoginProtectionService(securityRepository, clock, attemptTransaction,
+                100, 100, Duration.ofMinutes(15), Duration.ofMinutes(15));
+        var issuer = new AdminSessionIssuer(repository, securityRepository, users, passwordHasher,
+                tokenCodec, clock, Duration.ofMinutes(30), Duration.ofHours(8));
+        service = new AdminAuthenticationService(repository, securityRepository, users, passwordHasher,
+                tokenCodec, clock, protection, issuer, Duration.ofMinutes(30), Duration.ofHours(8));
         service.provisionAdminCredential(ADMIN, "admin.root", PASSWORD);
     }
 
@@ -188,6 +204,38 @@ class AdminAuthenticationServiceTest {
         assertThatThrownBy(() -> tokens.hash("not-a-valid-token")).isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void bootstrapServiceRejectsWebApplicationRuntimeBeforeDatabaseMutation() {
+        var security = new InMemorySecurityRepository();
+        var auditRecorder = new AuthenticationAuditRecorder(security, clock);
+        var bootstrap = new AdminBootstrapService(null, auditRecorder, new StaticWebApplicationContext());
+
+        assertThatThrownBy(() -> bootstrap.initialize(
+                AdminBootstrapService.LocalBootstrapAuthorization.confirmedInteractive("local:test"),
+                "管理员", "admin.root", PASSWORD))
+                .isInstanceOf(org.animallink.identity.domain.AdminBootstrapRejectedException.class);
+
+        assertThat(security.events).singleElement().satisfies(event -> {
+            assertThat(event.eventType()).isEqualTo(
+                    AuthenticationSecurityRepository.AuthenticationAuditType.ADMIN_INITIALIZATION_DENIED);
+            assertThat(event.outcome()).isEqualTo(
+                    AuthenticationSecurityRepository.AuthenticationAuditOutcome.DENIED);
+            assertThat(event.reasonCode()).isEqualTo("NON_LOCAL_RUNTIME");
+        });
+    }
+
+    @Test
+    void exhaustedDeadlockRetriesFailClosedWithoutReturningAnAttemptContext() {
+        var conflicts = new AlwaysConflictingAttemptTransaction();
+        var protection = new AdminLoginProtectionService(
+                new InMemorySecurityRepository(), clock, conflicts,
+                5, 20, Duration.ofMinutes(15), Duration.ofMinutes(15));
+
+        assertThatThrownBy(() -> protection.reserve("admin.root", "gateway:test-source"))
+                .isInstanceOf(CannotAcquireLockException.class);
+        assertThat(conflicts.calls).isEqualTo(5);
+    }
+
     private UserAccount account(AccountStatus status, SystemRole role) {
         return new UserAccount(ADMIN, "管理员", status, role, START, START);
     }
@@ -195,6 +243,23 @@ class AdminAuthenticationServiceTest {
     private static final class MutableClock implements AuthenticationClock {
         private volatile Instant value = START;
         @Override public Instant now() { return value; }
+    }
+
+    private final class AlwaysConflictingAttemptTransaction extends AdminLoginAttemptTransaction {
+        private int calls;
+
+        private AlwaysConflictingAttemptTransaction() {
+            super(new InMemorySecurityRepository(), clock);
+        }
+
+        @Override
+        public AdminLoginProtectionService.LoginAttemptContext reserve(
+                String suppliedUsername, String trustedSourceKey,
+                int maximumAttempts, int maximumSourceAttempts,
+                Duration attemptWindow, Duration blockDuration) {
+            calls++;
+            throw new CannotAcquireLockException("forced retry exhaustion");
+        }
     }
 
     private static final class FastPasswordHasher implements PasswordHasher {
@@ -309,5 +374,29 @@ class AdminAuthenticationServiceTest {
                     old.tokenHash(), old.credentialVersion(), old.createdAt(), old.lastSeenAt(),
                     old.idleExpiresAt(), old.absoluteExpiresAt(), at, reason, old.version() + 1);
         }
+    }
+
+    private static final class InMemorySecurityRepository implements AuthenticationSecurityRepository {
+        private final List<AuthenticationAuditEvent> events = new ArrayList<>();
+
+        @Override public LoginAttemptDecision reserveLoginAttempt(String usernameKey, String normalizedUsername,
+                String sourceFingerprint, Instant now, Duration attemptWindow, Duration blockDuration,
+                int maximumAttempts, int maximumSourceAttempts) {
+            return new LoginAttemptDecision(true, null, now, now);
+        }
+        @Override public void completeLoginAttempt(String usernameKey, Instant usernameWindowStartedAt,
+                String sourceFingerprint, Instant sourceWindowStartedAt,
+                boolean authenticationFailed, Instant now) { }
+        @Override public synchronized void insertAuditEvent(AuthenticationAuditEvent event) { events.add(event); }
+        @Override public BootstrapState lockBootstrapState() {
+            return new BootstrapState("OPEN", null, null, 0);
+        }
+        @Override public long countGovernanceAdministrators() { return 0; }
+        @Override public void insertGovernanceAdministrator(UserAccount user) { throw new UnsupportedOperationException(); }
+        @Override public boolean completeBootstrap(String userId, Instant completedAt, int expectedVersion) {
+            return true;
+        }
+        @Override public int deleteAuditEventsBefore(Instant cutoff, int limit) { return 0; }
+        @Override public int deleteLoginAttemptStatesBefore(Instant cutoff, int limit) { return 0; }
     }
 }
