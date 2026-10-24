@@ -142,6 +142,43 @@ public final class AnimalDtos {
         }
     }
 
+    public record AnonymousAnimalSummaryResponse(
+            String id,
+            String campusId,
+            String displayName,
+            AnimalSpecies species,
+            AnimalSex sex,
+            String coatColor,
+            String adoptionStatus,
+            String currentContext,
+            Instant updatedAt) {
+        static AnonymousAnimalSummaryResponse from(Animal animal) {
+            return new AnonymousAnimalSummaryResponse(animal.id(), animal.campusId(),
+                    animal.displayName(), animal.species(), animal.sex(), animal.coatColor(),
+                    animal.adoptionStatus().name(), animal.currentContext().name(),
+                    animal.updatedAt());
+        }
+    }
+
+    public record AnonymousAnimalDetailResponse(
+            String id,
+            String campusId,
+            String displayName,
+            AnimalSpecies species,
+            AnimalSex sex,
+            String coatColor,
+            String adoptionStatus,
+            String currentContext,
+            Instant createdAt,
+            Instant updatedAt) {
+        static AnonymousAnimalDetailResponse from(Animal animal) {
+            return new AnonymousAnimalDetailResponse(animal.id(), animal.campusId(),
+                    animal.displayName(), animal.species(), animal.sex(), animal.coatColor(),
+                    animal.adoptionStatus().name(), animal.currentContext().name(),
+                    animal.createdAt(), animal.updatedAt());
+        }
+    }
+
     public record GovernanceAnimalResponse(
             String requestedAnimalId,
             String canonicalAnimalId,

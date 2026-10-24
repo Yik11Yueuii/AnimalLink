@@ -1,4 +1,4 @@
-import { getCommunityDataSource, isOfflineDemo } from '../../services/sourceFactory'
+import { getCommunityDataSource, isCommunityOfflineDemo } from '../../services/sourceFactory'
 import { CommunityFeed } from '../../state/communityFeed'
 import { getSelectedCampus } from '../../state/campus'
 import type { CampusResponse } from '../../types/api'
@@ -9,7 +9,7 @@ const feed = new CommunityFeed(getCommunityDataSource(), 3)
 
 Page({
   data: {
-    offline: isOfflineDemo(),
+    offline: isCommunityOfflineDemo(),
     campus: null as CampusResponse | null,
     posts: [] as CommunityPostView[],
     total: 0,

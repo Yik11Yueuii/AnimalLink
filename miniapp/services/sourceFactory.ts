@@ -10,7 +10,7 @@ let communitySource: CommunityDataSource | null = null
 
 export const getPublicAnimalDataSource = (): PublicAnimalDataSource => {
   if (source) return source
-  source = runtimeConfig.dataMode === 'offline-demo'
+  source = runtimeConfig.animalDataMode === 'offline-demo'
     ? new OfflinePublicAnimalDataSource()
     : new ApiPublicAnimalDataSource(createJsonRequester(runtimeConfig.gatewayBaseUrl))
   return source
@@ -18,10 +18,12 @@ export const getPublicAnimalDataSource = (): PublicAnimalDataSource => {
 
 export const getCommunityDataSource = (): CommunityDataSource => {
   if (communitySource) return communitySource
-  communitySource = runtimeConfig.dataMode === 'offline-demo'
+  communitySource = runtimeConfig.communityDataMode === 'offline-demo'
     ? new OfflineCommunityDataSource()
     : new ApiCommunityDataSource(createJsonRequester(runtimeConfig.gatewayBaseUrl))
   return communitySource
 }
 
-export const isOfflineDemo = () => runtimeConfig.dataMode === 'offline-demo'
+export const isAnimalOfflineDemo = () => runtimeConfig.animalDataMode === 'offline-demo'
+
+export const isCommunityOfflineDemo = () => runtimeConfig.communityDataMode === 'offline-demo'

@@ -21,8 +21,8 @@ test('API data source uses the documented public paths and zero-based pagination
 
   assert.deepEqual(calls, [
     { path: '/identity/api/v1/campuses', query: { q: '杭州', page: 0, size: 50 } },
-    { path: '/animal/api/v1/animals', query: { campusId: 'campus-1', q: '橘子', species: 'CAT', page: 0, size: 20 } },
-    { path: '/animal/api/v1/animals/animal%2Fa', query: undefined },
+    { path: '/animal/api/v1/public/animals', query: { campusId: 'campus-1', q: '橘子', species: 'CAT', page: 0, size: 20 } },
+    { path: '/animal/api/v1/public/animals/animal%2Fa', query: undefined },
     { path: '/animal/api/v1/animals/animal%2Fa/timeline', query: { page: 0, size: 20 } },
   ])
 })
@@ -31,7 +31,7 @@ test('offline demo search honors campus, species, keyword and zero-based pages',
   const source = new OfflinePublicAnimalDataSource()
   const first = await source.searchAnimals({ campusId: 'campus-mingde', q: '', species: '', page: 0, size: 3 })
   const second = await source.searchAnimals({ campusId: 'campus-mingde', q: '', species: '', page: 1, size: 3 })
-  const cats = await source.searchAnimals({ campusId: 'campus-mingde', q: '图书馆', species: 'CAT', page: 0, size: 10 })
+  const cats = await source.searchAnimals({ campusId: 'campus-mingde', q: '橘白', species: 'CAT', page: 0, size: 10 })
   assert.equal(first.items.length, 3)
   assert.equal(first.total, 4)
   assert.equal(second.items.length, 1)

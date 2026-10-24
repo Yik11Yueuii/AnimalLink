@@ -18,6 +18,11 @@ public interface AnimalRepository {
 
     long countActive(String campusId, String query, AnimalSpecies species);
 
+    List<Animal> searchPublicActive(String campusId, String query, AnimalSpecies species,
+                                    int limit, int offset);
+
+    long countPublicActive(String campusId, String query, AnimalSpecies species);
+
     List<AnimalMedia> findPublicMedia(String animalId);
 
     List<TimelineEntry> findPublicTimeline(String animalId, int limit, int offset);

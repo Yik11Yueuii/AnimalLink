@@ -31,6 +31,24 @@ public class AnimalQueryService {
                 repository.countActive(validCampusId, normalizedQuery, species));
     }
 
+    public PageResult<Animal> searchPublic(String campusId, String query, AnimalSpecies species,
+                                           int page, int size) {
+        String validCampusId = IdRules.requireUuid(campusId, "campusId");
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
+        String normalizedQuery = query == null ? "" : query.trim();
+        return new PageResult<>(
+                repository.searchPublicActive(validCampusId, normalizedQuery, species,
+                        safeSize, safePage * safeSize),
+                safePage, safeSize,
+                repository.countPublicActive(validCampusId, normalizedQuery, species));
+    }
+
+    public Animal publicProfile(String animalId) {
+        String validId = IdRules.requireUuid(animalId, "animalId");
+        return canonicalResolver.resolvePublic(validId).animal();
+    }
+
     public PublicAnimalDetail detail(String animalId) {
         String validId = IdRules.requireUuid(animalId, "animalId");
         CanonicalAnimal canonical = canonicalResolver.resolvePublic(validId);

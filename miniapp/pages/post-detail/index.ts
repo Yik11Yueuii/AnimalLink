@@ -1,4 +1,4 @@
-import { getCommunityDataSource, isOfflineDemo } from '../../services/sourceFactory'
+import { getCommunityDataSource, isCommunityOfflineDemo } from '../../services/sourceFactory'
 import { CommentThread } from '../../state/communityFeed'
 import type { CommunityPostView, CommunityCommentView } from '../../utils/communityPresentation'
 import { toCommunityCommentView, toCommunityPostView } from '../../utils/communityPresentation'
@@ -9,7 +9,7 @@ const comments = new CommentThread(source, 3)
 
 Page({
   data: {
-    offline: isOfflineDemo(),
+    offline: isCommunityOfflineDemo(),
     postId: '',
     post: null as CommunityPostView | null,
     loading: true,

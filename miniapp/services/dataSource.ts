@@ -23,7 +23,7 @@ export class ApiPublicAnimalDataSource implements PublicAnimalDataSource {
   }
 
   searchAnimals(criteria: AnimalSearchCriteria) {
-    return this.request<PageResponse<AnimalSummaryResponse>>('/animal/api/v1/animals', {
+    return this.request<PageResponse<AnimalSummaryResponse>>('/animal/api/v1/public/animals', {
       campusId: criteria.campusId,
       q: criteria.q,
       species: criteria.species,
@@ -33,7 +33,7 @@ export class ApiPublicAnimalDataSource implements PublicAnimalDataSource {
   }
 
   getAnimal(animalId: string) {
-    return this.request<PublicAnimalResponse>(`/animal/api/v1/animals/${encodeURIComponent(animalId)}`)
+    return this.request<PublicAnimalResponse>(`/animal/api/v1/public/animals/${encodeURIComponent(animalId)}`)
   }
 
   getTimeline(animalId: string, page: number, size: number) {

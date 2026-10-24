@@ -1,4 +1,4 @@
-import { getPublicAnimalDataSource, isOfflineDemo } from '../../services/sourceFactory'
+import { getPublicAnimalDataSource, isAnimalOfflineDemo } from '../../services/sourceFactory'
 import { AnimalCatalog } from '../../state/animalCatalog'
 import { getSelectedCampus } from '../../state/campus'
 import type { AnimalSpecies, AnimalSummaryResponse, CampusResponse } from '../../types/api'
@@ -27,7 +27,7 @@ const toCard = (animal: AnimalSummaryResponse): AnimalCard => ({
 
 Page({
   data: {
-    offline: isOfflineDemo(),
+    offline: isAnimalOfflineDemo(),
     campus: null as CampusResponse | null,
     q: '',
     speciesIndex: 0,

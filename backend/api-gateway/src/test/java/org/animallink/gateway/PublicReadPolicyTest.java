@@ -36,10 +36,13 @@ class PublicReadPolicyTest {
 
     @Test void onlyExplicitPublicReadsAndHeadsPass() {
         for (String path : new String[] {"/identity/api/v1/campuses", "/identity/api/v1/campuses/" + ID,
+                "/animal/api/v1/public/animals", "/animal/api/v1/public/animals/" + ID,
                 "/incident/api/v1/cases/" + ID + "/support/expenses"}) {
             assertTrue(forwarded(HttpMethod.GET, path), path);
             assertTrue(forwarded(HttpMethod.HEAD, path), path);
             assertFalse(forwarded(HttpMethod.POST, path), path);
+            assertFalse(forwarded(HttpMethod.PATCH, path), path);
+            assertFalse(forwarded(HttpMethod.DELETE, path), path);
             assertFalse(forwarded(HttpMethod.OPTIONS, path), path);
         }
     }
@@ -52,7 +55,10 @@ class PublicReadPolicyTest {
                 "/incident/api/v1/admin/support-expenses/" + ID,
                 "/incident/api/v1/cases/" + ID + "/support/expenses/" + ID,
                 "/identity/api/v1/campuses/" + ID + "/members",
-                "/animal/api/v1/animals", "/incident/api/v1/rescues/" + ID,
+                "/animal/api/v1/animals", "/animal/api/v1/animals/" + ID,
+                "/animal/api/v1/public/animals/" + ID + "/timeline",
+                "/animal/api/v1/campuses/" + ID + "/feed",
+                "/incident/api/v1/rescues/" + ID,
                 "/intelligence/api/v1/ai/tasks/" + ID}) {
             assertFalse(forwarded(HttpMethod.GET, path), path);
             assertFalse(forwarded(HttpMethod.HEAD, path), path);
@@ -63,6 +69,11 @@ class PublicReadPolicyTest {
         for (String path : new String[] {"/identity/api/v1/%63ampuses",
                 "/identity/api/v1/campuses/", "/identity//api/v1/campuses",
                 "/identity/api/v1/campuses;foo", "/IDENTITY/api/v1/campuses",
+                "/animal/api/v1/public/animals/", "/animal//api/v1/public/animals",
+                "/animal/api/v1/public/animals;foo", "/ANIMAL/api/v1/public/animals",
+                "/animal/api/v1/public/animals/not-a-uuid",
+                "/animal/api/v1/public/animals/" + ID + "/extra",
+                "/animal/api/v1/%70ublic/animals",
                 "/identity/internal/v1/users", "/identity/%69nternal/v1/users",
                 "/incident/api/v1/cases/" + ID + "/support/expenses%2f" + ID + "/private"}) {
             assertFalse(forwarded(HttpMethod.GET, path), path);

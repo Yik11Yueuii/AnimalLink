@@ -100,6 +100,14 @@ class AnimalCanonicalResolutionIntegrationTest {
                 .andExpect(jsonPath("$.canonicalAnimalId").value(TARGET))
                 .andExpect(jsonPath("$.id").value(TARGET))
                 .andExpect(jsonPath("$.displayName").value("canonical-target"));
+
+        mvc.perform(get("/api/v1/public/animals/{id}", SOURCE))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(TARGET))
+                .andExpect(jsonPath("$.displayName").value("canonical-target"))
+                .andExpect(jsonPath("$.requestedAnimalId").doesNotExist())
+                .andExpect(jsonPath("$.canonicalAnimalId").doesNotExist())
+                .andExpect(jsonPath("$.media").doesNotExist());
     }
 
     @Test
