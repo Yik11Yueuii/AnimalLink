@@ -32,6 +32,10 @@ management:
       show-details: when_authorized
       show-components: always
 animallink:
+  authentication:
+    session:
+      idle-timeout: ${AUTH_SESSION_IDLE_TIMEOUT:PT30M}
+      absolute-timeout: ${AUTH_SESSION_ABSOLUTE_TIMEOUT:PT8H}
   intelligence:
     base-url: ${INTELLIGENCE_BASE_URL:http://localhost:8085}
     connect-timeout-ms: ${INTELLIGENCE_CONNECT_TIMEOUT_MS:2000}
