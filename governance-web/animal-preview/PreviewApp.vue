@@ -2,12 +2,15 @@
 import { ref } from 'vue'
 import AnimalManagementPage from '@/features/animals/AnimalManagementPage.vue'
 import RescueManagementPage from '@/features/rescues/RescueManagementPage.vue'
+import AdoptionManagementPage from '@/features/adoptions/AdoptionManagementPage.vue'
 import { MockAnimalGovernanceDataSource, previewCampusOptions } from './mockAnimalDataSource'
 import { MockRescueGovernanceDataSource } from './mockRescueDataSource'
+import { MockAdoptionGovernanceDataSource } from './mockAdoptionDataSource'
 
 const animalDataSource = new MockAnimalGovernanceDataSource()
 const rescueDataSource = new MockRescueGovernanceDataSource()
-const activeModule = ref<'animals' | 'rescues'>('rescues')
+const adoptionDataSource = new MockAdoptionGovernanceDataSource()
+const activeModule = ref<'animals' | 'rescues' | 'adoptions'>('adoptions')
 </script>
 
 <template>
@@ -35,11 +38,13 @@ const activeModule = ref<'animals' | 'rescues'>('rescues')
     <nav class="preview-switch" aria-label="预览模块">
       <button :class="{ active: activeModule === 'animals' }" @click="activeModule = 'animals'">Animal 档案</button>
       <button :class="{ active: activeModule === 'rescues' }" @click="activeModule = 'rescues'">救助治理</button>
+      <button :class="{ active: activeModule === 'adoptions' }" @click="activeModule = 'adoptions'">领养申请</button>
     </nav>
 
     <main>
       <AnimalManagementPage v-if="activeModule === 'animals'" :data-source="animalDataSource" :campus-options="previewCampusOptions" />
-      <RescueManagementPage v-else :data-source="rescueDataSource" :campus-options="previewCampusOptions" />
+      <RescueManagementPage v-else-if="activeModule === 'rescues'" :data-source="rescueDataSource" :campus-options="previewCampusOptions" />
+      <AdoptionManagementPage v-else :data-source="adoptionDataSource" />
     </main>
   </div>
 </template>
