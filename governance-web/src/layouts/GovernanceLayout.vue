@@ -1,9 +1,16 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { Bell, CollectionTag, DocumentChecked, Files, FirstAidKit, House, Menu, School, UserFilled } from '@element-plus/icons-vue'
+import { useAdminAuthentication } from '@/composables/useAdminAuthentication'
 
 const route = useRoute()
+const router = useRouter()
+const authentication = useAdminAuthentication()
+const logoutPending = ref(false)
+const sessionStatus = computed(() => authentication.isAuthenticated.value ? '管理员已认证' : '认证状态未知')
 const isCollapsed = ref(false)
 const mobileNavigationOpen = ref(false)
 const mobileToggle = ref<{ $el: HTMLButtonElement }>()
@@ -41,6 +48,20 @@ const navigation = [
   { index: '/content', label: '内容治理', icon: DocumentChecked },
   { index: '/audits', label: '审计记录', icon: Files },
 ]
+
+const logout = async () => {
+  if (logoutPending.value) return
+  logoutPending.value = true
+  try {
+    await authentication.logout()
+    ElMessage.success('已安全退出治理后台。')
+    await router.replace({ name: 'login' })
+  } catch {
+    ElMessage.error(authentication.state.message || '退出登录失败，请稍后重试。')
+  } finally {
+    logoutPending.value = false
+  }
+}
 </script>
 
 <template>
@@ -67,7 +88,11 @@ const navigation = [
         <el-button text circle class="desktop-toggle" aria-label="收起或展开导航" @click="isCollapsed = !isCollapsed"><el-icon><Menu /></el-icon></el-button>
         <el-button ref="mobileToggle" text circle class="mobile-toggle" aria-label="打开导航" aria-controls="mobile-navigation" :aria-expanded="mobileNavigationOpen" @click="mobileNavigationOpen = true"><el-icon><Menu /></el-icon></el-button>
         <div class="header-copy"><span>{{ pageTitle }}</span><small>AnimalLink 治理中心</small></div>
-        <div class="header-actions"><el-button text circle aria-label="查看通知"><el-icon><Bell /></el-icon></el-button><span class="session-status"><i></i> 未认证</span></div>
+        <div class="header-actions">
+          <el-button text circle aria-label="查看通知"><el-icon><Bell /></el-icon></el-button>
+          <span class="session-status" :class="{ 'session-status--authenticated': authentication.isAuthenticated.value }" :title="authentication.state.session?.userId"><i></i> {{ sessionStatus }}</span>
+          <el-button class="logout-button" text :loading="logoutPending" @click="logout">退出登录</el-button>
+        </div>
       </el-header>
       <el-main class="governance-main"><RouterView /></el-main>
     </el-container>
@@ -83,5 +108,6 @@ const navigation = [
         <el-menu-item v-else :index="item.index"><el-icon><component :is="item.icon" /></el-icon><template #title>{{ item.label }}</template></el-menu-item>
       </template>
     </el-menu>
+    <el-button class="drawer-logout" plain :loading="logoutPending" @click="logout">退出登录</el-button>
   </el-drawer>
 </template>

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "npm run typecheck && vite build",
-    "typecheck": "vue-tsc --noEmit"
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
@@ -19,8 +20,11 @@
     "@tsconfig/node22": "^22.0.0",
     "@types/node": "^22.13.10",
     "@vitejs/plugin-vue": "^5.2.3",
+    "@vue/test-utils": "^2.5.1",
+    "jsdom": "^26.1.0",
     "typescript": "~5.7.3",
     "vite": "^6.2.2",
+    "vitest": "^3.2.7",
     "vue-tsc": "^2.2.8"
   }
 }

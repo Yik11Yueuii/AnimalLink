@@ -28,7 +28,7 @@ const notices = [
 
 <template>
   <section class="overview-page">
-    <el-alert class="demo-alert" title="当前页面为视觉演示，统计数字均为演示数据，治理业务接口与正式认证尚未接入。" type="warning" :closable="false" show-icon />
+    <el-alert class="demo-alert" title="认证已接入，治理业务接口尚未开放；当前统计数字均为演示数据。" type="warning" :closable="false" show-icon />
     <section class="hero-card">
       <img class="hero-art" src="/illustrations/campus-companions-banner.png" alt="猫咪和狗狗在温暖校园花园中休息的插画" />
       <div class="hero-overlay" aria-hidden="true"></div>
@@ -61,7 +61,7 @@ const notices = [
             <el-icon><component :is="item.icon" /></el-icon><span>{{ item.label }}</span>
           </button>
         </div>
-        <div class="care-note"><el-icon><Avatar /></el-icon><span><strong>温馨提示</strong>治理操作需要正式身份认证，当前入口仅作界面预览。</span></div>
+        <div class="care-note"><el-icon><Avatar /></el-icon><span><strong>温馨提示</strong>管理员认证已接入，治理业务接口与写操作仍保持关闭。</span></div>
       </DashboardPanel>
     </div>
     <DashboardPanel title="系统公告" eyebrow="ANNOUNCEMENTS" class="notice-panel">
