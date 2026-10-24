@@ -60,7 +60,7 @@ public class CommunityApplicationService {
         List<PostMedia> media = postMedia(post, command.media());
         TimelineEntry timeline = new TimelineEntry(UUID.randomUUID().toString(), validAnimalId,
                 "POST", post.id(), "POST_ADOPTION_PUBLISHED", "领养后动态已发布", null,
-                post.createdAt(), Visibility.PUBLIC, post.createdAt());
+                post.createdAt(), Visibility.RESTRICTED, post.createdAt());
         transactions.executeWithoutResult(status ->
                 communityRepository.insertPostAndTimeline(post, media, timeline));
         return post.id();

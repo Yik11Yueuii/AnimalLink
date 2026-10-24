@@ -17,7 +17,8 @@ import java.util.Optional;
 public class JdbcCommunityGovernanceRepository implements CommunityGovernanceRepository {
     private static final String POST_COLUMNS = """
             p.id, p.campus_id, p.animal_id, p.relation_id, p.author_user_id, p.post_type,
-            p.text_content, p.visibility, p.status, p.version, p.created_at, p.updated_at
+            p.text_content, p.visibility, p.status, p.review_status, p.reviewed_by_user_id,
+            p.reviewed_at, p.version, p.created_at, p.updated_at
             """;
     private static final String GOVERNANCE_POST_SELECT = """
             SELECT %s,
@@ -29,7 +30,8 @@ public class JdbcCommunityGovernanceRepository implements CommunityGovernanceRep
             FROM post p
             """.formatted(POST_COLUMNS);
     private static final String GOVERNANCE_COMMENT_SELECT = """
-            SELECT c.id, c.post_id, c.author_user_id, c.content, c.status,
+            SELECT c.id, c.post_id, c.author_user_id, c.content, c.status, c.review_status,
+                   c.reviewed_by_user_id, c.reviewed_at,
                    c.created_at, c.updated_at, p.campus_id, p.status AS parent_post_status
             FROM comment c
             JOIN post p ON p.id = c.post_id
@@ -72,7 +74,8 @@ public class JdbcCommunityGovernanceRepository implements CommunityGovernanceRep
     @Override
     public Optional<Comment> lockComment(String commentId) {
         return optional("""
-                SELECT id, post_id, author_user_id, content, status, created_at, updated_at
+                SELECT id, post_id, author_user_id, content, status, review_status,
+                       reviewed_by_user_id, reviewed_at, created_at, updated_at
                 FROM comment WHERE id = ? FOR UPDATE
                 """, COMMENT_MAPPER, commentId);
     }
@@ -98,6 +101,34 @@ public class JdbcCommunityGovernanceRepository implements CommunityGovernanceRep
                 """, comment.status().name(), comment.id(), expectedStatus.name());
         if (updated != 1) {
             throw new StateConflictException("Comment 已被其他治理操作修改，请刷新后重试");
+        }
+    }
+
+    @Override
+    public void updatePostReview(Post post, PublicReviewStatus expectedStatus) {
+        int updated = jdbcTemplate.update("""
+                UPDATE post
+                SET review_status = ?, reviewed_by_user_id = ?, reviewed_at = ?,
+                    version = version + 1, updated_at = CURRENT_TIMESTAMP(6)
+                WHERE id = ? AND version = ? AND review_status = ?
+                """, post.reviewStatus().name(), post.reviewedByUserId(),
+                timestamp(post.reviewedAt()), post.id(), post.version(), expectedStatus.name());
+        if (updated != 1) {
+            throw new StateConflictException("Post 已被其他审核操作修改，请刷新后重试");
+        }
+    }
+
+    @Override
+    public void updateCommentReview(Comment comment, PublicReviewStatus expectedStatus) {
+        int updated = jdbcTemplate.update("""
+                UPDATE comment
+                SET review_status = ?, reviewed_by_user_id = ?, reviewed_at = ?,
+                    updated_at = CURRENT_TIMESTAMP(6)
+                WHERE id = ? AND review_status = ?
+                """, comment.reviewStatus().name(), comment.reviewedByUserId(),
+                timestamp(comment.reviewedAt()), comment.id(), expectedStatus.name());
+        if (updated != 1) {
+            throw new StateConflictException("Comment 已被其他审核操作修改，请刷新后重试");
         }
     }
 
@@ -368,7 +399,9 @@ public class JdbcCommunityGovernanceRepository implements CommunityGovernanceRep
                 rs.getString("relation_id"), rs.getString("author_user_id"),
                 PostType.valueOf(rs.getString("post_type")), rs.getString("text_content"),
                 Visibility.valueOf(rs.getString("visibility")),
-                PostStatus.valueOf(rs.getString("status")), rs.getInt("version"),
+                PostStatus.valueOf(rs.getString("status")),
+                PublicReviewStatus.valueOf(rs.getString("review_status")),
+                rs.getString("reviewed_by_user_id"), instant(rs, "reviewed_at"), rs.getInt("version"),
                 instant(rs, "created_at"), instant(rs, "updated_at"));
     }
 
@@ -380,7 +413,10 @@ public class JdbcCommunityGovernanceRepository implements CommunityGovernanceRep
     private static final RowMapper<Comment> COMMENT_MAPPER = (rs, rowNum) ->
             new Comment(rs.getString("id"), rs.getString("post_id"),
                     rs.getString("author_user_id"), rs.getString("content"),
-                    CommentStatus.valueOf(rs.getString("status")), instant(rs, "created_at"),
+                    CommentStatus.valueOf(rs.getString("status")),
+                    PublicReviewStatus.valueOf(rs.getString("review_status")),
+                    rs.getString("reviewed_by_user_id"), instant(rs, "reviewed_at"),
+                    instant(rs, "created_at"),
                     instant(rs, "updated_at"));
     private static final RowMapper<GovernanceCommentView> COMMENT_VIEW_MAPPER = (rs, rowNum) ->
             new GovernanceCommentView(COMMENT_MAPPER.mapRow(rs, rowNum), rs.getString("campus_id"),

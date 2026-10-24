@@ -14,9 +14,8 @@
   <view wx:elif="{{posts.length === 0}}" class="state-card surface"><text class="state-icon">○</text><text class="state-title">当前 Campus 暂无公开动态</text><text class="state-copy">可以切换 Campus 查看其他校园。</text></view>
   <view wx:else class="feed-list">
     <view wx:for="{{posts}}" wx:key="id" class="post-card surface" data-id="{{item.id}}" bindtap="openPost">
-      <view class="post-meta"><view class="author-avatar">{{item.authorInitial}}</view><view class="author-copy"><text class="author-name">{{item.author.displayName}}</text><text class="post-time">{{item.createdText}}</text></view><text class="type-chip type-{{item.postType}}">{{item.typeText}}</text></view>
+      <view class="post-meta"><view class="author-avatar">{{item.authorInitial}}</view><view class="author-copy"><text class="author-name">{{item.authorDisplayName}}</text><text class="post-time">{{item.createdText}}</text></view><text class="type-chip type-{{item.postType}}">{{item.typeText}}</text></view>
       <text class="post-content">{{item.textContent}}</text>
-      <view wx:if="{{item.hasMediaMetadata}}" class="media-placeholder"><image src="/assets/animal-placeholder.jpg" mode="aspectFill" /><text>媒体元数据已存在 · 公开访问地址尚未接入</text></view>
       <view wx:if="{{item.animal}}" class="animal-link" data-id="{{item.animal.id}}" catchtap="openAnimal"><image src="/assets/animal-placeholder.jpg" mode="aspectFill" /><view><text class="animal-name">{{item.animal.displayName}}</text><text class="animal-species">关联 Animal · {{item.animalSpeciesText}}</text></view><text class="link-arrow">›</text></view>
       <view class="engagement"><text>♡ {{item.likeCount}}</text><text>○ {{item.commentCount}} 条评论</text><text class="detail-link">查看全文 ›</text></view>
     </view>

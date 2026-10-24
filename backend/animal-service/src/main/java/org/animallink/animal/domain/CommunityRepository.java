@@ -27,6 +27,16 @@ public interface CommunityRepository {
 
     long countComments(String postId);
 
+    List<PublicCommunityPostView> findPublicFeed(String campusId, int limit, int offset);
+
+    long countPublicFeed(String campusId);
+
+    Optional<PublicCommunityPostView> findPublicPost(String postId);
+
+    List<PublicCommunityCommentView> findPublicComments(String postId, int limit, int offset);
+
+    long countPublicComments(String postId);
+
     void insertLike(String userId, String postId);
 
     int deleteLike(String userId, String postId);

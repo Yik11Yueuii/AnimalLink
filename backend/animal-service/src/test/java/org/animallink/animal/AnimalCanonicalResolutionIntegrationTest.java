@@ -243,9 +243,9 @@ class AnimalCanonicalResolutionIntegrationTest {
     @Test
     void phase5GcLifecycleProjectionMigrationIsApplied() {
         assertThat(jdbc.queryForObject("SELECT MAX(CAST(version AS UNSIGNED)) FROM flyway_schema_history",
-                Integer.class)).isEqualTo(12);
+                Integer.class)).isEqualTo(13);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1",
-                Integer.class)).isEqualTo(12);
+                Integer.class)).isEqualTo(13);
     }
 
     private void clearBusinessTables() {

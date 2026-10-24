@@ -12,6 +12,10 @@ public interface CommunityGovernanceRepository {
 
     void updateCommentStatus(Comment comment, CommentStatus expectedStatus);
 
+    void updatePostReview(Post post, PublicReviewStatus expectedStatus);
+
+    void updateCommentReview(Comment comment, PublicReviewStatus expectedStatus);
+
     int updatePostAdoptionTimelineVisibility(String postId, Visibility expected, Visibility target);
 
     long countPostAdoptionTimelines(String postId, Visibility visibility);

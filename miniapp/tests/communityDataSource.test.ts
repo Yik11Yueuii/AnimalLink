@@ -17,9 +17,9 @@ test('community API adapter uses public GET paths and zero-based pagination', as
   await source.getPost('post/a')
   await source.getComments('post/a', 1, 3)
   assert.deepEqual(calls, [
-    { path: '/animal/api/v1/campuses/campus%2Fa/feed', query: { page: 0, size: 3 } },
-    { path: '/animal/api/v1/posts/post%2Fa', query: undefined },
-    { path: '/animal/api/v1/posts/post%2Fa/comments', query: { page: 1, size: 3 } },
+    { path: '/animal/api/v1/public/campuses/campus%2Fa/feed', query: { page: 0, size: 3 } },
+    { path: '/animal/api/v1/public/posts/post%2Fa', query: undefined },
+    { path: '/animal/api/v1/public/posts/post%2Fa/comments', query: { page: 1, size: 3 } },
   ])
 })
 

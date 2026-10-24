@@ -37,6 +37,9 @@ class PublicReadPolicyTest {
     @Test void onlyExplicitPublicReadsAndHeadsPass() {
         for (String path : new String[] {"/identity/api/v1/campuses", "/identity/api/v1/campuses/" + ID,
                 "/animal/api/v1/public/animals", "/animal/api/v1/public/animals/" + ID,
+                "/animal/api/v1/public/campuses/" + ID + "/feed",
+                "/animal/api/v1/public/posts/" + ID,
+                "/animal/api/v1/public/posts/" + ID + "/comments",
                 "/incident/api/v1/cases/" + ID + "/support/expenses"}) {
             assertTrue(forwarded(HttpMethod.GET, path), path);
             assertTrue(forwarded(HttpMethod.HEAD, path), path);
@@ -58,6 +61,9 @@ class PublicReadPolicyTest {
                 "/animal/api/v1/animals", "/animal/api/v1/animals/" + ID,
                 "/animal/api/v1/public/animals/" + ID + "/timeline",
                 "/animal/api/v1/campuses/" + ID + "/feed",
+                "/animal/api/v1/posts/" + ID,
+                "/animal/api/v1/posts/" + ID + "/comments",
+                "/animal/api/v1/campuses/" + ID + "/feed",
                 "/incident/api/v1/rescues/" + ID,
                 "/intelligence/api/v1/ai/tasks/" + ID}) {
             assertFalse(forwarded(HttpMethod.GET, path), path);
@@ -73,6 +79,9 @@ class PublicReadPolicyTest {
                 "/animal/api/v1/public/animals;foo", "/ANIMAL/api/v1/public/animals",
                 "/animal/api/v1/public/animals/not-a-uuid",
                 "/animal/api/v1/public/animals/" + ID + "/extra",
+                "/animal/api/v1/public/campuses/" + ID + "/feed/",
+                "/animal/api/v1/public/posts/not-a-uuid",
+                "/animal/api/v1/public/posts/" + ID + "/comments/extra",
                 "/animal/api/v1/%70ublic/animals",
                 "/identity/internal/v1/users", "/identity/%69nternal/v1/users",
                 "/incident/api/v1/cases/" + ID + "/support/expenses%2f" + ID + "/private"}) {
