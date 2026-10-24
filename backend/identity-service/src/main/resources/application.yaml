@@ -2,7 +2,7 @@ spring:
   application:
     name: identity-service
   profiles:
-    default: local
+    default: secure
   cloud:
     nacos:
       server-addr: ${NACOS_SERVER_ADDR:localhost:8848}

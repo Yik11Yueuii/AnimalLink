@@ -2,7 +2,7 @@ spring:
   application:
     name: api-gateway
   profiles:
-    default: local
+    default: secure
   config:
     import: optional:nacos:${spring.application.name}.yaml
   cloud:
