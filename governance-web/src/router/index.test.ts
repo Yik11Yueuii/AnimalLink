@@ -50,6 +50,13 @@ describe('post-login redirect', () => {
     expect(router.currentRoute.value.query.redirect).toBe('/adoptions')
   })
 
+  it('keeps the Community review route behind the administrator session guard', async () => {
+    const router = createGovernanceRouter(createMemoryHistory())
+    await router.push('/content')
+    expect(router.currentRoute.value.name).toBe('login')
+    expect(router.currentRoute.value.query.redirect).toBe('/content')
+  })
+
   it('returns an authenticated administrator from login to the intended internal route', async () => {
     authentication.isAuthenticated.value = true
     authentication.state.status = 'authenticated'

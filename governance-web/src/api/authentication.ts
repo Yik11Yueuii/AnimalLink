@@ -17,6 +17,7 @@ interface CsrfMaterial {
 export type AuthenticationFailure =
   | 'unauthenticated'
   | 'forbidden'
+  | 'conflict'
   | 'rate-limited'
   | 'unavailable'
   | 'invalid-response'
@@ -63,6 +64,7 @@ const mapFailure = (error: unknown): AuthenticationApiError => {
   const status = error.response.status
   if (status === 401) return new AuthenticationApiError('unauthenticated', status)
   if (status === 403) return new AuthenticationApiError('forbidden', status)
+  if (status === 409) return new AuthenticationApiError('conflict', status)
   if (status === 429) return new AuthenticationApiError('rate-limited', status)
   if (status === 503) return new AuthenticationApiError('unavailable', status)
   return new AuthenticationApiError('unavailable', status)
@@ -124,10 +126,18 @@ export const logoutAdmin = async (): Promise<void> => {
   await authenticatedMutation<void>('/auth/admin/logout')
 }
 
+/**
+ * Sends a same-origin, CSRF-protected administrator mutation. The caller must use
+ * an exact Gateway path; this helper never reads or exposes the HttpOnly session cookie.
+ */
+export const authenticatedAdminMutation = async <T>(path: string, body: unknown): Promise<T> =>
+  authenticatedMutation<T>(path, body)
+
 export const authenticationMessage = (error: unknown): string => {
   const failure = error instanceof AuthenticationApiError ? error.kind : 'unavailable'
   if (failure === 'unauthenticated') return '用户名或密码错误，或当前会话已经失效。'
   if (failure === 'forbidden') return '认证请求被安全策略拒绝，请检查访问地址和权限。'
+  if (failure === 'conflict') return '数据已被其他治理操作更新，请重新读取后再试。'
   if (failure === 'rate-limited') return '登录尝试过于频繁，请稍后再试。'
   if (failure === 'invalid-response') return '认证服务返回了无法验证的响应。'
   return '认证服务暂时不可用，请稍后重试。'
