@@ -21,8 +21,20 @@ public class CommunityReviewAuthorization {
             throw new UnauthorizedException("需要可信管理员身份");
         }
         if (!"GOVERNANCE_ADMIN".equals(principal.systemRole())
-                || !TrustedAdminAssertionVerifier.REQUIRED_SCOPE.equals(principal.scope())) {
+                || !TrustedAdminAssertionVerifier.READ_SCOPE.equals(principal.scope())) {
             throw new ForbiddenException("缺少社区审核读取权限");
+        }
+        return principal;
+    }
+
+    public TrustedAdminAssertionVerifier.AuthenticatedAdmin requireWriter() {
+        Object value = request.getAttribute(TrustedAdminAssertionFilter.PRINCIPAL_ATTRIBUTE);
+        if (!(value instanceof TrustedAdminAssertionVerifier.AuthenticatedAdmin principal)) {
+            throw new UnauthorizedException("需要可信管理员身份");
+        }
+        if (!"GOVERNANCE_ADMIN".equals(principal.systemRole())
+                || !TrustedAdminAssertionVerifier.WRITE_SCOPE.equals(principal.scope())) {
+            throw new ForbiddenException("缺少社区审核写入权限");
         }
         return principal;
     }

@@ -38,7 +38,7 @@ public class AdminAuthenticationRequestPolicyFilter implements WebFilter, Ordere
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
-        if (!isStateChangingAuthenticationRequest(exchange)) return chain.filter(exchange);
+        if (!isProtectedAdminMutation(exchange)) return chain.filter(exchange);
 
         var origins = exchange.getRequest().getHeaders().get(HttpHeaders.ORIGIN);
         String fetchSite = exchange.getRequest().getHeaders().getFirst("Sec-Fetch-Site");
@@ -61,11 +61,12 @@ public class AdminAuthenticationRequestPolicyFilter implements WebFilter, Ordere
         return chain.filter(exchange);
     }
 
-    private static boolean isStateChangingAuthenticationRequest(ServerWebExchange exchange) {
+    private static boolean isProtectedAdminMutation(ServerWebExchange exchange) {
         if (!HttpMethod.POST.equals(exchange.getRequest().getMethod())) return false;
         String path = exchange.getRequest().getURI().getPath();
         return AdminAuthenticationController.LOGIN_PATH.equals(path)
-                || AdminAuthenticationController.LOGOUT_PATH.equals(path);
+                || AdminAuthenticationController.LOGOUT_PATH.equals(path)
+                || AdminCommunityReviewWritePolicy.matches(exchange.getRequest().getMethod(), path);
     }
 
     private static String configuredOrigin(String value) {

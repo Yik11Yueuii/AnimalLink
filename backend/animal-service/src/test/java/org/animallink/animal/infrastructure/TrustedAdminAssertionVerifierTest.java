@@ -24,6 +24,8 @@ class TrustedAdminAssertionVerifierTest {
     private static final String KEYS = "animal-v1=" + Base64.getEncoder().encodeToString(KEY);
     private static final Instant NOW = Instant.parse("2026-10-25T00:00:00Z");
     private static final String PATH = "/api/v1/admin/community-review/posts";
+    private static final String WRITE_PATH =
+            "/api/v1/admin/community-review/posts/00000000-0000-0000-0000-000000000001/approve";
 
     @Test
     void verifiesSignatureAudienceTimePermissionAndRequestBindingOnce() throws Exception {
@@ -70,6 +72,21 @@ class TrustedAdminAssertionVerifierTest {
                 .isInstanceOf(TrustedAdminAssertionVerifier.AssertionForbiddenException.class);
         assertThatThrownBy(() -> verifier("").verify("Bearer " + ordinary, "GET", PATH))
                 .isInstanceOf(TrustedAdminAssertionVerifier.AssertionUnavailableException.class);
+    }
+
+    @Test
+    void verifiesWriteScopeOnlyForExactPostRoute() throws Exception {
+        String assertion = token(KEY, "animal-v1", "animal-service", "GOVERNANCE_ADMIN",
+                List.of("community.review.write"), "POST", WRITE_PATH, NOW, NOW.plusSeconds(15));
+        assertThat(verifier(KEYS).verify("Bearer " + assertion, "POST", WRITE_PATH).scope())
+                .isEqualTo("community.review.write");
+
+        String readScope = token(KEY, "animal-v1", "animal-service", "GOVERNANCE_ADMIN",
+                List.of("community.review.read"), "POST", WRITE_PATH, NOW, NOW.plusSeconds(15));
+        assertThatThrownBy(() -> verifier(KEYS).verify("Bearer " + readScope, "POST", WRITE_PATH))
+                .isInstanceOf(TrustedAdminAssertionVerifier.AssertionForbiddenException.class);
+        assertRejected(assertion, "POST", WRITE_PATH + "/extra");
+        assertRejected(assertion, "PATCH", WRITE_PATH);
     }
 
     private void assertRejected(String token, String method, String path) {

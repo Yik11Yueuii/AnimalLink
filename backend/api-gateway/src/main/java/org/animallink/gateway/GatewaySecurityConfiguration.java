@@ -38,9 +38,10 @@ public class GatewaySecurityConfiguration {
     private ServerWebExchangeMatcher adminMutationMatcher() {
         return exchange -> {
             String path = exchange.getRequest().getURI().getPath();
-            boolean protectedMutation = HttpMethod.POST.equals(exchange.getRequest().getMethod())
+            boolean protectedMutation = (HttpMethod.POST.equals(exchange.getRequest().getMethod())
                     && (AdminAuthenticationController.LOGIN_PATH.equals(path)
-                    || AdminAuthenticationController.LOGOUT_PATH.equals(path));
+                    || AdminAuthenticationController.LOGOUT_PATH.equals(path)))
+                    || AdminCommunityReviewWritePolicy.matches(exchange.getRequest().getMethod(), path);
             return protectedMutation
                     ? ServerWebExchangeMatcher.MatchResult.match()
                     : ServerWebExchangeMatcher.MatchResult.notMatch();

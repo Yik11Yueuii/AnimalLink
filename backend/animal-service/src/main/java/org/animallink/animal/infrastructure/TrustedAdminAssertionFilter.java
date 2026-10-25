@@ -12,22 +12,10 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.regex.Pattern;
-
 @Component
 public class TrustedAdminAssertionFilter extends OncePerRequestFilter {
     public static final String PRINCIPAL_ATTRIBUTE = TrustedAdminAssertionFilter.class.getName()
             + ".principal";
-    private static final String UUID_SEGMENT =
-            "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
-    private static final List<Pattern> PATHS = List.of(
-            Pattern.compile("^/api/v1/admin/community-review/posts$"),
-            Pattern.compile("^/api/v1/admin/community-review/posts/" + UUID_SEGMENT + "$"),
-            Pattern.compile("^/api/v1/admin/community-review/comments$"),
-            Pattern.compile("^/api/v1/admin/community-review/comments/" + UUID_SEGMENT + "$")
-    );
-
     private final TrustedAdminAssertionVerifier verifier;
 
     public TrustedAdminAssertionFilter(ObjectProvider<TrustedAdminAssertionVerifier> verifierProvider) {
@@ -37,7 +25,7 @@ public class TrustedAdminAssertionFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        return path == null || PATHS.stream().noneMatch(pattern -> pattern.matcher(path).matches());
+        return !TrustedAdminRequestPolicy.isProtectedPath(path);
     }
 
     @Override

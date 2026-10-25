@@ -69,10 +69,14 @@ public class AnimalAdminAssertionSigner {
     }
 
     public String sign(IdentitySessionClient.GatewayAuthenticatedPrincipal principal,
-                       String requestMethod, String requestPath) {
+                       String requestMethod, String requestPath, String scope) {
         if (!configurationValid) throw new AssertionUnavailableException();
+        boolean permittedBinding = ("GET".equals(requestMethod)
+                && AdminCommunityReviewReadPolicy.SCOPE.equals(scope))
+                || ("POST".equals(requestMethod)
+                && AdminCommunityReviewWritePolicy.SCOPE.equals(scope));
         if (principal == null || !"GOVERNANCE_ADMIN".equals(principal.systemRole())
-                || !isUuid(principal.userId()) || !"GET".equals(requestMethod)
+                || !isUuid(principal.userId()) || !permittedBinding
                 || requestPath == null || requestPath.length() > 512) {
             throw new AssertionRejectedException();
         }
@@ -85,7 +89,7 @@ public class AnimalAdminAssertionSigner {
                     .claim("target", audience)
                     .claim("actor_id", principal.userId())
                     .claim("system_role", principal.systemRole())
-                    .claim("scope", Collections.singletonList(AdminCommunityReviewReadPolicy.SCOPE))
+                    .claim("scope", Collections.singletonList(scope))
                     .claim("request_method", requestMethod)
                     .claim("request_path", requestPath)
                     .issueTime(Date.from(issuedAt))
