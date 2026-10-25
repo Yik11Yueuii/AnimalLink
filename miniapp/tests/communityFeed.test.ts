@@ -9,12 +9,10 @@ const post = (id: string, campusId: string): CommunityPostResponse => ({
   campusId,
   postType: 'CAMPUS_POST',
   textContent: id,
-  author: { id: 'author', displayName: '测试作者' },
+  authorDisplayName: '校园成员',
   animal: null,
-  media: [],
   likeCount: 0,
   commentCount: 0,
-  likedByMe: false,
   createdAt: '2026-10-22T00:00:00Z',
   updatedAt: '2026-10-22T00:00:00Z',
 })
@@ -70,7 +68,7 @@ test('feed error remains visible and retry can recover', async () => {
 
 test('comment thread paginates and resets when post changes', async () => {
   const thread = new CommentThread(source(async (_campusId, page, size) => ({ items: [], page, size, total: 0 }), async (postId, page, size) => ({
-    items: [{ id: `${postId}-${page}`, postId, content: '评论', author: { id: 'u', displayName: '用户' }, createdAt: '2026-10-22T00:00:00Z' }],
+    items: [{ id: `${postId}-${page}`, postId, content: '评论', authorDisplayName: '校园成员', createdAt: '2026-10-22T00:00:00Z' }],
     page,
     size,
     total: 2,

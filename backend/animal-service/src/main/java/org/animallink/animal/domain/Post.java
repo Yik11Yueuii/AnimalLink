@@ -13,6 +13,9 @@ public record Post(
         String textContent,
         Visibility visibility,
         PostStatus status,
+        PublicReviewStatus reviewStatus,
+        String reviewedByUserId,
+        Instant reviewedAt,
         int version,
         Instant createdAt,
         Instant updatedAt) {
@@ -28,7 +31,7 @@ public record Post(
         Instant now = Instant.now();
         return new Post(id, campusId, animalId, null, authorUserId,
                 PostType.CAMPUS_POST, required(textContent), Visibility.PUBLIC,
-                PostStatus.ACTIVE, 0, now, now);
+                PostStatus.ACTIVE, PublicReviewStatus.PENDING, null, null, 0, now, now);
     }
 
     public static Post postAdoption(String campusId, String animalId, String authorUserId,
@@ -37,7 +40,7 @@ public record Post(
         return new Post(UUID.randomUUID().toString(), campusId, animalId,
                 requiredUuid(relationId, "relationId"), authorUserId,
                 PostType.POST_ADOPTION, required(textContent), Visibility.PUBLIC,
-                PostStatus.ACTIVE, 0, now, now);
+                PostStatus.ACTIVE, PublicReviewStatus.PENDING, null, null, 0, now, now);
     }
 
     public Post hide() {
@@ -45,7 +48,8 @@ public record Post(
             throw new StateConflictException("Post 已隐藏");
         }
         return new Post(id, campusId, animalId, relationId, authorUserId, postType, textContent,
-                visibility, PostStatus.HIDDEN, version, createdAt, Instant.now());
+                visibility, PostStatus.HIDDEN, reviewStatus, reviewedByUserId, reviewedAt,
+                version, createdAt, Instant.now());
     }
 
     public Post restore() {
@@ -53,7 +57,8 @@ public record Post(
             throw new StateConflictException("Post 已处于可见状态");
         }
         return new Post(id, campusId, animalId, relationId, authorUserId, postType, textContent,
-                visibility, PostStatus.ACTIVE, version, createdAt, Instant.now());
+                visibility, PostStatus.ACTIVE, reviewStatus, reviewedByUserId, reviewedAt,
+                version, createdAt, Instant.now());
     }
 
     public Post remove() {
@@ -61,7 +66,20 @@ public record Post(
             throw new StateConflictException("Post 已被移除");
         }
         return new Post(id, campusId, animalId, relationId, authorUserId, postType, textContent,
-                visibility, PostStatus.REMOVED, version, createdAt, Instant.now());
+                visibility, PostStatus.REMOVED, reviewStatus, reviewedByUserId, reviewedAt,
+                version, createdAt, Instant.now());
+    }
+
+    public Post review(PublicReviewStatus target, String reviewerUserId, Instant time) {
+        if (target == null || target == PublicReviewStatus.PENDING) {
+            throw new IllegalArgumentException("审核结果必须是 APPROVED 或 REJECTED");
+        }
+        if (reviewStatus == target) {
+            throw new StateConflictException("Post 已处于该审核状态");
+        }
+        return new Post(id, campusId, animalId, relationId, authorUserId, postType, textContent,
+                visibility, status, target, requiredUuid(reviewerUserId, "reviewerUserId"),
+                time, version, createdAt, Instant.now());
     }
 
     private static String required(String value) {

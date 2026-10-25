@@ -16,18 +16,18 @@ export class ApiCommunityDataSource implements CommunityDataSource {
 
   getFeed(campusId: string, page: number, size: number) {
     return this.request<CommunityPostPage>(
-      `/animal/api/v1/campuses/${encodeURIComponent(campusId)}/feed`,
+      `/animal/api/v1/public/campuses/${encodeURIComponent(campusId)}/feed`,
       { page, size },
     )
   }
 
   getPost(postId: string) {
-    return this.request<CommunityPostResponse>(`/animal/api/v1/posts/${encodeURIComponent(postId)}`)
+    return this.request<CommunityPostResponse>(`/animal/api/v1/public/posts/${encodeURIComponent(postId)}`)
   }
 
   getComments(postId: string, page: number, size: number) {
     return this.request<CommunityCommentPage>(
-      `/animal/api/v1/posts/${encodeURIComponent(postId)}/comments`,
+      `/animal/api/v1/public/posts/${encodeURIComponent(postId)}/comments`,
       { page, size },
     )
   }

@@ -47,6 +47,22 @@ public class CommunityGovernanceService {
         return changeComment(commentId, reason, GovernanceAction.REMOVE);
     }
 
+    public Post approvePost(String postId, String reason) {
+        return reviewPost(postId, reason, PublicReviewStatus.APPROVED);
+    }
+
+    public Post rejectPost(String postId, String reason) {
+        return reviewPost(postId, reason, PublicReviewStatus.REJECTED);
+    }
+
+    public Comment approveComment(String commentId, String reason) {
+        return reviewComment(commentId, reason, PublicReviewStatus.APPROVED);
+    }
+
+    public Comment rejectComment(String commentId, String reason) {
+        return reviewComment(commentId, reason, PublicReviewStatus.REJECTED);
+    }
+
     public PageResult<GovernancePostView> posts(PostStatus status, String campusId,
                                                 PostType postType, int page, int size) {
         authorization.requireAdministrator();
@@ -108,6 +124,47 @@ public class CommunityGovernanceService {
                 changeCommentLocked(validId, reason, action, actor)));
     }
 
+    private Post reviewPost(String postId, String rawReason, PublicReviewStatus target) {
+        IdentityGateway.CurrentUser actor = authorization.requireAdministrator();
+        String validId = IdRules.requireUuid(postId, "postId");
+        String reason = reason(rawReason);
+        return Objects.requireNonNull(transactions.execute(status -> {
+            Post current = repository.lockPost(validId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Post 不存在"));
+            Post changed = current.review(target, actor.id(), Instant.now());
+            repository.updatePostReview(changed, current.reviewStatus());
+            if (current.postType() == PostType.POST_ADOPTION) {
+                Visibility timelineTarget = target == PublicReviewStatus.APPROVED
+                        && current.status() == PostStatus.ACTIVE
+                        && current.visibility() == Visibility.PUBLIC
+                        ? Visibility.PUBLIC : Visibility.RESTRICTED;
+                ensureTimelineVisibility(current.id(), timelineTarget);
+            }
+            GovernanceAction action = target == PublicReviewStatus.APPROVED
+                    ? GovernanceAction.APPROVE : GovernanceAction.REJECT;
+            repository.insertAudit(audit(GovernanceResourceType.POST, validId, action,
+                    current.reviewStatus().name(), target.name(), actor.id(), reason));
+            return repository.lockPost(validId).orElseThrow();
+        }));
+    }
+
+    private Comment reviewComment(String commentId, String rawReason, PublicReviewStatus target) {
+        IdentityGateway.CurrentUser actor = authorization.requireAdministrator();
+        String validId = IdRules.requireUuid(commentId, "commentId");
+        String reason = reason(rawReason);
+        return Objects.requireNonNull(transactions.execute(status -> {
+            Comment current = repository.lockComment(validId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Comment 不存在"));
+            Comment changed = current.review(target, actor.id(), Instant.now());
+            repository.updateCommentReview(changed, current.reviewStatus());
+            GovernanceAction action = target == PublicReviewStatus.APPROVED
+                    ? GovernanceAction.APPROVE : GovernanceAction.REJECT;
+            repository.insertAudit(audit(GovernanceResourceType.COMMENT, validId, action,
+                    current.reviewStatus().name(), target.name(), actor.id(), reason));
+            return repository.lockComment(validId).orElseThrow();
+        }));
+    }
+
     Post changePostLocked(String postId, String reason, GovernanceAction action,
                           IdentityGateway.CurrentUser actor) {
         Post current = repository.lockPost(postId)
@@ -116,9 +173,10 @@ public class CommunityGovernanceService {
             case HIDE -> current.hide();
             case RESTORE -> current.restore();
             case REMOVE -> current.remove();
+            case APPROVE, REJECT -> throw new IllegalArgumentException("审核动作必须使用审核流程");
         };
         repository.updatePostStatus(changed, current.status());
-        synchronizeTimeline(current, action);
+        synchronizeTimeline(changed, action);
         repository.insertAudit(audit(GovernanceResourceType.POST, postId, action,
                 current.status().name(), changed.status().name(), actor.id(), reason));
         return repository.lockPost(postId).orElseThrow();
@@ -132,6 +190,7 @@ public class CommunityGovernanceService {
             case HIDE -> current.hide();
             case RESTORE -> current.restore();
             case REMOVE -> current.remove();
+            case APPROVE, REJECT -> throw new IllegalArgumentException("审核动作必须使用审核流程");
         };
         repository.updateCommentStatus(changed, current.status());
         repository.insertAudit(audit(GovernanceResourceType.COMMENT, commentId, action,
@@ -139,21 +198,24 @@ public class CommunityGovernanceService {
         return repository.lockComment(commentId).orElseThrow();
     }
 
-    private void synchronizeTimeline(Post current, GovernanceAction action) {
-        if (current.postType() != PostType.POST_ADOPTION) {
+    private void synchronizeTimeline(Post changed, GovernanceAction action) {
+        if (changed.postType() != PostType.POST_ADOPTION) {
             return;
         }
-        if (action == GovernanceAction.REMOVE && current.status() == PostStatus.HIDDEN) {
-            if (repository.countPostAdoptionTimelines(current.id(), Visibility.RESTRICTED) != 1) {
-                throw new StateConflictException("POST_ADOPTION Timeline 状态不一致");
-            }
-            return;
-        }
-        Visibility expected = action == GovernanceAction.RESTORE
-                ? Visibility.RESTRICTED : Visibility.PUBLIC;
         Visibility target = action == GovernanceAction.RESTORE
+                && changed.reviewStatus() == PublicReviewStatus.APPROVED
                 ? Visibility.PUBLIC : Visibility.RESTRICTED;
-        if (repository.updatePostAdoptionTimelineVisibility(current.id(), expected, target) != 1) {
+        ensureTimelineVisibility(changed.id(), target);
+    }
+
+    private void ensureTimelineVisibility(String postId, Visibility target) {
+        if (repository.countPostAdoptionTimelines(postId, target) == 1) {
+            return;
+        }
+        Visibility expected = target == Visibility.PUBLIC
+                ? Visibility.RESTRICTED : Visibility.PUBLIC;
+        if (repository.updatePostAdoptionTimelineVisibility(postId, expected, target) != 1
+                || repository.countPostAdoptionTimelines(postId, target) != 1) {
             throw new StateConflictException("POST_ADOPTION Timeline 状态不一致");
         }
     }
