@@ -48,19 +48,41 @@ public class CommunityGovernanceService {
     }
 
     public Post approvePost(String postId, String reason) {
-        return reviewPost(postId, reason, PublicReviewStatus.APPROVED);
+        return reviewPost(postId, reason, PublicReviewStatus.APPROVED,
+                authorization.requireAdministrator());
     }
 
     public Post rejectPost(String postId, String reason) {
-        return reviewPost(postId, reason, PublicReviewStatus.REJECTED);
+        return reviewPost(postId, reason, PublicReviewStatus.REJECTED,
+                authorization.requireAdministrator());
     }
 
     public Comment approveComment(String commentId, String reason) {
-        return reviewComment(commentId, reason, PublicReviewStatus.APPROVED);
+        return reviewComment(commentId, reason, PublicReviewStatus.APPROVED,
+                authorization.requireAdministrator());
     }
 
     public Comment rejectComment(String commentId, String reason) {
-        return reviewComment(commentId, reason, PublicReviewStatus.REJECTED);
+        return reviewComment(commentId, reason, PublicReviewStatus.REJECTED,
+                authorization.requireAdministrator());
+    }
+
+    Post approvePostAsTrustedAdmin(String postId, String reason, IdentityGateway.CurrentUser actor) {
+        return reviewPost(postId, reason, PublicReviewStatus.APPROVED, actor);
+    }
+
+    Post rejectPostAsTrustedAdmin(String postId, String reason, IdentityGateway.CurrentUser actor) {
+        return reviewPost(postId, reason, PublicReviewStatus.REJECTED, actor);
+    }
+
+    Comment approveCommentAsTrustedAdmin(String commentId, String reason,
+                                         IdentityGateway.CurrentUser actor) {
+        return reviewComment(commentId, reason, PublicReviewStatus.APPROVED, actor);
+    }
+
+    Comment rejectCommentAsTrustedAdmin(String commentId, String reason,
+                                        IdentityGateway.CurrentUser actor) {
+        return reviewComment(commentId, reason, PublicReviewStatus.REJECTED, actor);
     }
 
     public PageResult<GovernancePostView> posts(PostStatus status, String campusId,
@@ -124,8 +146,8 @@ public class CommunityGovernanceService {
                 changeCommentLocked(validId, reason, action, actor)));
     }
 
-    private Post reviewPost(String postId, String rawReason, PublicReviewStatus target) {
-        IdentityGateway.CurrentUser actor = authorization.requireAdministrator();
+    private Post reviewPost(String postId, String rawReason, PublicReviewStatus target,
+                            IdentityGateway.CurrentUser actor) {
         String validId = IdRules.requireUuid(postId, "postId");
         String reason = reason(rawReason);
         return Objects.requireNonNull(transactions.execute(status -> {
@@ -148,8 +170,8 @@ public class CommunityGovernanceService {
         }));
     }
 
-    private Comment reviewComment(String commentId, String rawReason, PublicReviewStatus target) {
-        IdentityGateway.CurrentUser actor = authorization.requireAdministrator();
+    private Comment reviewComment(String commentId, String rawReason, PublicReviewStatus target,
+                                  IdentityGateway.CurrentUser actor) {
         String validId = IdRules.requireUuid(commentId, "commentId");
         String reason = reason(rawReason);
         return Objects.requireNonNull(transactions.execute(status -> {

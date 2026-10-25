@@ -21,7 +21,8 @@ import java.util.regex.Pattern;
 
 @Component
 public class TrustedAdminAssertionVerifier {
-    public static final String REQUIRED_SCOPE = "community.review.read";
+    public static final String READ_SCOPE = TrustedAdminRequestPolicy.READ_SCOPE;
+    public static final String WRITE_SCOPE = TrustedAdminRequestPolicy.WRITE_SCOPE;
     private static final Pattern KEY_ID = Pattern.compile("[A-Za-z0-9._-]{1,64}");
     private static final Pattern TOKEN_ID = Pattern.compile("[A-Za-z0-9_-]{16,128}");
     private final String expectedIssuer;
@@ -74,6 +75,8 @@ public class TrustedAdminAssertionVerifier {
 
     public AuthenticatedAdmin verify(String authorization, String requestMethod, String requestPath) {
         if (!configurationValid) throw new AssertionUnavailableException();
+        String requiredScope = TrustedAdminRequestPolicy.requiredScope(requestMethod, requestPath)
+                .orElseThrow(AssertionRejectedException::new);
         if (authorization == null || authorization.length() > 4096
                 || !authorization.regionMatches(true, 0, "Bearer ", 0, 7)) {
             throw new AssertionRejectedException();
@@ -112,12 +115,12 @@ public class TrustedAdminAssertionVerifier {
                 throw new AssertionRejectedException();
             }
             if (!"GOVERNANCE_ADMIN".equals(role)
-                    || !Collections.singletonList(REQUIRED_SCOPE).equals(
+                    || !Collections.singletonList(requiredScope).equals(
                     claims.getStringListClaim("scope"))) {
                 throw new AssertionForbiddenException();
             }
             rejectReplay(keyId + ':' + tokenId, expiresAt.plus(clockSkew), now);
-            return new AuthenticatedAdmin(actorId, role, REQUIRED_SCOPE, tokenId);
+            return new AuthenticatedAdmin(actorId, role, requiredScope, tokenId);
         } catch (AssertionForbiddenException | AssertionRejectedException rejected) {
             throw rejected;
         } catch (Exception invalid) {

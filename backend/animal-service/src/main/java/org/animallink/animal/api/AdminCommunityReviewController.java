@@ -1,6 +1,7 @@
 package org.animallink.animal.api;
 
 import org.animallink.animal.application.CommunityReviewQueryService;
+import org.animallink.animal.application.CommunityReviewCommandService;
 import org.animallink.animal.application.PageResult;
 import org.animallink.animal.domain.*;
 import org.springframework.web.bind.annotation.*;
@@ -9,9 +10,12 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1/admin/community-review")
 public class AdminCommunityReviewController {
     private final CommunityReviewQueryService queryService;
+    private final CommunityReviewCommandService commandService;
 
-    public AdminCommunityReviewController(CommunityReviewQueryService queryService) {
+    public AdminCommunityReviewController(CommunityReviewQueryService queryService,
+                                          CommunityReviewCommandService commandService) {
         this.queryService = queryService;
+        this.commandService = commandService;
     }
 
     @GetMapping("/posts")
@@ -52,5 +56,38 @@ public class AdminCommunityReviewController {
     @GetMapping("/comments/{commentId}")
     public CommunityReviewDtos.CommentItem comment(@PathVariable("commentId") String commentId) {
         return CommunityReviewDtos.CommentItem.from(queryService.comment(commentId));
+    }
+
+    @PostMapping("/posts/{postId}/approve")
+    public CommunityReviewDtos.PostItem approvePost(@PathVariable("postId") String postId,
+                                                     @RequestBody ReviewRequest request) {
+        return CommunityReviewDtos.PostItem.from(commandService.approvePost(postId, reason(request)));
+    }
+
+    @PostMapping("/posts/{postId}/reject")
+    public CommunityReviewDtos.PostItem rejectPost(@PathVariable("postId") String postId,
+                                                    @RequestBody ReviewRequest request) {
+        return CommunityReviewDtos.PostItem.from(commandService.rejectPost(postId, reason(request)));
+    }
+
+    @PostMapping("/comments/{commentId}/approve")
+    public CommunityReviewDtos.CommentItem approveComment(@PathVariable("commentId") String commentId,
+                                                           @RequestBody ReviewRequest request) {
+        return CommunityReviewDtos.CommentItem.from(
+                commandService.approveComment(commentId, reason(request)));
+    }
+
+    @PostMapping("/comments/{commentId}/reject")
+    public CommunityReviewDtos.CommentItem rejectComment(@PathVariable("commentId") String commentId,
+                                                          @RequestBody ReviewRequest request) {
+        return CommunityReviewDtos.CommentItem.from(
+                commandService.rejectComment(commentId, reason(request)));
+    }
+
+    private String reason(ReviewRequest request) {
+        return request == null ? null : request.reason();
+    }
+
+    public record ReviewRequest(String reason) {
     }
 }

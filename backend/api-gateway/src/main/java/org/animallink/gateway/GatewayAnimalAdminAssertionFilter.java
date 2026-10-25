@@ -23,7 +23,11 @@ public class GatewayAnimalAdminAssertionFilter implements WebFilter, Ordered {
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         String externalPath = exchange.getRequest().getURI().getPath();
-        if (!AdminCommunityReviewReadPolicy.matches(exchange.getRequest().getMethod(), externalPath)) {
+        boolean reviewRead = AdminCommunityReviewReadPolicy.matches(
+                exchange.getRequest().getMethod(), externalPath);
+        boolean reviewWrite = AdminCommunityReviewWritePolicy.matches(
+                exchange.getRequest().getMethod(), externalPath);
+        if (!reviewRead && !reviewWrite) {
             return chain.filter(exchange);
         }
         Object value = exchange.getAttribute(GatewayAdminSessionAuthenticationFilter.PRINCIPAL_ATTRIBUTE);
@@ -34,8 +38,13 @@ public class GatewayAnimalAdminAssertionFilter implements WebFilter, Ordered {
             return reject(exchange, HttpStatus.FORBIDDEN, "ADMIN_PERMISSION_REQUIRED");
         }
         try {
+            String scope = reviewWrite ? AdminCommunityReviewWritePolicy.SCOPE
+                    : AdminCommunityReviewReadPolicy.SCOPE;
+            String downstreamPath = reviewWrite
+                    ? AdminCommunityReviewWritePolicy.downstreamPath(externalPath)
+                    : AdminCommunityReviewReadPolicy.downstreamPath(externalPath);
             String assertion = signer.sign(principal, exchange.getRequest().getMethod().name(),
-                    AdminCommunityReviewReadPolicy.downstreamPath(externalPath));
+                    downstreamPath, scope);
             var request = exchange.getRequest().mutate().headers(headers -> {
                 headers.remove(HttpHeaders.AUTHORIZATION);
                 headers.setBearerAuth(assertion);
@@ -59,6 +68,8 @@ public class GatewayAnimalAdminAssertionFilter implements WebFilter, Ordered {
 
     @Override
     public int getOrder() {
-        return Ordered.HIGHEST_PRECEDENCE + 3;
+        // Session validation, external-claim stripping, strict browser-origin checks, and the
+        // Spring Security CSRF chain must all complete before a downstream assertion is minted.
+        return Ordered.LOWEST_PRECEDENCE - 100;
     }
 }

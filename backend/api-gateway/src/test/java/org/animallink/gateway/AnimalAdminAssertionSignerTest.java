@@ -23,7 +23,7 @@ class AnimalAdminAssertionSignerTest {
                 "animal-service", Duration.ofSeconds(15), "animal-v1", KEYS,
                 Clock.fixed(NOW, ZoneOffset.UTC));
         String compact = signer.sign(principal(), "GET",
-                "/api/v1/admin/community-review/posts");
+                "/api/v1/admin/community-review/posts", "community.review.read");
         SignedJWT jwt = SignedJWT.parse(compact);
 
         assertThat(jwt.verify(new MACVerifier(KEY))).isTrue();
@@ -48,7 +48,8 @@ class AnimalAdminAssertionSignerTest {
         var unavailable = new AnimalAdminAssertionSigner("api-gateway", "api-gateway",
                 "animal-service", Duration.ofSeconds(15), "animal-v1", "",
                 Clock.fixed(NOW, ZoneOffset.UTC));
-        assertThatThrownBy(() -> unavailable.sign(principal(), "GET", "/expected"))
+        assertThatThrownBy(() -> unavailable.sign(principal(), "GET", "/expected",
+                "community.review.read"))
                 .isInstanceOf(AnimalAdminAssertionSigner.AssertionUnavailableException.class);
 
         var signer = new AnimalAdminAssertionSigner("api-gateway", "api-gateway",
@@ -56,7 +57,27 @@ class AnimalAdminAssertionSignerTest {
                 Clock.fixed(NOW, ZoneOffset.UTC));
         var ordinary = new IdentitySessionClient.GatewayAuthenticatedPrincipal("session",
                 principal().userId(), "USER", NOW.plusSeconds(60), NOW.plusSeconds(120));
-        assertThatThrownBy(() -> signer.sign(ordinary, "GET", "/expected"))
+        assertThatThrownBy(() -> signer.sign(ordinary, "GET", "/expected",
+                "community.review.read"))
+                .isInstanceOf(AnimalAdminAssertionSigner.AssertionRejectedException.class);
+    }
+
+    @Test
+    void signsWriteScopeOnlyForPostAndRejectsMethodScopeConfusion() throws Exception {
+        var signer = new AnimalAdminAssertionSigner("api-gateway", "api-gateway",
+                "animal-service", Duration.ofSeconds(15), "animal-v1", KEYS,
+                Clock.fixed(NOW, ZoneOffset.UTC));
+        String compact = signer.sign(principal(), "POST",
+                "/api/v1/admin/community-review/posts/00000000-0000-0000-0000-000000000001/approve",
+                "community.review.write");
+        assertThat(SignedJWT.parse(compact).getJWTClaimsSet().getStringListClaim("scope"))
+                .containsExactly("community.review.write");
+
+        assertThatThrownBy(() -> signer.sign(principal(), "POST", "/expected",
+                "community.review.read"))
+                .isInstanceOf(AnimalAdminAssertionSigner.AssertionRejectedException.class);
+        assertThatThrownBy(() -> signer.sign(principal(), "GET", "/expected",
+                "community.review.write"))
                 .isInstanceOf(AnimalAdminAssertionSigner.AssertionRejectedException.class);
     }
 
