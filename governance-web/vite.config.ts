@@ -30,6 +30,10 @@ export default defineConfig(({ mode }) => {
           target: env.GOVERNANCE_GATEWAY_TARGET || 'http://127.0.0.1:8080',
           changeOrigin: false,
         },
+        '/animal/api/v1/admin/community-review': {
+          target: env.GOVERNANCE_GATEWAY_TARGET || 'http://127.0.0.1:8080',
+          changeOrigin: false,
+        },
       },
     },
     test: {

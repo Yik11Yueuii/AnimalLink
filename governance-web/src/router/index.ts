@@ -5,6 +5,7 @@ import PlaceholderPage from '@/views/PlaceholderPage.vue'
 import AnimalGovernanceView from '@/features/animals/AnimalGovernanceView.vue'
 import RescueGovernanceView from '@/features/rescues/RescueGovernanceView.vue'
 import AdoptionGovernanceView from '@/features/adoptions/AdoptionGovernanceView.vue'
+import CommunityReviewView from '@/features/community-review/CommunityReviewView.vue'
 import AccessDeniedPage from '@/views/AccessDeniedPage.vue'
 import LoginPage from '@/views/LoginPage.vue'
 import { useAdminAuthentication } from '@/composables/useAdminAuthentication'
@@ -25,7 +26,7 @@ const governancePages: RouteRecordRaw[] = [
   { path: 'incidents', name: 'incidents', component: RescueGovernanceView, meta: { title: 'Event / Case 治理', description: '救助流程查看与异常干预', requiresAuthentication: true } },
   { path: 'support', name: 'support', component: PlaceholderPage, meta: { title: '公益支持管理', description: '申请审核、进度、支出与结算', requiresAuthentication: true } },
   { path: 'adoptions', name: 'adoptions', component: AdoptionGovernanceView, meta: { title: '领养申请治理', description: '申请审核状态与关联 Listing 查看', requiresAuthentication: true } },
-  { path: 'content', name: 'content', component: PlaceholderPage, meta: { title: '内容治理', description: '内容处置与治理记录', requiresAuthentication: true } },
+  { path: 'content', name: 'content', component: CommunityReviewView, meta: { title: '内容治理', description: '帖子与评论审核', requiresAuthentication: true } },
   { path: 'audits', name: 'audits', component: PlaceholderPage, meta: { title: '审计记录', description: '关键治理操作查询', requiresAuthentication: true } },
 ]
 
