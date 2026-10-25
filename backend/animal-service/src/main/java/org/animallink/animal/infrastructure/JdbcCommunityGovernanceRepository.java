@@ -285,6 +285,66 @@ public class JdbcCommunityGovernanceRepository implements CommunityGovernanceRep
     }
 
     @Override
+    public List<GovernancePostView> findReviewPosts(PublicReviewStatus reviewStatus,
+                                                    String campusId, PostType postType,
+                                                    CommunityReviewSort sort,
+                                                    int limit, int offset) {
+        Sql sql = postFilter(GOVERNANCE_POST_SELECT, null, campusId, postType);
+        sql.text.append(" AND p.review_status = ?");
+        sql.args.add(reviewStatus.name());
+        appendReviewOrder(sql, sort, "p");
+        sql.text.append(" LIMIT ? OFFSET ?");
+        sql.args.add(limit);
+        sql.args.add(offset);
+        return jdbcTemplate.query(sql.text.toString(), POST_VIEW_MAPPER, sql.args.toArray());
+    }
+
+    @Override
+    public long countReviewPosts(PublicReviewStatus reviewStatus, String campusId,
+                                 PostType postType) {
+        Sql sql = postFilter("SELECT COUNT(*) FROM post p", null, campusId, postType);
+        sql.text.append(" AND p.review_status = ?");
+        sql.args.add(reviewStatus.name());
+        return count(sql);
+    }
+
+    @Override
+    public Optional<GovernancePostView> findReviewPost(String postId) {
+        return optional(GOVERNANCE_POST_SELECT + " WHERE p.id = ?", POST_VIEW_MAPPER, postId);
+    }
+
+    @Override
+    public List<GovernanceCommentView> findReviewComments(PublicReviewStatus reviewStatus,
+                                                          String postId, String campusId,
+                                                          CommunityReviewSort sort,
+                                                          int limit, int offset) {
+        Sql sql = commentFilter(GOVERNANCE_COMMENT_SELECT, null, postId, campusId);
+        sql.text.append(" AND c.review_status = ?");
+        sql.args.add(reviewStatus.name());
+        appendReviewOrder(sql, sort, "c");
+        sql.text.append(" LIMIT ? OFFSET ?");
+        sql.args.add(limit);
+        sql.args.add(offset);
+        return jdbcTemplate.query(sql.text.toString(), COMMENT_VIEW_MAPPER, sql.args.toArray());
+    }
+
+    @Override
+    public long countReviewComments(PublicReviewStatus reviewStatus, String postId,
+                                    String campusId) {
+        Sql sql = commentFilter("SELECT COUNT(*) FROM comment c JOIN post p ON p.id = c.post_id",
+                null, postId, campusId);
+        sql.text.append(" AND c.review_status = ?");
+        sql.args.add(reviewStatus.name());
+        return count(sql);
+    }
+
+    @Override
+    public Optional<GovernanceCommentView> findReviewComment(String commentId) {
+        return optional(GOVERNANCE_COMMENT_SELECT + " WHERE c.id = ?", COMMENT_VIEW_MAPPER,
+                commentId);
+    }
+
+    @Override
     public List<CommunityGovernanceAudit> findAudits(GovernanceResourceType resourceType,
                                                      String resourceId, int limit, int offset) {
         return jdbcTemplate.query("""
@@ -350,6 +410,12 @@ public class JdbcCommunityGovernanceRepository implements CommunityGovernanceRep
             sql.args.add(campusId);
         }
         return sql;
+    }
+
+    private void appendReviewOrder(Sql sql, CommunityReviewSort sort, String alias) {
+        String direction = sort == CommunityReviewSort.OLDEST ? " ASC" : " DESC";
+        sql.text.append(" ORDER BY ").append(alias).append(".created_at").append(direction)
+                .append(", ").append(alias).append(".id").append(direction);
     }
 
     private Sql reportFilter(String select, ContentReportStatus status,

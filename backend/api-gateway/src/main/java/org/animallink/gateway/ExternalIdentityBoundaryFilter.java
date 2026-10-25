@@ -66,7 +66,11 @@ public class ExternalIdentityBoundaryFilter implements WebFilter, Ordered {
         // HEAD is allowed only for precisely the same verified public resources as GET.
         boolean publicRead = isPublicRead(method, path);
         boolean authenticationEndpoint = isAuthenticationEndpoint(method, path);
-        if (!publicRead && !authenticationEndpoint && !isolatedRequest) {
+        boolean authenticatedAdminRead = AdminCommunityReviewReadPolicy.matches(method, path)
+                && exchange.getAttribute(GatewayAdminSessionAuthenticationFilter.PRINCIPAL_ATTRIBUTE)
+                instanceof IdentitySessionClient.GatewayAuthenticatedPrincipal principal
+                && "GOVERNANCE_ADMIN".equals(principal.systemRole());
+        if (!publicRead && !authenticationEndpoint && !authenticatedAdminRead && !isolatedRequest) {
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
             return exchange.getResponse().setComplete();
         }
