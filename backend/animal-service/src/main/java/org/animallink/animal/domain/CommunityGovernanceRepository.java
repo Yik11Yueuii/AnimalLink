@@ -51,6 +51,22 @@ public interface CommunityGovernanceRepository {
 
     Optional<GovernanceCommentView> findComment(String commentId);
 
+    List<GovernancePostView> findReviewPosts(PublicReviewStatus reviewStatus, String campusId,
+                                             PostType postType, CommunityReviewSort sort,
+                                             int limit, int offset);
+
+    long countReviewPosts(PublicReviewStatus reviewStatus, String campusId, PostType postType);
+
+    Optional<GovernancePostView> findReviewPost(String postId);
+
+    List<GovernanceCommentView> findReviewComments(PublicReviewStatus reviewStatus, String postId,
+                                                   String campusId, CommunityReviewSort sort,
+                                                   int limit, int offset);
+
+    long countReviewComments(PublicReviewStatus reviewStatus, String postId, String campusId);
+
+    Optional<GovernanceCommentView> findReviewComment(String commentId);
+
     List<CommunityGovernanceAudit> findAudits(GovernanceResourceType resourceType,
                                               String resourceId, int limit, int offset);
 
