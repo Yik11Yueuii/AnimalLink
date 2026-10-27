@@ -6,12 +6,23 @@ import type {
   PageResponse,
   PublicAnimalResponse,
   TimelineEntryResponse,
+  UniversityResponse,
+  UniversitySearchCriteria,
 } from '../types/api'
 
 export const offlineCampuses: CampusResponse[] = [
-  { id: 'campus-mingde', name: '明德大学', shortName: '明德', city: '杭州', region: '浙江', status: 'ACTIVE' },
-  { id: 'campus-boyan', name: '博雅学院', shortName: '博雅', city: '南京', region: '江苏', status: 'ACTIVE' },
-  { id: 'campus-hupan', name: '湖畔大学城', shortName: '湖畔', city: '苏州', region: '江苏', status: 'ACTIVE' },
+  { id: 'campus-mingde', universityId: 'university-mingde', name: '明德大学社区', shortName: '明德社区', city: '杭州', region: '浙江', campusType: 'UNIVERSITY_COMMUNITY', status: 'ACTIVE' },
+  { id: 'campus-boyan', universityId: 'university-boyan', name: '博雅学院社区', shortName: '博雅社区', city: '南京', region: '江苏', campusType: 'UNIVERSITY_COMMUNITY', status: 'ACTIVE' },
+  { id: 'campus-hupan', universityId: 'university-hupan', name: '湖畔大学城社区', shortName: '湖畔社区', city: '苏州', region: '江苏', campusType: 'UNIVERSITY_COMMUNITY', status: 'ACTIVE' },
+  { id: 'campus-hanshan', universityId: 'university-hanshan', name: '韩山师范学院社区', shortName: '韩师社区', city: '潮州市', region: null, campusType: 'UNIVERSITY_COMMUNITY', status: 'ACTIVE' },
+]
+
+export const offlineUniversities: UniversityResponse[] = [
+  { id: 'university-hanshan', moeInstitutionCode: '4144010578', officialName: '韩山师范学院', shortName: null, province: '广东省', city: '潮州市', status: 'ACTIVE', communityAvailable: true },
+  { id: 'university-mingde', moeInstitutionCode: 'OFFLINE-DEMO-01', officialName: '明德大学（离线演示）', shortName: '明德', province: '浙江省', city: '杭州市', status: 'ACTIVE', communityAvailable: true },
+  { id: 'university-boyan', moeInstitutionCode: 'OFFLINE-DEMO-02', officialName: '博雅学院（离线演示）', shortName: '博雅', province: '江苏省', city: '南京市', status: 'ACTIVE', communityAvailable: true },
+  { id: 'university-hupan', moeInstitutionCode: 'OFFLINE-DEMO-03', officialName: '湖畔大学城（离线演示）', shortName: '湖畔', province: '江苏省', city: '苏州市', status: 'ACTIVE', communityAvailable: true },
+  { id: 'university-unopened', moeInstitutionCode: 'OFFLINE-DEMO-04', officialName: '尚未开放高校（离线演示）', shortName: null, province: '广东省', city: '广州市', status: 'ACTIVE', communityAvailable: false },
 ]
 
 type AnimalSeed = PublicAnimalResponse
@@ -53,6 +64,30 @@ export class OfflinePublicAnimalDataSource implements PublicAnimalDataSource {
     return offlineCampuses
       .filter((campus) => !keyword || [campus.name, campus.shortName, campus.city, campus.region].join(' ').toLocaleLowerCase().includes(keyword))
       .slice(page * size, page * size + size)
+  }
+
+  async searchUniversities(criteria: UniversitySearchCriteria): Promise<PageResponse<UniversityResponse>> {
+    await wait()
+    const keyword = criteria.q.trim().toLocaleLowerCase()
+    const filtered = offlineUniversities.filter((university) =>
+      (!criteria.province || university.province === criteria.province)
+      && (!keyword || [university.officialName, university.shortName, university.city, university.moeInstitutionCode]
+        .join(' ').toLocaleLowerCase().includes(keyword)))
+    const start = criteria.page * criteria.size
+    return {
+      items: filtered.slice(start, start + criteria.size),
+      page: criteria.page,
+      size: criteria.size,
+      total: filtered.length,
+    }
+  }
+
+  async getUniversityCommunity(universityId: string): Promise<CampusResponse> {
+    await wait()
+    const community = offlineCampuses.find((campus) => campus.universityId === universityId
+      && campus.campusType === 'UNIVERSITY_COMMUNITY')
+    if (!community) throw new Error('该高校社区尚未开放。')
+    return { ...community }
   }
 
   async searchAnimals(criteria: AnimalSearchCriteria): Promise<PageResponse<AnimalSummaryResponse>> {

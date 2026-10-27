@@ -26,6 +26,8 @@ npm test
 ## 接口边界
 
 - `GET /identity/api/v1/campuses`
+- `GET /identity/api/v1/universities`（省份、学校名称、城市或教育部识别码查询）
+- `GET /identity/api/v1/universities/{universityId}/community`（解析已开通高校唯一的逻辑 Campus；不是物理校区）
 - `GET /animal/api/v1/public/animals`（`campusId` 必填，`page` 从 0 开始）
 - `GET /animal/api/v1/public/animals/{animalId}`
 - `GET /animal/api/v1/animals/{animalId}/timeline`（当前未匿名开放；详情仍显示 Animal，并明确提示“动态暂未开放”）

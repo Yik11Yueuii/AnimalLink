@@ -1,21 +1,39 @@
 <view class="page-shell">
   <view wx:if="{{offline}}" class="mode-banner">本地离线演示 · 数据不会发送到后端</view>
+
   <view class="intro">
     <text class="eyebrow">CAMPUS CONTEXT</text>
-    <text class="page-title">选择校园</text>
-    <text class="muted intro-copy">Animal 列表始终限定在当前 Campus，切换后会清空旧校区结果。</text>
+    <text class="page-title">选择高校</text>
+    <text class="muted intro-copy">选择已开放的高校后直接进入该校统一社区。切换浏览范围不会自动授予校园成员身份。</text>
   </view>
-  <view class="search surface">
-    <input value="{{q}}" placeholder="搜索校园名称或城市" confirm-type="search" bindinput="onKeywordInput" bindconfirm="onSearch" />
-    <button class="secondary-button" bindtap="onSearch">搜索</button>
-  </view>
-  <view wx:if="{{loading}}" class="state-card surface"><text class="state-icon">⌛</text><text class="state-title">正在读取 Campus</text></view>
-  <view wx:elif="{{errorMessage}}" class="state-card surface"><text class="state-icon">!</text><text class="state-title">加载失败</text><text class="state-copy">{{errorMessage}}</text><button class="primary-button" bindtap="onRetry">重试</button></view>
-  <view wx:elif="{{campuses.length === 0}}" class="state-card surface"><text class="state-icon">⌕</text><text class="state-title">没有匹配的校园</text><text class="state-copy">换一个关键词再试试。</text></view>
-  <view wx:else class="campus-list">
-    <view wx:for="{{campuses}}" wx:key="id" class="campus surface {{item.id === selectedCampusId ? 'selected' : ''}}" data-id="{{item.id}}" bindtap="chooseCampus">
-      <view><text class="campus-name">{{item.name}}</text><text class="campus-location">{{item.city}} · {{item.region}}</text></view>
-      <text class="choose">{{item.id === selectedCampusId ? '当前' : '选择'}} ›</text>
+
+  <view class="filters surface">
+    <picker mode="selector" range="{{provinceOptions}}" value="{{provinceIndex}}" bindchange="onProvinceChange">
+      <view class="province-picker">{{provinceOptions[provinceIndex]}}⌄</view>
+    </picker>
+    <view class="search-row">
+      <input value="{{q}}" placeholder="搜索高校名称、城市或识别码" confirm-type="search" bindinput="onKeywordInput" bindconfirm="onSearch" />
+      <button class="secondary-button" bindtap="onSearch">搜索</button>
     </view>
+  </view>
+
+  <view class="result-meta"><text>首批高校</text><text>{{universityTotal}} 所</text></view>
+  <view wx:if="{{loading}}" class="state-card surface"><text class="state-icon">⌛</text><text class="state-title">正在读取高校目录</text></view>
+  <view wx:elif="{{errorMessage}}" class="state-card surface"><text class="state-icon">!</text><text class="state-title">加载失败</text><text class="state-copy">{{errorMessage}}</text><button class="primary-button" bindtap="onRetry">重试</button></view>
+  <view wx:elif="{{universities.length === 0}}" class="state-card surface"><text class="state-icon">⌕</text><text class="state-title">没有匹配的高校</text><text class="state-copy">换一个关键词或地区再试试。</text></view>
+  <view wx:else class="university-list">
+      <view wx:if="{{selectionError}}" class="selection-error">{{selectionError}}</view>
+      <view wx:for="{{universities}}" wx:key="id" class="university surface {{item.id === selectedUniversityId ? 'current' : ''}}" data-id="{{item.id}}" bindtap="chooseUniversity">
+        <view class="university-main">
+          <view class="university-title-row">
+            <text class="university-name">{{item.officialName}}</text>
+            <text class="availability {{item.communityAvailable ? 'open' : 'closed'}}">{{item.communityAvailable ? '社区已开放' : '社区尚未开放'}}</text>
+          </view>
+          <text class="university-location">{{item.province}} · {{item.city}}</text>
+          <text class="institution-code">学校识别码 {{item.moeInstitutionCode}}</text>
+        </view>
+        <text class="choose">{{openingUniversityId === item.id ? '进入中…' : (item.id === selectedUniversityId ? '当前学校' : (item.communityAvailable ? '进入社区 ›' : '未开放'))}}</text>
+      </view>
+      <button wx:if="{{hasMoreUniversities}}" class="load-more" loading="{{loadingMore}}" disabled="{{loadingMore}}" bindtap="loadMoreUniversities">加载更多高校</button>
   </view>
 </view>

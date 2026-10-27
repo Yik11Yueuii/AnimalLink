@@ -42,7 +42,7 @@ Page({
   onShow() {
     const campus = getSelectedCampus()
     if (!campus) {
-      wx.navigateTo({ url: '/pages/campus/index' })
+      wx.navigateTo({ url: '/pages/campus/index?returnTo=animals' })
       return
     }
     if (campus.id !== this.data.campus?.id) {
@@ -55,7 +55,7 @@ Page({
     void this.refresh().finally(() => wx.stopPullDownRefresh())
   },
   changeCampus() {
-    wx.navigateTo({ url: '/pages/campus/index' })
+    wx.navigateTo({ url: '/pages/campus/index?returnTo=animals' })
   },
   onKeywordInput(event: WechatMiniprogram.Input) {
     this.setData({ q: event.detail.value })

@@ -2,7 +2,7 @@
   <view wx:if="{{offline}}" class="mode-banner">本地离线演示 · 以下为明确标注的模拟公开数据</view>
   <view class="heading">
     <view><text class="eyebrow">ANIMAL ARCHIVES</text><text class="page-title">校园动物</text></view>
-    <button class="campus-button" bindtap="changeCampus">{{campus ? campus.shortName : '选择 Campus'}}⌄</button>
+    <button class="campus-button" bindtap="changeCampus">{{campus ? (campus.shortName || campus.name) : '选择 Campus'}}⌄</button>
   </view>
   <view class="search-panel surface">
     <view class="search-row"><input value="{{q}}" placeholder="名称或毛色" confirm-type="search" bindinput="onKeywordInput" bindconfirm="onSearch" /><button bindtap="onSearch">搜索</button></view>

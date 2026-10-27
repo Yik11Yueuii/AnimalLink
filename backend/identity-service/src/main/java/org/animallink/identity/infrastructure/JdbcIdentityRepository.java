@@ -7,6 +7,7 @@ import org.animallink.identity.domain.CampusMembershipRepository;
 import org.animallink.identity.domain.CampusMembershipView;
 import org.animallink.identity.domain.CampusRepository;
 import org.animallink.identity.domain.CampusStatus;
+import org.animallink.identity.domain.CampusType;
 import org.animallink.identity.domain.CampusVerification;
 import org.animallink.identity.domain.CampusVerificationRepository;
 import org.animallink.identity.domain.MembershipStatus;
@@ -68,7 +69,8 @@ public class JdbcIdentityRepository implements UserRepository, CampusRepository,
     @Override
     public Optional<Campus> findById(String id) {
         return queryOptional("""
-                SELECT id, name, short_name, city, region, status, created_at, updated_at
+                SELECT id, university_id, name, short_name, city, region, campus_type,
+                       address, source_url, source_updated_at, status, created_at, updated_at
                 FROM campus WHERE id = ?
                 """, CAMPUS_ROW_MAPPER, id);
     }
@@ -76,7 +78,8 @@ public class JdbcIdentityRepository implements UserRepository, CampusRepository,
     @Override
     public Optional<Campus> findActiveById(String id) {
         return queryOptional("""
-                SELECT id, name, short_name, city, region, status, created_at, updated_at
+                SELECT id, university_id, name, short_name, city, region, campus_type,
+                       address, source_url, source_updated_at, status, created_at, updated_at
                 FROM campus WHERE id = ? AND status = 'ACTIVE'
                 """, CAMPUS_ROW_MAPPER, id);
     }
@@ -86,7 +89,8 @@ public class JdbcIdentityRepository implements UserRepository, CampusRepository,
         String normalized = query == null ? "" : query.trim();
         String pattern = "%" + normalized + "%";
         return jdbcTemplate.query("""
-                SELECT id, name, short_name, city, region, status, created_at, updated_at
+                SELECT id, university_id, name, short_name, city, region, campus_type,
+                       address, source_url, source_updated_at, status, created_at, updated_at
                 FROM campus
                 WHERE status = 'ACTIVE'
                   AND (? = '' OR name LIKE ? OR short_name LIKE ? OR city LIKE ?)
@@ -96,13 +100,26 @@ public class JdbcIdentityRepository implements UserRepository, CampusRepository,
     }
 
     @Override
+    public Optional<Campus> findActiveCommunityByUniversityId(String universityId) {
+        return queryOptional("""
+                SELECT id, university_id, name, short_name, city, region, campus_type,
+                       address, source_url, source_updated_at, status, created_at, updated_at
+                FROM campus
+                WHERE university_id = ? AND campus_type = 'UNIVERSITY_COMMUNITY'
+                  AND status = 'ACTIVE'
+                """, CAMPUS_ROW_MAPPER, universityId);
+    }
+
+    @Override
     public List<CampusMembershipView> findMembershipsByUserId(String userId) {
         return jdbcTemplate.query("""
                 SELECT m.id AS m_id, m.user_id, m.campus_id, m.membership_type,
                        m.status AS m_status, m.expected_graduation_date, m.approved_at,
                        m.last_verification_id, m.created_at AS m_created_at,
                        m.updated_at AS m_updated_at,
-                       c.id AS c_id, c.name, c.short_name, c.city, c.region,
+                       c.id AS c_id, c.university_id AS c_university_id,
+                       c.name, c.short_name, c.city, c.region, c.campus_type,
+                       c.address, c.source_url, c.source_updated_at,
                        c.status AS c_status, c.created_at AS c_created_at,
                        c.updated_at AS c_updated_at
                 FROM campus_membership m
@@ -262,10 +279,15 @@ public class JdbcIdentityRepository implements UserRepository, CampusRepository,
 
     private static final RowMapper<Campus> CAMPUS_ROW_MAPPER = (rs, rowNum) -> new Campus(
             rs.getString("id"),
+            rs.getString("university_id"),
             rs.getString("name"),
             rs.getString("short_name"),
             rs.getString("city"),
             rs.getString("region"),
+            CampusType.valueOf(rs.getString("campus_type")),
+            rs.getString("address"),
+            rs.getString("source_url"),
+            localDate(rs, "source_updated_at"),
             CampusStatus.valueOf(rs.getString("status")),
             instant(rs, "created_at"),
             instant(rs, "updated_at"));
@@ -315,10 +337,15 @@ public class JdbcIdentityRepository implements UserRepository, CampusRepository,
                 instant(rs, "m_updated_at"));
         Campus campus = new Campus(
                 rs.getString("c_id"),
+                rs.getString("c_university_id"),
                 rs.getString("name"),
                 rs.getString("short_name"),
                 rs.getString("city"),
                 rs.getString("region"),
+                CampusType.valueOf(rs.getString("campus_type")),
+                rs.getString("address"),
+                rs.getString("source_url"),
+                localDate(rs, "source_updated_at"),
                 CampusStatus.valueOf(rs.getString("c_status")),
                 instant(rs, "c_created_at"),
                 instant(rs, "c_updated_at"));

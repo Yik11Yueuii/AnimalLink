@@ -14,6 +14,7 @@ import org.animallink.identity.domain.CredentialPrecheckStatus;
 import org.animallink.identity.domain.MembershipStatus;
 import org.animallink.identity.domain.MembershipType;
 import org.animallink.identity.domain.UserAccount;
+import org.animallink.identity.domain.University;
 import org.animallink.identity.domain.VerificationStatus;
 import org.animallink.identity.domain.VolunteerMembership;
 import org.animallink.identity.domain.VolunteerMembershipStatus;
@@ -25,6 +26,26 @@ import java.util.List;
 
 public final class IdentityDtos {
     private IdentityDtos() {
+    }
+
+    public record PageResponse<T>(List<T> items, int page, int size, long total) {
+    }
+
+    public record UniversityResponse(
+            String id,
+            String moeInstitutionCode,
+            String officialName,
+            String shortName,
+            String province,
+            String city,
+            String status,
+            boolean communityAvailable) {
+        public static UniversityResponse from(University university) {
+            return new UniversityResponse(
+                    university.id(), university.moeInstitutionCode(), university.officialName(),
+                    university.shortName(), university.province(), university.city(),
+                    university.status().name(), university.communityAvailable());
+        }
     }
 
     public record UserResponse(
@@ -42,14 +63,16 @@ public final class IdentityDtos {
 
     public record CampusResponse(
             String id,
+            String universityId,
             String name,
             String shortName,
             String city,
             String region,
+            String campusType,
             String status) {
         public static CampusResponse from(Campus campus) {
-            return new CampusResponse(campus.id(), campus.name(), campus.shortName(), campus.city(),
-                    campus.region(), campus.status().name());
+            return new CampusResponse(campus.id(), campus.universityId(), campus.name(), campus.shortName(),
+                    campus.city(), campus.region(), campus.campusType().name(), campus.status().name());
         }
     }
 

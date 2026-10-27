@@ -1,12 +1,24 @@
 .intro text { display: block; }
 .intro-copy { margin-top: 20rpx; font-size: 26rpx; line-height: 1.65; }
-.search { display: flex; gap: 16rpx; margin-top: 30rpx; padding: 18rpx; }
-.search input { flex: 1; min-width: 0; padding: 0 18rpx; font-size: 27rpx; }
-.search button { margin: 0; width: 150rpx; }
-.campus-list { margin-top: 24rpx; }
-.campus { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18rpx; padding: 28rpx; }
-.campus.selected { border-color: #79aa98; background: #f2faf6; }
-.campus-name, .campus-location { display: block; }
-.campus-name { font-size: 30rpx; font-weight: 700; }
-.campus-location { margin-top: 10rpx; color: #8b7468; font-size: 24rpx; }
-.choose { color: #d76545; font-size: 25rpx; font-weight: 700; }
+.filters { margin-top: 30rpx; padding: 18rpx; }
+.province-picker { padding: 18rpx; border-radius: 20rpx; background: #f2faf6; color: #527b6c; font-size: 26rpx; font-weight: 700; }
+.search-row { display: flex; gap: 16rpx; margin-top: 14rpx; }
+.search-row input { flex: 1; min-width: 0; padding: 0 18rpx; font-size: 27rpx; }
+.search-row button { margin: 0; width: 150rpx; }
+.result-meta { display: flex; justify-content: space-between; margin: 28rpx 4rpx 14rpx; color: #8b7468; font-size: 24rpx; }
+.university-list { margin-top: 18rpx; }
+.university { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; margin-bottom: 18rpx; padding: 28rpx; }
+.university.current { border-color: #79aa98; background: #f2faf6; }
+.university-main { flex: 1; min-width: 0; }
+.university-title-row { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 12rpx; }
+.university-name, .university-location, .institution-code { display: block; }
+.university-name { color: #4f3e35; font-size: 30rpx; font-weight: 700; }
+.availability { flex: none; padding: 5rpx 12rpx; border-radius: 999rpx; font-size: 20rpx; }
+.availability.open { background: #e5f4ed; color: #4f806d; }
+.availability.closed { background: #f3eee9; color: #8b7468; }
+.university-location { margin-top: 10rpx; color: #8b7468; font-size: 24rpx; line-height: 1.5; }
+.institution-code { margin-top: 7rpx; color: #ae9a8e; font-size: 21rpx; }
+.choose { flex: none; color: #d76545; font-size: 25rpx; font-weight: 700; }
+.load-more { margin: 18rpx auto 0; background: transparent; color: #d76545; font-size: 25rpx; }
+.load-more::after { border-color: #efc6b9; }
+.selection-error { margin-bottom: 18rpx; padding: 18rpx 22rpx; border-radius: 18rpx; background: #fff0ec; color: #b34f34; font-size: 24rpx; line-height: 1.5; }

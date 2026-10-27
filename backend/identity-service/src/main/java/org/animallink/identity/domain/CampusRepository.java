@@ -9,4 +9,6 @@ public interface CampusRepository {
     Optional<Campus> findActiveById(String id);
 
     List<Campus> searchActive(String query, int limit, int offset);
+
+    Optional<Campus> findActiveCommunityByUniversityId(String universityId);
 }

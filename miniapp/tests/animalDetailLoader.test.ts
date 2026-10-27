@@ -18,6 +18,8 @@ const timeline: TimelineEntryResponse = {
 }
 
 const sourceWithTimeline = (getTimeline: PublicAnimalDataSource['getTimeline']): PublicAnimalDataSource => ({
+  searchUniversities: async () => ({ items: [], page: 0, size: 20, total: 0 }),
+  getUniversityCommunity: async () => { throw new Error('not used') },
   listCampuses: async () => [],
   searchAnimals: async () => ({ items: [], page: 0, size: 20, total: 0 }),
   getAnimal: async () => animal,
