@@ -14,11 +14,11 @@ export const offlineCampuses: CampusResponse[] = [
   { id: 'campus-mingde', universityId: 'university-mingde', name: '明德大学社区', shortName: '明德社区', city: '杭州', region: '浙江', campusType: 'UNIVERSITY_COMMUNITY', status: 'ACTIVE' },
   { id: 'campus-boyan', universityId: 'university-boyan', name: '博雅学院社区', shortName: '博雅社区', city: '南京', region: '江苏', campusType: 'UNIVERSITY_COMMUNITY', status: 'ACTIVE' },
   { id: 'campus-hupan', universityId: 'university-hupan', name: '湖畔大学城社区', shortName: '湖畔社区', city: '苏州', region: '江苏', campusType: 'UNIVERSITY_COMMUNITY', status: 'ACTIVE' },
-  { id: 'campus-hanshan', universityId: 'university-hanshan', name: '韩山师范学院社区', shortName: '韩师社区', city: '潮州市', region: null, campusType: 'UNIVERSITY_COMMUNITY', status: 'ACTIVE' },
+  { id: '22000000-0000-4000-8000-000000000001', universityId: '21000000-0000-4000-8000-000000001010', name: '韩山师范学院社区', shortName: '韩师社区', city: '潮州市', region: null, campusType: 'UNIVERSITY_COMMUNITY', status: 'ACTIVE' },
 ]
 
 export const offlineUniversities: UniversityResponse[] = [
-  { id: 'university-hanshan', moeInstitutionCode: '4144010578', officialName: '韩山师范学院', shortName: null, province: '广东省', city: '潮州市', status: 'ACTIVE', communityAvailable: true },
+  { id: '21000000-0000-4000-8000-000000001010', moeInstitutionCode: '4144010578', officialName: '韩山师范学院', shortName: null, province: '广东省', city: '潮州市', status: 'ACTIVE', communityAvailable: true },
   { id: 'university-mingde', moeInstitutionCode: 'OFFLINE-DEMO-01', officialName: '明德大学（离线演示）', shortName: '明德', province: '浙江省', city: '杭州市', status: 'ACTIVE', communityAvailable: true },
   { id: 'university-boyan', moeInstitutionCode: 'OFFLINE-DEMO-02', officialName: '博雅学院（离线演示）', shortName: '博雅', province: '江苏省', city: '南京市', status: 'ACTIVE', communityAvailable: true },
   { id: 'university-hupan', moeInstitutionCode: 'OFFLINE-DEMO-03', officialName: '湖畔大学城（离线演示）', shortName: '湖畔', province: '江苏省', city: '苏州市', status: 'ACTIVE', communityAvailable: true },
@@ -28,6 +28,9 @@ export const offlineUniversities: UniversityResponse[] = [
 type AnimalSeed = PublicAnimalResponse
 
 const seeds: AnimalSeed[] = [
+  { id: '23000000-0000-4000-8000-000000000001', campusId: '22000000-0000-4000-8000-000000000001', displayName: '小橘', species: 'CAT', sex: 'MALE', coatColor: '橘白', adoptionStatus: 'NOT_OPEN', currentContext: 'CAMPUS', createdAt: '2026-10-01T08:30:00+08:00', updatedAt: '2026-10-20T17:20:00+08:00' },
+  { id: '23000000-0000-4000-8000-000000000002', campusId: '22000000-0000-4000-8000-000000000001', displayName: '墨墨', species: 'CAT', sex: 'UNKNOWN', coatColor: '黑色', adoptionStatus: 'NOT_OPEN', currentContext: 'CAMPUS', createdAt: '2026-10-03T18:10:00+08:00', updatedAt: '2026-10-19T18:40:00+08:00' },
+  { id: '23000000-0000-4000-8000-000000000003', campusId: '22000000-0000-4000-8000-000000000001', displayName: '阿黄', species: 'DOG', sex: 'FEMALE', coatColor: '浅黄色', adoptionStatus: 'NOT_OPEN', currentContext: 'CAMPUS', createdAt: '2026-10-05T09:00:00+08:00', updatedAt: '2026-10-18T16:00:00+08:00' },
   { id: 'animal-orange', campusId: 'campus-mingde', displayName: '橘子', species: 'CAT', sex: 'MALE', coatColor: '橘白', adoptionStatus: 'NOT_OPEN', currentContext: 'CAMPUS', createdAt: '2026-03-10T09:00:00+08:00', updatedAt: '2026-10-18T15:20:00+08:00' },
   { id: 'animal-snow', campusId: 'campus-mingde', displayName: '雪团', species: 'CAT', sex: 'FEMALE', coatColor: '白色', adoptionStatus: 'OPEN', currentContext: 'CAMPUS', createdAt: '2026-04-02T10:30:00+08:00', updatedAt: '2026-10-17T11:00:00+08:00' },
   { id: 'animal-wheat', campusId: 'campus-mingde', displayName: '阿麦', species: 'DOG', sex: 'MALE', coatColor: '浅棕白', adoptionStatus: 'HANDOVER_PENDING', currentContext: 'CAMPUS', createdAt: '2026-05-14T08:00:00+08:00', updatedAt: '2026-10-16T18:10:00+08:00' },
@@ -45,6 +48,15 @@ const seeds: AnimalSeed[] = [
 const details: PublicAnimalResponse[] = seeds.map((animal) => ({ ...animal }))
 
 const timelineByAnimal: Record<string, TimelineEntryResponse[]> = {
+  '23000000-0000-4000-8000-000000000001': [
+    { id: '25000000-0000-4000-8000-000000000001', animalId: '23000000-0000-4000-8000-000000000001', sourceType: 'DEMO_SEED', sourceId: '26000000-0000-4000-8000-000000000001', entryType: 'PROFILE_CREATED', title: '建立虚构演示档案', summary: '用于韩师社区功能演示，不代表真实校园动物记录。', occurredAt: '2026-10-01T08:30:00+08:00', createdAt: '2026-10-01T08:30:00+08:00' },
+  ],
+  '23000000-0000-4000-8000-000000000002': [
+    { id: '25000000-0000-4000-8000-000000000002', animalId: '23000000-0000-4000-8000-000000000002', sourceType: 'DEMO_SEED', sourceId: '26000000-0000-4000-8000-000000000002', entryType: 'PROFILE_CREATED', title: '建立虚构演示档案', summary: '用于比较不同校园动物档案，不包含精确活动位置。', occurredAt: '2026-10-03T18:10:00+08:00', createdAt: '2026-10-03T18:10:00+08:00' },
+  ],
+  '23000000-0000-4000-8000-000000000003': [
+    { id: '25000000-0000-4000-8000-000000000003', animalId: '23000000-0000-4000-8000-000000000003', sourceType: 'DEMO_SEED', sourceId: '26000000-0000-4000-8000-000000000003', entryType: 'PROFILE_CREATED', title: '建立虚构演示档案', summary: '用于演示不同物种筛选，无真实救助或领养状态。', occurredAt: '2026-10-05T09:00:00+08:00', createdAt: '2026-10-05T09:00:00+08:00' },
+  ],
   'animal-orange': [
     { id: 'timeline-orange-2', animalId: 'animal-orange', sourceType: 'CASE', sourceId: 'case-orange', entryType: 'CASE_RESOLVED', title: '救助观察完成', summary: '轻微擦伤经观察后状态稳定。', occurredAt: '2026-10-18T14:30:00+08:00', createdAt: '2026-10-18T15:00:00+08:00' },
     { id: 'timeline-orange-1', animalId: 'animal-orange', sourceType: 'ANIMAL', sourceId: 'animal-orange', entryType: 'PROFILE_CREATED', title: '建立长期档案', summary: '完成首次公开档案记录。', occurredAt: '2026-03-10T09:00:00+08:00', createdAt: '2026-03-10T09:00:00+08:00' },

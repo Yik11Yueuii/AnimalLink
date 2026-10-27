@@ -12,6 +12,8 @@
 
 代码不会发送 `X-User-Id`、`X-Internal-Service` 或伪造认证信息。离线模式也不会静默回退：API 模式请求失败时直接显示错误与重试。
 
+离线演示包含一组明确标注“虚构演示”的韩山师范学院社区内容，使用与本地数据库 Fixture 一致的 University、Campus、Animal、Post 和 Comment 稳定 ID。它仅用于界面演示，不代表真实校园动物、位置、救助或领养事实；API 模式不会读取或回退到这些数据。
+
 ## 导入与验证
 
 ```powershell
