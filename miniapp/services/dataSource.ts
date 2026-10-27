@@ -5,11 +5,15 @@ import type {
   PageResponse,
   PublicAnimalResponse,
   TimelineEntryResponse,
+  UniversityResponse,
+  UniversitySearchCriteria,
 } from '../types/api'
 import type { JsonRequester } from './apiClient'
 
 export interface PublicAnimalDataSource {
   listCampuses(q?: string, page?: number, size?: number): Promise<CampusResponse[]>
+  searchUniversities(criteria: UniversitySearchCriteria): Promise<PageResponse<UniversityResponse>>
+  getUniversityCommunity(universityId: string): Promise<CampusResponse>
   searchAnimals(criteria: AnimalSearchCriteria): Promise<PageResponse<AnimalSummaryResponse>>
   getAnimal(animalId: string): Promise<PublicAnimalResponse>
   getTimeline(animalId: string, page: number, size: number): Promise<PageResponse<TimelineEntryResponse>>
@@ -20,6 +24,21 @@ export class ApiPublicAnimalDataSource implements PublicAnimalDataSource {
 
   listCampuses(q = '', page = 0, size = 50) {
     return this.request<CampusResponse[]>('/identity/api/v1/campuses', { q, page, size })
+  }
+
+  searchUniversities(criteria: UniversitySearchCriteria) {
+    return this.request<PageResponse<UniversityResponse>>('/identity/api/v1/universities', {
+      province: criteria.province,
+      q: criteria.q,
+      page: criteria.page,
+      size: criteria.size,
+    })
+  }
+
+  getUniversityCommunity(universityId: string) {
+    return this.request<CampusResponse>(
+      `/identity/api/v1/universities/${encodeURIComponent(universityId)}/community`,
+    )
   }
 
   searchAnimals(criteria: AnimalSearchCriteria) {

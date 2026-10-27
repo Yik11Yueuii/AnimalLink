@@ -11,6 +11,8 @@ published support expense paths in ExternalIdentityBoundaryFilter pass:
 
 - /identity/api/v1/campuses
 - /identity/api/v1/campuses/{campusId}
+- /identity/api/v1/universities
+- /identity/api/v1/universities/{universityId}/community
 - /animal/api/v1/public/animals
 - /animal/api/v1/public/animals/{animalId}
 - /animal/api/v1/public/campuses/{campusId}/feed
@@ -20,7 +22,10 @@ published support expense paths in ExternalIdentityBoundaryFilter pass:
 
 Actuator health/info GET/HEAD are also retained. The list requires a canonical
 UUID-shaped segment; Animal detail also requires a canonical UUID-shaped segment.
-The Animal projection contains only identity-neutral profile fields and excludes
+The university projection contains public school master data and whether a logical
+school community is open. Its community endpoint resolves one logical Campus ID;
+it neither represents a physical campus nor grants CampusMembership. The Animal
+projection contains only identity-neutral profile fields and excludes
 free text, precise/typical location, internal identity state, merge mappings and
 media object keys. Legacy Animal list/detail and Timeline routes remain protected.
 An adjacent child path is not public. All other requests,

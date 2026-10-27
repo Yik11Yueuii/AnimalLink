@@ -7,9 +7,9 @@ const isCampus = (value: unknown): value is CampusResponse => {
   const candidate = value as Partial<CampusResponse>
   return typeof candidate.id === 'string'
     && typeof candidate.name === 'string'
-    && typeof candidate.shortName === 'string'
+    && (typeof candidate.shortName === 'string' || candidate.shortName === null)
     && typeof candidate.city === 'string'
-    && typeof candidate.region === 'string'
+    && (typeof candidate.region === 'string' || candidate.region === null)
     && typeof candidate.status === 'string'
 }
 

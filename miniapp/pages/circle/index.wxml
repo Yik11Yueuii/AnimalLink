@@ -2,7 +2,7 @@
   <view wx:if="{{offline}}" class="mode-banner">本地离线演示 · 以下为明确标注的模拟社区数据</view>
   <view class="circle-heading">
     <view><text class="eyebrow">CAMPUS CIRCLE</text><text class="page-title">校园动态</text></view>
-    <button class="campus-button" bindtap="changeCampus">{{campus ? campus.shortName : '选择 Campus'}}⌄</button>
+    <button class="campus-button" bindtap="changeCampus">{{campus ? (campus.shortName || campus.name) : '选择 Campus'}}⌄</button>
   </view>
   <view class="circle-intro surface">
     <text>在同一个 Campus 里，持续记录动物的日常、救助和领养后近况。</text>

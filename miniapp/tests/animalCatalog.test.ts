@@ -10,6 +10,8 @@ const animal = (id: string, campusId: string): AnimalSummaryResponse => ({
 })
 
 const sourceWithSearch = (search: (criteria: AnimalSearchCriteria) => Promise<PageResponse<AnimalSummaryResponse>>): PublicAnimalDataSource => ({
+  searchUniversities: async () => ({ items: [], page: 0, size: 20, total: 0 }),
+  getUniversityCommunity: async () => { throw new Error('not used') },
   listCampuses: async () => [],
   searchAnimals: search,
   getAnimal: async () => { throw new Error('unused') },

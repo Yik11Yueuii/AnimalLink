@@ -36,6 +36,7 @@ class PublicReadPolicyTest {
 
     @Test void onlyExplicitPublicReadsAndHeadsPass() {
         for (String path : new String[] {"/identity/api/v1/campuses", "/identity/api/v1/campuses/" + ID,
+                "/identity/api/v1/universities", "/identity/api/v1/universities/" + ID + "/community",
                 "/animal/api/v1/public/animals", "/animal/api/v1/public/animals/" + ID,
                 "/animal/api/v1/public/campuses/" + ID + "/feed",
                 "/animal/api/v1/public/posts/" + ID,
@@ -58,6 +59,7 @@ class PublicReadPolicyTest {
                 "/incident/api/v1/admin/support-expenses/" + ID,
                 "/incident/api/v1/cases/" + ID + "/support/expenses/" + ID,
                 "/identity/api/v1/campuses/" + ID + "/members",
+                "/identity/api/v1/universities/" + ID,
                 "/animal/api/v1/animals", "/animal/api/v1/animals/" + ID,
                 "/animal/api/v1/public/animals/" + ID + "/timeline",
                 "/animal/api/v1/campuses/" + ID + "/feed",
@@ -75,6 +77,12 @@ class PublicReadPolicyTest {
         for (String path : new String[] {"/identity/api/v1/%63ampuses",
                 "/identity/api/v1/campuses/", "/identity//api/v1/campuses",
                 "/identity/api/v1/campuses;foo", "/IDENTITY/api/v1/campuses",
+                "/identity/api/v1/universities/", "/identity//api/v1/universities",
+                "/identity/api/v1/universities/not-a-uuid/community",
+                "/identity/api/v1/universities/" + ID + "/community/",
+                "/identity/api/v1/universities/" + ID + "/community/extra",
+                "/identity/api/v1/universities/" + ID + "/campuses",
+                "/identity/api/v1/%75niversities",
                 "/animal/api/v1/public/animals/", "/animal//api/v1/public/animals",
                 "/animal/api/v1/public/animals;foo", "/ANIMAL/api/v1/public/animals",
                 "/animal/api/v1/public/animals/not-a-uuid",

@@ -30,6 +30,8 @@ public class ExternalIdentityBoundaryFilter implements WebFilter, Ordered {
     static final List<Pattern> PUBLIC_READS = List.of(
             Pattern.compile("^/identity/api/v1/campuses$"),
             Pattern.compile("^/identity/api/v1/campuses/" + UUID_SEGMENT + "$"),
+            Pattern.compile("^/identity/api/v1/universities$"),
+            Pattern.compile("^/identity/api/v1/universities/" + UUID_SEGMENT + "/community$"),
             Pattern.compile("^/animal/api/v1/public/animals$"),
             Pattern.compile("^/animal/api/v1/public/animals/" + UUID_SEGMENT + "$"),
             Pattern.compile("^/animal/api/v1/public/campuses/" + UUID_SEGMENT + "/feed$"),

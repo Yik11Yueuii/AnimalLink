@@ -7,11 +7,31 @@ export type CurrentContext = 'CAMPUS' | 'ADOPTED_HOME'
 
 export interface CampusResponse {
   id: string
+  universityId: string | null
   name: string
-  shortName: string
+  shortName: string | null
   city: string
-  region: string
+  region: string | null
+  campusType: 'LEGACY' | 'UNIVERSITY_COMMUNITY' | 'CAMPUS_AREA' | 'ADMINISTRATIVE_CAMPUS'
   status: string
+}
+
+export interface UniversityResponse {
+  id: string
+  moeInstitutionCode: string
+  officialName: string
+  shortName: string | null
+  province: string
+  city: string
+  status: string
+  communityAvailable: boolean
+}
+
+export interface UniversitySearchCriteria {
+  province: string
+  q: string
+  page: number
+  size: number
 }
 
 export interface AnimalSummaryResponse {
