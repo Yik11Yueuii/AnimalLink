@@ -77,6 +77,47 @@ class AdminRescueReadIntegrationTest {
                 .andExpect(jsonPath("$.items[0].exactLocationDescription").doesNotExist())
                 .andExpect(jsonPath("$.items[0].ownerUserId").doesNotExist());
     }
+    @Test void keepsEventVerificationAndCaseLifecycleStatusesDistinct() {
+        String reported = seedAdditionalEvent("REPORTED", null, null);
+        String rejected = seedAdditionalEvent("REJECTED", null, null);
+        String duplicate = seedAdditionalEvent("DUPLICATE", null, null);
+        String archived = seedAdditionalEvent("ARCHIVED", null, null);
+        String waitingClaim = seedAdditionalEvent("VERIFIED", "OPEN", "WAITING_CLAIM");
+        String resolved = seedAdditionalEvent("VERIFIED", "RESOLVED", "CLAIMED");
+        String closedUnresolved = seedAdditionalEvent("VERIFIED", "CLOSED_UNRESOLVED", "CLAIMED");
+
+        assertThat(rescueStatusFor(reported)).isEqualTo("REPORTED");
+        assertThat(rescueStatusFor(rejected)).isEqualTo("REJECTED");
+        assertThat(rescueStatusFor(duplicate)).isEqualTo("DUPLICATE");
+        assertThat(rescueStatusFor(archived)).isEqualTo("ARCHIVED");
+        assertThat(rescueStatusFor(waitingClaim)).isEqualTo("WAITING_CLAIM");
+        assertThat(rescueStatusFor(resolved)).isEqualTo("RESOLVED");
+        assertThat(rescueStatusFor(closedUnresolved)).isEqualTo("CLOSED_UNRESOLVED");
+        assertThat(service.search(CAMPUS, "REPORTED", null, "UPDATED_DESC", 0, 20).items())
+                .extracting(item -> item.eventId()).containsExactly(reported);
+        assertThat(service.search(CAMPUS, "RESOLVED", null, "UPDATED_DESC", 0, 20).items())
+                .extracting(item -> item.eventId()).containsExactly(resolved);
+    }
+    private String rescueStatusFor(String eventId) {
+        return service.search(CAMPUS, null, null, "UPDATED_DESC", 0, 100).items().stream()
+                .filter(item -> item.eventId().equals(eventId)).findFirst().orElseThrow().rescueStatus();
+    }
+    private String seedAdditionalEvent(String eventStatus, String caseStatus, String claimStatus) {
+        String eventId = UUID.randomUUID().toString(), draftId = UUID.randomUUID().toString();
+        String animalId = UUID.randomUUID().toString();
+        Timestamp now = Timestamp.from(Instant.parse("2026-10-28T02:00:00Z"));
+        jdbc.update("INSERT INTO event_draft(id,user_id,campus_id,description,occurred_at,public_location_description,exact_location_description,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                draftId, UUID.randomUUID().toString(), CAMPUS, "draft", now, "公开区域", "精确位置", now, now);
+        jdbc.update("INSERT INTO event(id,source_draft_id,reporter_user_id,campus_id,animal_id,description,abnormality_summary,occurred_at,reported_at,public_location_description,exact_location_description,latitude,longitude,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                eventId, draftId, UUID.randomUUID().toString(), CAMPUS, animalId, "状态映射测试", null, now, now, "公开区域", "精确位置", null, null, eventStatus, now, now);
+        if (caseStatus != null) {
+            boolean claimed = "CLAIMED".equals(claimStatus);
+            jdbc.update("INSERT INTO animal_case(id,event_id,campus_id,animal_id,owner_user_id,status,claim_status,claimed_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    UUID.randomUUID().toString(), eventId, CAMPUS, animalId, claimed ? UUID.randomUUID().toString() : null,
+                    caseStatus, claimStatus, claimed ? now : null, now, now);
+        }
+        return eventId;
+    }
     private static String token(String path) throws Exception {
         Instant now = Instant.now();
         var claims = new JWTClaimsSet.Builder().issuer("api-gateway").subject("api-gateway").audience("incident-service")

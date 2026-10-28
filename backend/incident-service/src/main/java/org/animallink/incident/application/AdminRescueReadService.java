@@ -16,6 +16,9 @@ import java.util.UUID;
 
 @Service
 public class AdminRescueReadService {
+    private static final List<String> RESCUE_STATUSES = List.of(
+            "REPORTED", "WAITING_CLAIM", "IN_PROGRESS", "RESOLVED", "CLOSED",
+            "CLOSED_UNRESOLVED", "CANCELLED", "REJECTED", "DUPLICATE", "ARCHIVED");
     private static final String SELECT = """
             SELECT e.id event_id,c.id case_id,e.campus_id,e.animal_id,e.status event_status,
               c.status case_status,c.claim_status,c.owner_user_id,e.abnormality_summary,e.description,
@@ -36,11 +39,12 @@ public class AdminRescueReadService {
         StringBuilder where = new StringBuilder(" WHERE e.campus_id=:campusId");
         var parameters = new MapSqlParameterSource("campusId", campusId);
         if (status != null && !status.isBlank()) {
-            if (!List.of("WAITING_CLAIM", "IN_PROGRESS", "COMPLETED").contains(status)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid rescue status");
+            if (!RESCUE_STATUSES.contains(status)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid rescue status");
             where.append(switch (status) {
-                case "WAITING_CLAIM" -> " AND (c.id IS NULL OR c.claim_status='WAITING_CLAIM')";
-                case "IN_PROGRESS" -> " AND c.status IN ('OPEN','ACTIVE') AND c.claim_status='CLAIMED'";
-                default -> " AND c.status IN ('RESOLVED','CLOSED','CLOSED_UNRESOLVED','CANCELLED')";
+                case "REPORTED", "REJECTED", "DUPLICATE", "ARCHIVED" -> " AND e.status='" + status + "'";
+                case "WAITING_CLAIM" -> " AND e.status='VERIFIED' AND (c.id IS NULL OR c.claim_status='WAITING_CLAIM')";
+                case "IN_PROGRESS" -> " AND e.status='VERIFIED' AND c.status IN ('OPEN','ACTIVE') AND c.claim_status='CLAIMED'";
+                default -> " AND e.status='VERIFIED' AND c.status='" + status + "'";
             });
         }
         String normalized = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
@@ -78,15 +82,22 @@ public class AdminRescueReadService {
     }
 
     private static AdminRescueDtos.RescueItem item(ResultSet rs) throws SQLException {
-        String caseId = rs.getString("case_id"); String caseStatus = rs.getString("case_status"); String claim = rs.getString("claim_status");
-        String rescueStatus = caseId == null || "WAITING_CLAIM".equals(claim) ? "WAITING_CLAIM"
-                : List.of("OPEN", "ACTIVE").contains(caseStatus) ? "IN_PROGRESS" : "COMPLETED";
+        String caseId = rs.getString("case_id"); String eventStatus = rs.getString("event_status");
+        String caseStatus = rs.getString("case_status"); String claim = rs.getString("claim_status");
+        String rescueStatus = rescueStatus(eventStatus, caseId, caseStatus, claim);
         Instant eventUpdated = instant(rs, "event_updated_at"), caseUpdated = instant(rs, "case_updated_at");
         return new AdminRescueDtos.RescueItem(rs.getString("event_id"), caseId, rs.getString("campus_id"), rs.getString("animal_id"),
-                rescueStatus, rs.getString("event_status"), caseStatus, claim, rs.getString("owner_user_id") != null,
+                rescueStatus, eventStatus, caseStatus, claim, rs.getString("owner_user_id") != null,
                 rs.getString("abnormality_summary"), rs.getString("description"), rs.getString("public_location_description"),
                 instant(rs, "occurred_at"), instant(rs, "reported_at"), rs.getLong("evidence_count"), rs.getLong("action_count"),
                 rs.getString("result_code"), rs.getString("result_summary"), caseUpdated == null ? eventUpdated : caseUpdated);
+    }
+    private static String rescueStatus(String eventStatus, String caseId, String caseStatus, String claimStatus) {
+        if (List.of("REPORTED", "REJECTED", "DUPLICATE", "ARCHIVED").contains(eventStatus)) return eventStatus;
+        if (caseId == null || "WAITING_CLAIM".equals(claimStatus)) return "WAITING_CLAIM";
+        if (List.of("OPEN", "ACTIVE").contains(caseStatus)) return "IN_PROGRESS";
+        if (List.of("RESOLVED", "CLOSED", "CLOSED_UNRESOLVED", "CANCELLED").contains(caseStatus)) return caseStatus;
+        return "WAITING_CLAIM";
     }
     private static Instant instant(ResultSet rs, String name) throws SQLException { var value = rs.getTimestamp(name); return value == null ? null : value.toInstant(); }
     private record DetailRow(AdminRescueDtos.RescueItem item, Instant claimedAt, Instant resultSubmittedAt, Instant closedAt) { }

@@ -17,8 +17,14 @@ const formatTime = (value: string | null) => value
   : '—'
 const campusLabel = (id: string) => props.campusOptions.find((campus) => campus.id === id)?.label ?? '未知校区'
 const compactId = (value: string | null) => value ? `${value.slice(0, 8)}…${value.slice(-4)}` : '—'
-const statusType = (status: RescueStatus) => status === 'WAITING_CLAIM' ? 'warning' : status === 'IN_PROGRESS' ? 'primary' : 'success'
-const animalName = (item: RescueListItem) => item.animal?.displayName ?? (item.animalId ? '未命名 Animal' : '未关联 Animal')
+const statusType = (status: RescueStatus) => {
+  if (status === 'REPORTED' || status === 'WAITING_CLAIM') return 'warning'
+  if (status === 'IN_PROGRESS') return 'primary'
+  if (status === 'RESOLVED') return 'success'
+  if (status === 'REJECTED' || status === 'CLOSED_UNRESOLVED') return 'danger'
+  return 'info'
+}
+const animalName = (item: RescueListItem) => item.animal?.displayName ?? (item.animalId ? `关联 Animal ${compactId(item.animalId)}` : '未关联 Animal')
 const terminalLabel = (item: RescueListItem) => {
   if (item.caseStatus === 'CANCELLED' || item.resultCode === 'CANCELLED') return '已取消'
   if (item.caseStatus === 'CLOSED_UNRESOLVED' || item.resultCode === 'UNRESOLVED') return '已关闭 · 未解决'
@@ -26,7 +32,8 @@ const terminalLabel = (item: RescueListItem) => {
   if (item.caseStatus === 'CLOSED') return '已关闭'
   return item.caseStatus ? caseStatusLabels[item.caseStatus] : '尚未建案'
 }
-const summaryStep = (status: RescueStatus) => status === 'WAITING_CLAIM' ? 0 : status === 'IN_PROGRESS' ? 1 : 2
+const summaryStep = (status: RescueStatus) => status === 'WAITING_CLAIM' ? 0 : status === 'IN_PROGRESS' ? 1
+  : ['RESOLVED', 'CLOSED', 'CLOSED_UNRESOLVED', 'CANCELLED'].includes(status) ? 2 : -1
 onMounted(() => { if (catalog.criteria.campusId) void catalog.load() })
 </script>
 
@@ -51,7 +58,7 @@ onMounted(() => { if (catalog.criteria.campusId) void catalog.load() })
             <el-option v-for="campus in campusOptions" :key="campus.id" :label="campus.label" :value="campus.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="救助进度">
+        <el-form-item label="Event / Case 状态">
           <el-select v-model="catalog.criteria.rescueStatus" clearable placeholder="全部进度" @change="catalog.load(true)">
             <el-option v-for="(label, value) in rescueStatusLabels" :key="value" :label="label" :value="value" />
           </el-select>
@@ -121,12 +128,13 @@ onMounted(() => { if (catalog.criteria.campusId) void catalog.load() })
       <div v-else-if="catalog.detailError.value" class="state-card state-error drawer-state"><strong>详情加载失败</strong><span>{{ catalog.detailError.value }}</span><el-button type="primary" @click="catalog.retryDetail()">重试</el-button></div>
       <template v-else-if="catalog.detail.value">
         <header class="drawer-head"><div><p class="eyebrow">RESCUE DETAIL</p><h2>{{ catalog.detail.value.abnormalitySummary || '救助事件' }}</h2><code>Event {{ catalog.detail.value.eventId }}</code><code>Case {{ catalog.detail.value.caseId || '尚未建立' }}</code></div><el-button circle aria-label="关闭详情" @click="catalog.detailVisible.value = false">×</el-button></header>
-        <section class="progress-panel">
+        <section v-if="summaryStep(catalog.detail.value.rescueStatus) >= 0" class="progress-panel">
           <div class="summary-progress">
             <template v-for="(label, index) in ['等待认领', '处理中', '已完成']" :key="label"><span :class="{ active: index <= summaryStep(catalog.detail.value.rescueStatus) }">{{ index + 1 }}</span><strong :class="{ active: index <= summaryStep(catalog.detail.value.rescueStatus) }">{{ label }}</strong><i v-if="index < 2" :class="{ active: index < summaryStep(catalog.detail.value.rescueStatus) }" /></template>
           </div>
           <small>此进度由 Event / Case 状态汇总生成，不替代底层状态机。</small>
         </section>
+        <section v-else class="status-panel"><el-tag :type="statusType(catalog.detail.value.rescueStatus)">{{ rescueStatusLabels[catalog.detail.value.rescueStatus] }}</el-tag><span>该 Event 尚未进入可认领或处理中的 Case 流程，页面保留原始 Event 状态。</span></section>
         <section class="detail-section">
           <h3>事件信息</h3>
           <dl class="detail-grid"><div><dt>Campus</dt><dd>{{ campusLabel(catalog.detail.value.campusId) }}</dd></div><div><dt>关联 Animal</dt><dd>{{ animalName(catalog.detail.value) }}</dd></div><div><dt>Event 原始状态</dt><dd>{{ eventStatusLabels[catalog.detail.value.eventStatus] }} · {{ catalog.detail.value.eventStatus }}</dd></div><div><dt>发生时间</dt><dd>{{ formatTime(catalog.detail.value.occurredAt) }}</dd></div><div><dt>上报时间</dt><dd>{{ formatTime(catalog.detail.value.reportedAt) }}</dd></div><div><dt>公开位置</dt><dd>{{ catalog.detail.value.publicLocationDescription || '未提供' }}</dd></div></dl>
@@ -156,4 +164,5 @@ onMounted(() => { if (catalog.criteria.campusId) void catalog.load() })
 @media(max-width:900px){.rescue-table{display:none}.rescue-cards{margin-top:18px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.rescue-card{padding:18px;border:1px solid #eaded5;border-radius:20px;background:#fffdfa;box-shadow:0 10px 30px rgb(78 56 44/6%)}.card-heading .el-button{margin-left:auto}.rescue-card>p{margin:15px 0;line-height:1.55}.filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.keyword-field{grid-column:1/-1}}
 @media(max-width:720px){.rescue-page{width:calc(100% - 24px);padding-top:16px}.hero-card{align-items:flex-start;flex-direction:column;border-radius:22px}.result-summary{width:100%;grid-template-columns:auto 1fr;align-items:baseline;text-align:left}.result-summary span{margin:0 0 0 8px}.filter-actions{grid-column:1/-1}.filter-actions .el-button{flex:1}.rescue-cards{grid-template-columns:1fr}.pagination-bar>span,.pagination-bar>.el-pagination{display:none}.mobile-pagination{width:100%;display:flex;align-items:center;justify-content:space-between}.detail-grid{grid-template-columns:1fr}.card-facts{grid-template-columns:1fr}}
 @media(max-width:430px){.filter-grid{display:block}.filter-actions{margin-top:4px}.rescue-card{padding:16px}.drawer-head h2{font-size:1.35rem}}
+.status-panel{margin:22px 0;padding:20px;display:flex;align-items:center;gap:12px;border-radius:20px;background:#f8f4ee;color:#806d62;line-height:1.55}
 </style>

@@ -1,7 +1,7 @@
 import { gatewayClient } from '@/api/client'
 import type { CampusOption } from '@/features/animals/types'
 import type { RescueGovernanceDataSource } from './dataSource'
-import type { RescueDetail, RescueListItem, RescueProgress, RescueSearchResult } from './types'
+import type { RescueAnimal, RescueDetail, RescueListItem, RescueProgress, RescueSearchResult } from './types'
 
 type UnknownRecord = Record<string, unknown>
 const record = (value: unknown): UnknownRecord => {
@@ -28,6 +28,45 @@ const progress = (value: unknown): RescueProgress => { const source = record(val
   description: text(source.description, 'progress.description'), occurredAt: text(source.occurredAt, 'progress.occurredAt'),
   createdAt: text(source.createdAt, 'progress.createdAt'), resultCode: nullableText(source.resultCode, 'progress.resultCode') as RescueProgress['resultCode'] } }
 
+const animalCache = new Map<string, RescueAnimal>()
+const animalRequests = new Map<string, Promise<RescueAnimal | null>>()
+
+const publicAnimal = (value: unknown, campusId: string): RescueAnimal => {
+  const source = record(value)
+  if (text(source.campusId, 'animal.campusId') !== campusId) throw new Error('关联 Animal 不属于当前 Campus。')
+  return {
+    id: text(source.id, 'animal.id'),
+    displayName: nullableText(source.displayName, 'animal.displayName'),
+    species: nullableText(source.species, 'animal.species'),
+    identityStatus: null,
+  }
+}
+
+const resolveAnimal = async (animalId: string | null, campusId: string): Promise<RescueAnimal | null> => {
+  if (!animalId) return null
+  const cacheKey = `${campusId}:${animalId}`
+  const cached = animalCache.get(cacheKey)
+  if (cached) return cached
+  const pending = animalRequests.get(cacheKey)
+  if (pending) return pending
+  const request = gatewayClient.get(`/animal/api/v1/public/animals/${encodeURIComponent(animalId)}`)
+    .then(({ data }) => {
+      const animal = publicAnimal(data, campusId)
+      animalCache.set(cacheKey, animal)
+      return animal
+    })
+    // A public Animal lookup supplements a protected rescue result. Its failure must not hide the Event/Case.
+    .catch(() => null)
+    .finally(() => animalRequests.delete(cacheKey))
+  animalRequests.set(cacheKey, request)
+  return request
+}
+
+const withAnimal = async <T extends RescueListItem>(rescue: T): Promise<T> => ({
+  ...rescue,
+  animal: await resolveAnimal(rescue.animalId, rescue.campusId),
+})
+
 export const rescueApiDataSource: RescueGovernanceDataSource = {
   async search(criteria): Promise<RescueSearchResult> {
     if (!criteria.campusId) throw new Error('请选择 Campus 后查询救助事件。')
@@ -35,12 +74,12 @@ export const rescueApiDataSource: RescueGovernanceDataSource = {
       status: criteria.rescueStatus || undefined, keyword: criteria.keyword.trim() || undefined, sort: criteria.sort,
       page: criteria.page - 1, size: criteria.size } })
     const source = record(data); if (!Array.isArray(source.items)) throw new Error('救助列表响应无效。')
-    return { items: source.items.map(item), page: number(source.page, 'page') + 1, size: number(source.size, 'size'), total: number(source.total, 'total') }
+    return { items: await Promise.all(source.items.map(item).map(withAnimal)), page: number(source.page, 'page') + 1, size: number(source.size, 'size'), total: number(source.total, 'total') }
   },
   async getDetail(eventId): Promise<RescueDetail> {
     const { data } = await gatewayClient.get(`/incident/api/v1/admin/rescues/${encodeURIComponent(eventId)}`)
     const source = record(data); const base = item(source.rescue); if (!Array.isArray(source.progress)) throw new Error('救助详情进度响应无效。')
-    return { ...base, claimedAt: nullableText(source.claimedAt, 'claimedAt'), resultSubmittedAt: nullableText(source.resultSubmittedAt, 'resultSubmittedAt'),
+    return { ...await withAnimal(base), claimedAt: nullableText(source.claimedAt, 'claimedAt'), resultSubmittedAt: nullableText(source.resultSubmittedAt, 'resultSubmittedAt'),
       closedAt: nullableText(source.closedAt, 'closedAt'), progress: source.progress.map(progress) }
   },
 }

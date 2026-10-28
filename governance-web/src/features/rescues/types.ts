@@ -1,6 +1,6 @@
-export type RescueStatus = 'WAITING_CLAIM' | 'IN_PROGRESS' | 'COMPLETED'
+export type RescueStatus = 'REPORTED' | 'WAITING_CLAIM' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED' | 'CLOSED_UNRESOLVED' | 'CANCELLED' | 'REJECTED' | 'DUPLICATE' | 'ARCHIVED'
 export type RescueSort = 'UPDATED_DESC' | 'REPORTED_DESC' | 'OCCURRED_DESC'
-export type EventStatus = 'REPORTED' | 'VERIFIED' | 'REJECTED'
+export type EventStatus = 'REPORTED' | 'VERIFIED' | 'REJECTED' | 'DUPLICATE' | 'ARCHIVED'
 export type CaseStatus = 'OPEN' | 'ACTIVE' | 'RESOLVED' | 'CLOSED' | 'CLOSED_UNRESOLVED' | 'CANCELLED'
 export type ClaimStatus = 'WAITING_CLAIM' | 'CLAIMED'
 export type RescueResultCode = 'CONTINUE_OBSERVATION' | 'RESOLVED' | 'UNRESOLVED' | 'CANCELLED'
@@ -21,8 +21,11 @@ export interface RescueSearchCriteria {
   keyword: string; campusId: string; rescueStatus: RescueStatus | ''; sort: RescueSort; page: number; size: number
 }
 export interface RescueSearchResult { items: RescueListItem[]; page: number; size: number; total: number }
-export const rescueStatusLabels: Record<RescueStatus, string> = { WAITING_CLAIM: '等待认领', IN_PROGRESS: '处理中', COMPLETED: '已完成' }
-export const eventStatusLabels: Record<EventStatus, string> = { REPORTED: '待审核', VERIFIED: '已核实', REJECTED: '已驳回' }
+export const rescueStatusLabels: Record<RescueStatus, string> = {
+  REPORTED: '待核查', WAITING_CLAIM: '等待认领', IN_PROGRESS: '处理中', RESOLVED: '已解决', CLOSED: '已关闭',
+  CLOSED_UNRESOLVED: '已关闭 · 未解决', CANCELLED: '已取消', REJECTED: '已驳回', DUPLICATE: '重复上报', ARCHIVED: '已归档',
+}
+export const eventStatusLabels: Record<EventStatus, string> = { REPORTED: '待核查', VERIFIED: '已核实', REJECTED: '已驳回', DUPLICATE: '重复上报', ARCHIVED: '已归档' }
 export const caseStatusLabels: Record<CaseStatus, string> = {
   OPEN: '已建案', ACTIVE: '处理中', RESOLVED: '已解决', CLOSED: '已关闭',
   CLOSED_UNRESOLVED: '已关闭 · 未解决', CANCELLED: '已取消',
