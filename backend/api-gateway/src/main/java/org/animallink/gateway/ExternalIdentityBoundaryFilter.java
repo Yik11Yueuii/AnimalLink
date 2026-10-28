@@ -69,7 +69,8 @@ public class ExternalIdentityBoundaryFilter implements WebFilter, Ordered {
         boolean publicRead = isPublicRead(method, path);
         boolean authenticationEndpoint = isAuthenticationEndpoint(method, path);
         boolean authenticatedAdminRequest = (AdminCommunityReviewReadPolicy.matches(method, path)
-                || AdminCommunityReviewWritePolicy.matches(method, path))
+                || AdminCommunityReviewWritePolicy.matches(method, path)
+                || AdminGovernanceReadPolicy.matches(method, path))
                 && exchange.getAttribute(GatewayAdminSessionAuthenticationFilter.PRINCIPAL_ATTRIBUTE)
                 instanceof IdentitySessionClient.GatewayAuthenticatedPrincipal principal
                 && "GOVERNANCE_ADMIN".equals(principal.systemRole());

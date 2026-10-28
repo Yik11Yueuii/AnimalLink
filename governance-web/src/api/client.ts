@@ -19,6 +19,8 @@ gatewayClient.interceptors.response.use(
       error.message = '当前管理员会话未认证或已失效。'
     } else if (error.response.status === 403) {
       error.message = '当前会话没有执行该治理操作的权限。'
+    } else if (error.response.status === 503) {
+      error.message = '治理服务暂时不可用，请稍后重试。'
     }
     return Promise.reject(error)
   },

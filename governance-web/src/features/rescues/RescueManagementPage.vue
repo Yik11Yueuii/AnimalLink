@@ -8,8 +8,8 @@ import {
   type RescueListItem, type RescueStatus,
 } from './types'
 
-const props = defineProps<{ dataSource: RescueGovernanceDataSource; campusOptions: CampusOption[] }>()
-const catalog = useRescueCatalog(props.dataSource)
+const props = defineProps<{ dataSource: RescueGovernanceDataSource; campusOptions: CampusOption[]; initialCampusId?: string }>()
+const catalog = useRescueCatalog(props.dataSource, props.initialCampusId)
 const drawerSize = 'min(660px, 100vw)'
 const totalPages = computed(() => Math.max(1, Math.ceil(catalog.total.value / catalog.criteria.size)))
 const formatTime = (value: string | null) => value
@@ -27,7 +27,7 @@ const terminalLabel = (item: RescueListItem) => {
   return item.caseStatus ? caseStatusLabels[item.caseStatus] : '尚未建案'
 }
 const summaryStep = (status: RescueStatus) => status === 'WAITING_CLAIM' ? 0 : status === 'IN_PROGRESS' ? 1 : 2
-onMounted(() => { void catalog.load() })
+onMounted(() => { if (catalog.criteria.campusId) void catalog.load() })
 </script>
 
 <template>

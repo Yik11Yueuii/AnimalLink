@@ -8,7 +8,6 @@ export interface AdoptionListingSummary {
   status: AdoptionListingStatus
   title: string
   description: string
-  publisherUserId: string
   createdAt: string
   updatedAt: string
   publishedAt: string | null
@@ -18,12 +17,12 @@ export interface AdoptionListingSummary {
 export interface GovernanceAdoptionApplication {
   applicationId: string
   listingId: string
-  applicantUserId: string
+  applicantReference: string
   status: AdoptionApplicationStatus
   message: string
   createdAt: string
   updatedAt: string
-  reviewerUserId: string | null
+  reviewerReference: string | null
   reviewedAt: string | null
   reviewComment: string | null
   listing: AdoptionListingSummary

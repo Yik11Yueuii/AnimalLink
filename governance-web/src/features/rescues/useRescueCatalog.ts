@@ -1,10 +1,10 @@
 import { reactive, ref } from 'vue'
 import type { RescueGovernanceDataSource } from './dataSource'
 import type { RescueDetail, RescueSearchCriteria } from './types'
-const defaultCriteria = (): RescueSearchCriteria => ({ keyword: '', campusId: '', rescueStatus: '', sort: 'UPDATED_DESC', page: 1, size: 6 })
+const defaultCriteria = (campusId = ''): RescueSearchCriteria => ({ keyword: '', campusId, rescueStatus: '', sort: 'UPDATED_DESC', page: 1, size: 6 })
 const message = (error: unknown, fallback: string) => error instanceof Error && error.message.trim() ? error.message : fallback
-export const useRescueCatalog = (dataSource: RescueGovernanceDataSource) => {
-  const criteria = reactive(defaultCriteria())
+export const useRescueCatalog = (dataSource: RescueGovernanceDataSource, initialCampusId = '') => {
+  const criteria = reactive(defaultCriteria(initialCampusId))
   const items = ref<Awaited<ReturnType<RescueGovernanceDataSource['search']>>['items']>([])
   const total = ref(0), loading = ref(false), errorMessage = ref('')
   const detail = ref<RescueDetail | null>(null), detailVisible = ref(false), detailLoading = ref(false), detailError = ref('')
@@ -22,7 +22,7 @@ export const useRescueCatalog = (dataSource: RescueGovernanceDataSource) => {
       items.value = []; total.value = 0; errorMessage.value = message(error, '救助事件加载失败，请稍后重试。')
     } finally { if (generation === searchGeneration) loading.value = false }
   }
-  const reset = async () => { Object.assign(criteria, defaultCriteria()); await load() }
+  const reset = async () => { Object.assign(criteria, defaultCriteria(initialCampusId)); await load() }
   const changePage = async (page: number) => { criteria.page = page; await load() }
   const changePageSize = async (size: number) => { criteria.size = size; await load(true) }
   const openDetail = async (eventId: string) => {

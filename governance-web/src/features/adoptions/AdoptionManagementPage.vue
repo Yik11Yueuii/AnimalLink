@@ -46,11 +46,11 @@ onMounted(() => { void catalog.load() })
       <div class="result-summary" aria-live="polite"><strong>{{ catalog.total.value }}</strong><span>条匹配申请</span></div>
     </header>
 
-    <section class="stats-grid" aria-label="当前模拟数据状态统计">
+    <section class="stats-grid" aria-label="当前查询范围状态统计">
       <article v-for="status in statusOrder" :key="status" :class="['stat-card', `stat-${status.toLowerCase()}`]">
         <span>{{ adoptionApplicationStatusLabels[status] }}</span>
         <strong>{{ catalog.statusCounts.value[status] }}</strong>
-        <small>当前关键词范围 · 模拟数据</small>
+        <small>当前关键词范围 · 实时查询</small>
       </article>
     </section>
 
@@ -95,7 +95,7 @@ onMounted(() => { void catalog.load() })
             <div class="application-cell"><span class="application-icon">♡</span><div><strong>{{ row.listing.title }}</strong><small>申请 {{ compactId(row.applicationId) }} · Listing {{ compactId(row.listingId) }}</small></div></div>
           </template>
         </el-table-column>
-        <el-table-column label="申请人" min-width="135"><template #default="{ row }: { row: GovernanceAdoptionApplication }"><span>用户 {{ compactId(row.applicantUserId) }}</span><small class="table-sub">仅展示脱敏标识</small></template></el-table-column>
+        <el-table-column label="申请人" min-width="135"><template #default="{ row }: { row: GovernanceAdoptionApplication }"><span>{{ row.applicantReference }}</span><small class="table-sub">服务端脱敏引用</small></template></el-table-column>
         <el-table-column label="申请状态" width="125"><template #default="{ row }: { row: GovernanceAdoptionApplication }"><el-tag :type="applicationStatusType(row.status)">{{ adoptionApplicationStatusLabels[row.status] }}</el-tag><small class="table-sub">{{ row.status }}</small></template></el-table-column>
         <el-table-column label="Listing" width="115"><template #default="{ row }: { row: GovernanceAdoptionApplication }"><el-tag effect="plain" :type="listingStatusType(row.listing.status)">{{ adoptionListingStatusLabels[row.listing.status] }}</el-tag></template></el-table-column>
         <el-table-column label="申请 / 更新" min-width="175"><template #default="{ row }: { row: GovernanceAdoptionApplication }"><span>{{ formatTime(row.createdAt) }}</span><small class="table-sub">更新 {{ formatTime(row.updatedAt) }}</small></template></el-table-column>
@@ -107,7 +107,7 @@ onMounted(() => { void catalog.load() })
           <div class="card-heading"><span class="application-icon">♡</span><div><strong>{{ item.listing.title }}</strong><small>Animal {{ compactId(item.listing.animalId) }}</small></div><el-button link type="primary">详情</el-button></div>
           <p>{{ item.message }}</p>
           <div class="tag-row"><el-tag :type="applicationStatusType(item.status)">{{ adoptionApplicationStatusLabels[item.status] }}</el-tag><el-tag effect="plain" :type="listingStatusType(item.listing.status)">{{ adoptionListingStatusLabels[item.listing.status] }}</el-tag></div>
-          <dl class="card-facts"><div><dt>申请人</dt><dd>用户 {{ compactId(item.applicantUserId) }}</dd></div><div><dt>申请时间</dt><dd>{{ formatTime(item.createdAt) }}</dd></div><div><dt>审核时间</dt><dd>{{ formatTime(item.reviewedAt) }}</dd></div><div><dt>最近更新</dt><dd>{{ formatTime(item.updatedAt) }}</dd></div></dl>
+          <dl class="card-facts"><div><dt>申请人</dt><dd>{{ item.applicantReference }}</dd></div><div><dt>申请时间</dt><dd>{{ formatTime(item.createdAt) }}</dd></div><div><dt>审核时间</dt><dd>{{ formatTime(item.reviewedAt) }}</dd></div><div><dt>最近更新</dt><dd>{{ formatTime(item.updatedAt) }}</dd></div></dl>
         </article>
       </div>
 
@@ -129,7 +129,7 @@ onMounted(() => { void catalog.load() })
         </section>
         <section class="detail-section">
           <h3>申请信息</h3>
-          <dl class="detail-grid"><div><dt>申请人</dt><dd>用户 {{ compactId(catalog.detail.value.applicantUserId) }}</dd></div><div><dt>申请时间</dt><dd>{{ formatTime(catalog.detail.value.createdAt) }}</dd></div><div><dt>最近更新</dt><dd>{{ formatTime(catalog.detail.value.updatedAt) }}</dd></div><div><dt>审核时间</dt><dd>{{ formatTime(catalog.detail.value.reviewedAt) }}</dd></div><div><dt>审核人</dt><dd>{{ catalog.detail.value.reviewerUserId ? `用户 ${compactId(catalog.detail.value.reviewerUserId)}` : '尚未审核' }}</dd></div></dl>
+          <dl class="detail-grid"><div><dt>申请人</dt><dd>{{ catalog.detail.value.applicantReference }}</dd></div><div><dt>申请时间</dt><dd>{{ formatTime(catalog.detail.value.createdAt) }}</dd></div><div><dt>最近更新</dt><dd>{{ formatTime(catalog.detail.value.updatedAt) }}</dd></div><div><dt>审核时间</dt><dd>{{ formatTime(catalog.detail.value.reviewedAt) }}</dd></div><div><dt>审核人</dt><dd>{{ catalog.detail.value.reviewerReference || '尚未审核' }}</dd></div></dl>
           <div class="detail-copy"><span>申请说明</span><p>{{ catalog.detail.value.message || '申请人未填写说明。' }}</p></div>
           <div class="detail-copy"><span>审核意见</span><p>{{ catalog.detail.value.reviewComment || '暂无审核意见。' }}</p></div>
         </section>

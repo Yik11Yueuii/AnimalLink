@@ -12,17 +12,17 @@ const deferred = <T>() => {
 const item = (applicationId: string): GovernanceAdoptionApplication => ({
   applicationId,
   listingId: 'listing',
-  applicantUserId: 'applicant',
+  applicantReference: 'user-…applicant',
   status: 'SUBMITTED',
   message: applicationId,
   createdAt: '2026-10-01T00:00:00Z',
   updatedAt: '2026-10-01T00:00:00Z',
-  reviewerUserId: null,
+  reviewerReference: null,
   reviewedAt: null,
   reviewComment: null,
   listing: {
     listingId: 'listing', animalId: 'animal', status: 'PUBLISHED', title: applicationId,
-    description: applicationId, publisherUserId: 'publisher', createdAt: '2026-09-01T00:00:00Z',
+    description: applicationId, createdAt: '2026-09-01T00:00:00Z',
     updatedAt: '2026-10-01T00:00:00Z', publishedAt: '2026-09-02T00:00:00Z', closedAt: null,
   },
 })

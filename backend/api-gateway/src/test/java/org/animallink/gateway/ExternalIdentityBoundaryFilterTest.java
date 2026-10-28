@@ -66,6 +66,35 @@ class ExternalIdentityBoundaryFilterTest {
     }
 
     @Test
+    void governanceReadsRequireValidatedAdminPrincipalAndStillStripForgedHeaders() {
+        var filter = new ExternalIdentityBoundaryFilter(new MockEnvironment());
+        var unauthenticated = MockServerWebExchange.from(MockServerHttpRequest
+                .get("/incident/api/v1/admin/rescues").header("X-User-Id", ADMIN).build());
+        assertNull(run(filter, unauthenticated).get());
+        assertEquals(HttpStatus.UNAUTHORIZED, unauthenticated.getResponse().getStatusCode());
+
+        var authenticated = MockServerWebExchange.from(MockServerHttpRequest
+                .get("/adoption/api/v1/admin/applications")
+                .header("X-User-Id", "00000000-0000-0000-0000-000000000099")
+                .header("Authorization", "Bearer forged").build());
+        authenticated.getAttributes().put(GatewayAdminSessionAuthenticationFilter.PRINCIPAL_ATTRIBUTE,
+                new IdentitySessionClient.GatewayAuthenticatedPrincipal("session", ADMIN,
+                        "GOVERNANCE_ADMIN", java.time.Instant.now().plusSeconds(60),
+                        java.time.Instant.now().plusSeconds(120)));
+        var forwarded = run(filter, authenticated).get();
+        assertNotNull(forwarded);
+        assertFalse(forwarded.getRequest().getHeaders().containsKey("X-User-Id"));
+        assertFalse(forwarded.getRequest().getHeaders().containsKey("Authorization"));
+
+        var write = MockServerWebExchange.from(MockServerHttpRequest
+                .post("/adoption/api/v1/admin/applications").build());
+        write.getAttributes().put(GatewayAdminSessionAuthenticationFilter.PRINCIPAL_ATTRIBUTE,
+                authenticated.getAttribute(GatewayAdminSessionAuthenticationFilter.PRINCIPAL_ATTRIBUTE));
+        assertNull(run(filter, write).get());
+        assertEquals(HttpStatus.UNAUTHORIZED, write.getResponse().getStatusCode());
+    }
+
+    @Test
     void formalModeAllowsOnlyExactAuthenticationMethodsAndPaths() {
         var filter = new ExternalIdentityBoundaryFilter(new MockEnvironment());
         for (var allowed : new Object[][] {
