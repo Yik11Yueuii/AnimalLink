@@ -1,0 +1,39 @@
+name: Incident public rescue MySQL integration
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/incident-public-rescue-mysql-integration.yml'
+      - 'backend/pom.xml'
+      - 'backend/incident-service/**'
+
+permissions:
+  contents: read
+
+jobs:
+  public-rescue-read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Verify runner Docker Engine
+        run: docker version
+
+      - name: Run public rescue MySQL integration test
+        run: >-
+          ./mvnw -pl backend/incident-service -am
+          -Dtest=PublicRescueReadIntegrationTest
+          -Dsurefire.failIfNoSpecifiedTests=false test
+
+      - name: Print Surefire failure summary
+        if: failure()
+        run: |
+          find backend/incident-service/target/surefire-reports -maxdepth 1 -type f \( -name '*.txt' -o -name 'TEST-*.xml' \) -print -exec sed -n '1,240p' {} \; || true

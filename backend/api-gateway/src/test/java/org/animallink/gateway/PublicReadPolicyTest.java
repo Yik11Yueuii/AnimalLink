@@ -41,6 +41,8 @@ class PublicReadPolicyTest {
                 "/animal/api/v1/public/campuses/" + ID + "/feed",
                 "/animal/api/v1/public/posts/" + ID,
                 "/animal/api/v1/public/posts/" + ID + "/comments",
+                "/incident/api/v1/public/rescues",
+                "/incident/api/v1/public/rescues/" + ID,
                 "/incident/api/v1/cases/" + ID + "/support/expenses"}) {
             assertTrue(forwarded(HttpMethod.GET, path), path);
             assertTrue(forwarded(HttpMethod.HEAD, path), path);
@@ -67,6 +69,7 @@ class PublicReadPolicyTest {
                 "/animal/api/v1/posts/" + ID + "/comments",
                 "/animal/api/v1/campuses/" + ID + "/feed",
                 "/incident/api/v1/rescues/" + ID,
+                "/incident/api/v1/public/rescues/" + ID + "/extra",
                 "/intelligence/api/v1/ai/tasks/" + ID}) {
             assertFalse(forwarded(HttpMethod.GET, path), path);
             assertFalse(forwarded(HttpMethod.HEAD, path), path);
@@ -90,6 +93,9 @@ class PublicReadPolicyTest {
                 "/animal/api/v1/public/campuses/" + ID + "/feed/",
                 "/animal/api/v1/public/posts/not-a-uuid",
                 "/animal/api/v1/public/posts/" + ID + "/comments/extra",
+                "/incident/api/v1/public/rescues/", "/incident/api/v1/public/rescues;foo",
+                "/incident/api/v1/public/rescues/not-a-uuid", "/incident/api/v1/%70ublic/rescues",
+                "/incident/api/v1/public/rescues/" + ID + "/extra",
                 "/animal/api/v1/%70ublic/animals",
                 "/identity/internal/v1/users", "/identity/%69nternal/v1/users",
                 "/incident/api/v1/cases/" + ID + "/support/expenses%2f" + ID + "/private"}) {
