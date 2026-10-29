@@ -1,11 +1,11 @@
 <view class="page-shell">
-  <view wx:if="{{offline}}" class="mode-banner">本地离线演示 · 模拟公开档案</view>
+  <view wx:if="{{offline}}" class="mode-banner">本地离线演示 · 以下为虚构的公开档案与时间线</view>
   <view wx:if="{{loading}}" class="state-card surface"><text class="state-icon">⌛</text><text class="state-title">正在读取公开档案</text></view>
   <view wx:elif="{{errorMessage}}" class="state-card surface"><text class="state-icon">!</text><text class="state-title">档案加载失败</text><text class="state-copy">{{errorMessage}}</text><button class="primary-button" bindtap="onRetry">重试</button></view>
   <block wx:elif="{{animal}}">
     <view class="profile surface"><image src="/assets/animal-placeholder.jpg" mode="aspectFill" /><view class="profile-body"><text class="eyebrow">{{animal.speciesText}} · {{animal.sexText}}</text><text class="animal-name">{{animal.displayName}}</text><text class="muted">毛色 · {{animal.coatColor || '暂未记录'}}</text></view></view>
     <view class="media-note">匿名公开接口暂不提供媒体地址，因此使用本地占位图。</view>
-    <view class="section surface"><text class="section-title">公开档案资料</text><view class="description">详细描述、显著特征、常驻区域和绝育信息尚未纳入匿名公开字段。</view><view class="facts"><view><text>领养状态</text><text>{{animal.adoptionText}}</text></view><view><text>当前场景</text><text>{{animal.contextText}}</text></view><view><text>档案建立</text><text>{{animal.createdDate}}</text></view><view><text>最近更新</text><text>{{animal.updatedDate}}</text></view></view></view>
+    <view class="section surface"><text class="section-title">公开档案资料</text><view class="description">这里只展示已获准公开的基础资料。详细描述、常驻区域和绝育信息不会在匿名浏览中展示。</view><view class="facts"><view><text>领养状态</text><text>{{animal.adoptionText}}</text></view><view><text>当前场景</text><text>{{animal.contextText}}</text></view><view><text>档案建立</text><text>{{animal.createdDate}}</text></view><view><text>最近更新</text><text>{{animal.updatedDate}}</text></view></view></view>
     <view class="section surface"><text class="section-title">生活时间线</text><view wx:if="{{timelineMessage}}" class="empty-timeline">{{timelineMessage}}</view><view wx:elif="{{timeline.length === 0}}" class="empty-timeline">暂无公开时间线记录</view><view wx:else class="timeline"><view wx:for="{{timeline}}" wx:key="id" class="timeline-item"><view class="dot"></view><view class="timeline-body"><text class="timeline-date">{{item.occurredDate}}</text><text class="timeline-title">{{item.title}}</text><text class="timeline-summary">{{item.summary}}</text></view></view></view></view>
     <view class="record-id">档案 ID · {{animal.id}}</view>
   </block>

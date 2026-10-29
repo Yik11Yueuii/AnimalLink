@@ -6,6 +6,7 @@
 .readonly-note { margin-top: 12rpx; color: #4f7b6c; font-size: 23rpx; }
 .result-meta { display: flex; justify-content: space-between; padding: 24rpx 4rpx 12rpx; color: #8b7468; font-size: 24rpx; }
 .post-card { margin-bottom: 22rpx; padding: 28rpx; }
+.post-card:active { transform: scale(.995); background: #fff9f5; }
 .post-meta { display: flex; align-items: center; }
 .author-avatar { display: flex; align-items: center; justify-content: center; width: 70rpx; height: 70rpx; color: #fff; border-radius: 50%; background: #e97757; font-size: 27rpx; font-weight: 800; }
 .author-copy { flex: 1; min-width: 0; padding-left: 18rpx; }
@@ -34,3 +35,8 @@
 .retry-link { font-weight: 700; }
 .load-more { color: #8b4a34; border-radius: 22rpx; background: #fff0e9; font-size: 26rpx; }
 .list-end { display: block; padding: 26rpx; color: #9a857a; text-align: center; font-size: 23rpx; }
+@media (max-width: 360px) {
+  .circle-heading { gap: 12rpx; }
+  .campus-button { min-width: 132rpx; padding: 0 14rpx; font-size: 22rpx; }
+  .engagement { gap: 16rpx; font-size: 20rpx; }
+}
