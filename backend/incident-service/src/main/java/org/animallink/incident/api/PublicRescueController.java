@@ -18,16 +18,16 @@ public class PublicRescueController {
     }
 
     @GetMapping
-    public PublicRescueReadService.Page search(@RequestParam String campusId,
-                                                @RequestParam(required = false) String status,
-                                                @RequestParam(defaultValue = "0") int page,
-                                                @RequestParam(defaultValue = "20") int size) {
+    public PublicRescueReadService.Page search(@RequestParam("campusId") String campusId,
+                                                @RequestParam(value = "status", required = false) String status,
+                                                @RequestParam(value = "page", defaultValue = "0") int page,
+                                                @RequestParam(value = "size", defaultValue = "20") int size) {
         return service.search(campusId, status, page, size);
     }
 
     @GetMapping("/{eventId}")
-    public PublicRescueReadService.Detail detail(@PathVariable String eventId,
-                                                  @RequestParam String campusId) {
+    public PublicRescueReadService.Detail detail(@PathVariable("eventId") String eventId,
+                                                  @RequestParam("campusId") String campusId) {
         return service.detail(campusId, eventId);
     }
 }
