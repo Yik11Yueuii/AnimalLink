@@ -8,6 +8,7 @@
 .species-picker { margin-top: 14rpx; padding: 18rpx; color: #715d52; border-radius: 18rpx; background: #f1f8f5; font-size: 25rpx; }
 .result-meta { display: flex; justify-content: space-between; padding: 24rpx 4rpx 12rpx; color: #8b7468; font-size: 24rpx; }
 .animal-card { display: flex; align-items: center; margin-bottom: 18rpx; padding: 18rpx; }
+.animal-card:active { transform: scale(.992); background: #fff8f3; }
 .animal-image { flex: 0 0 auto; width: 150rpx; height: 150rpx; border-radius: 24rpx; background: #f3e3d7; }
 .animal-body { flex: 1; min-width: 0; padding: 0 20rpx; }
 .animal-title-row, .status-row { display: flex; align-items: center; gap: 12rpx; }
@@ -23,3 +24,9 @@
 .retry-link { font-weight: 700; }
 .load-more { color: #8b4a34; border-radius: 22rpx; background: #fff0e9; font-size: 26rpx; }
 .list-end { display: block; padding: 26rpx; color: #9a857a; text-align: center; font-size: 23rpx; }
+@media (max-width: 360px) {
+  .animal-image { width: 124rpx; height: 124rpx; }
+  .animal-body { padding: 0 12rpx; }
+  .animal-name { max-width: 190rpx; font-size: 29rpx; }
+  .status-row { flex-wrap: wrap; }
+}

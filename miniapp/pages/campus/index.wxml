@@ -17,23 +17,28 @@
     </view>
   </view>
 
-  <view class="result-meta"><text>首批高校</text><text>{{universityTotal}} 所</text></view>
+  <view class="result-meta"><text>首批高校</text><text>{{universityTotal}} 所高校</text></view>
   <view wx:if="{{loading}}" class="state-card surface"><text class="state-icon">⌛</text><text class="state-title">正在读取高校目录</text></view>
   <view wx:elif="{{errorMessage}}" class="state-card surface"><text class="state-icon">!</text><text class="state-title">加载失败</text><text class="state-copy">{{errorMessage}}</text><button class="primary-button" bindtap="onRetry">重试</button></view>
   <view wx:elif="{{universities.length === 0}}" class="state-card surface"><text class="state-icon">⌕</text><text class="state-title">没有匹配的高校</text><text class="state-copy">换一个关键词或地区再试试。</text></view>
   <view wx:else class="university-list">
       <view wx:if="{{selectionError}}" class="selection-error">{{selectionError}}</view>
-      <view wx:for="{{universities}}" wx:key="id" class="university surface {{item.id === selectedUniversityId ? 'current' : ''}}" data-id="{{item.id}}" bindtap="chooseUniversity">
-        <view class="university-main">
-          <view class="university-title-row">
-            <text class="university-name">{{item.officialName}}</text>
-            <text class="availability {{item.communityAvailable ? 'open' : 'closed'}}">{{item.communityAvailable ? '社区已开放' : '社区尚未开放'}}</text>
+      <block wx:for="{{universities}}" wx:key="id">
+        <view wx:if="{{item.communityAvailable}}" class="university surface {{item.id === selectedUniversityId ? 'current' : ''}}" data-id="{{item.id}}" bindtap="chooseUniversity">
+          <view class="university-main">
+            <view class="university-title-row"><text class="university-name">{{item.officialName}}</text><text class="availability open">社区已开放</text></view>
+            <text class="university-location">{{item.province}} · {{item.city}}</text><text class="institution-code">学校识别码 {{item.moeInstitutionCode}}</text>
           </view>
-          <text class="university-location">{{item.province}} · {{item.city}}</text>
-          <text class="institution-code">学校识别码 {{item.moeInstitutionCode}}</text>
+          <text class="choose">{{openingUniversityId === item.id ? '进入中…' : (item.id === selectedUniversityId ? '当前学校' : '进入社区 ›')}}</text>
         </view>
-        <text class="choose">{{openingUniversityId === item.id ? '进入中…' : (item.id === selectedUniversityId ? '当前学校' : (item.communityAvailable ? '进入社区 ›' : '未开放'))}}</text>
-      </view>
+        <view wx:else class="university surface unavailable">
+          <view class="university-main">
+            <view class="university-title-row"><text class="university-name">{{item.officialName}}</text><text class="availability closed">暂未开通</text></view>
+            <text class="university-location">{{item.province}} · {{item.city}}</text><text class="institution-code">学校识别码 {{item.moeInstitutionCode}}</text>
+          </view>
+          <text class="choose choose-disabled">暂不可进入</text>
+        </view>
+      </block>
       <button wx:if="{{hasMoreUniversities}}" class="load-more" loading="{{loadingMore}}" disabled="{{loadingMore}}" bindtap="loadMoreUniversities">加载更多高校</button>
   </view>
 </view>

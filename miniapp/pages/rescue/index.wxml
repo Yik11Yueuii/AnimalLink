@@ -2,7 +2,7 @@
   <view class="skeleton surface">
     <text class="eyebrow">RESCUE</text>
     <text class="page-title">校园救助</text>
-    <text class="skeleton-copy">救助事件浏览、上报与志愿者处理将在后续阶段接入。</text>
+    <text class="skeleton-copy">救助事件浏览、上报与志愿者处理将在后续阶段接入。当前不会创建或修改任何救助记录。</text>
     <view class="boundary">当前页面不提供虚假的求助、认领或处理操作。</view>
   </view>
 </view>

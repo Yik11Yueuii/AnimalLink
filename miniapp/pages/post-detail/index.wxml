@@ -1,5 +1,5 @@
 <view class="page-shell">
-  <view wx:if="{{offline}}" class="mode-banner">本地离线演示 · 模拟公开社区数据</view>
+  <view wx:if="{{offline}}" class="mode-banner">本地离线演示 · 以下为虚构静态社区内容，不代表真实审核数据</view>
   <view wx:if="{{loading}}" class="state-card surface"><text class="state-icon">⌛</text><text class="state-title">正在读取校园动态</text></view>
   <view wx:elif="{{errorMessage}}" class="state-card surface"><text class="state-icon">!</text><text class="state-title">动态加载失败</text><text class="state-copy">{{errorMessage}}</text><button class="primary-button" bindtap="onRetry">重试</button></view>
   <block wx:elif="{{post}}">
@@ -10,7 +10,7 @@
       <view class="engagement"><text>♡ {{post.likeCount}} 次点赞</text><text>○ {{post.commentCount}} 条评论</text></view>
     </view>
     <view class="comments-section surface">
-      <view class="comments-heading"><text>公开评论</text><text>{{commentTotal}}</text></view>
+      <view class="comments-heading"><text>公开评论</text><text>{{commentTotal}} 条</text></view>
       <view wx:if="{{commentsLoading}}" class="comments-state">正在读取评论…</view>
       <view wx:elif="{{commentsError && comments.length === 0}}" class="comments-state error"><text>{{commentsError}}</text><text class="retry-link" bindtap="onRetry">重试</text></view>
       <view wx:elif="{{comments.length === 0}}" class="comments-state">暂无公开评论</view>

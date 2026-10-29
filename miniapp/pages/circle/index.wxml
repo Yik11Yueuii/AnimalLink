@@ -1,5 +1,5 @@
 <view class="page-shell">
-  <view wx:if="{{offline}}" class="mode-banner">本地离线演示 · 以下为明确标注的模拟社区数据</view>
+  <view wx:if="{{offline}}" class="mode-banner">本地离线演示 · 以下均为虚构静态动态，不代表真实校园审核结果</view>
   <view class="circle-heading">
     <view><text class="eyebrow">CAMPUS CIRCLE</text><text class="page-title">校园动态</text></view>
     <button class="campus-button" bindtap="changeCampus">{{campus ? (campus.shortName || campus.name) : '选择 Campus'}}⌄</button>
@@ -8,7 +8,7 @@
     <text>在同一个 Campus 里，持续记录动物的日常、救助和领养后近况。</text>
     <text class="readonly-note">当前仅开放公开阅读，发布、点赞和评论尚未开放。</text>
   </view>
-  <view class="result-meta"><text>{{campus.name}}</text><text>{{total}} 条动态</text></view>
+  <view class="result-meta"><text>{{campus ? campus.name : '当前 Campus'}}</text><text>{{total}} 条公开动态</text></view>
   <view wx:if="{{loading}}" class="state-card surface"><text class="state-icon">⌛</text><text class="state-title">正在读取校园动态</text></view>
   <view wx:elif="{{errorMessage && posts.length === 0}}" class="state-card surface"><text class="state-icon">!</text><text class="state-title">社区加载失败</text><text class="state-copy">{{errorMessage}}</text><button class="primary-button" bindtap="onRetry">重试</button></view>
   <view wx:elif="{{posts.length === 0}}" class="state-card surface"><text class="state-icon">○</text><text class="state-title">当前 Campus 暂无公开动态</text><text class="state-copy">可以切换 Campus 查看其他校园。</text></view>

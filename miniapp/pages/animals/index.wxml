@@ -8,14 +8,14 @@
     <view class="search-row"><input value="{{q}}" placeholder="名称或毛色" confirm-type="search" bindinput="onKeywordInput" bindconfirm="onSearch" /><button bindtap="onSearch">搜索</button></view>
     <picker mode="selector" range="{{speciesLabels}}" value="{{speciesIndex}}" bindchange="onSpeciesChange"><view class="species-picker">物种 · {{speciesLabels[speciesIndex]}}⌄</view></picker>
   </view>
-  <view class="result-meta"><text>{{campus.name}}</text><text>{{total}} 条档案</text></view>
+  <view class="result-meta"><text>{{campus ? campus.name : '当前 Campus'}}</text><text>{{total}} 条公开档案</text></view>
   <view wx:if="{{loading}}" class="state-card surface"><text class="state-icon">⌛</text><text class="state-title">正在读取 Animal 档案</text></view>
   <view wx:elif="{{errorMessage && animals.length === 0}}" class="state-card surface"><text class="state-icon">!</text><text class="state-title">加载失败</text><text class="state-copy">{{errorMessage}}</text><button class="primary-button" bindtap="onRetry">重试</button></view>
   <view wx:elif="{{animals.length === 0}}" class="state-card surface"><text class="state-icon">⌕</text><text class="state-title">没有匹配的档案</text><text class="state-copy">调整关键词或物种筛选后再试试。</text></view>
   <view wx:else class="animal-list">
     <view wx:for="{{animals}}" wx:key="id" class="animal-card surface" data-id="{{item.id}}" bindtap="openDetail">
       <image class="animal-image" src="/assets/animal-placeholder.jpg" mode="aspectFill" />
-      <view class="animal-body"><view class="animal-title-row"><text class="animal-name">{{item.displayName}}</text><text class="species-chip">{{item.speciesText}}</text></view><text class="animal-feature">毛色 · {{item.coatColor || '暂未记录'}}</text><view class="status-row"><text class="status adoption">{{item.adoptionText}}</text><text class="status context">{{item.contextText}}</text></view></view>
+      <view class="animal-body"><view class="animal-title-row"><text class="animal-name">{{item.displayName}}</text><text class="species-chip">{{item.speciesText}}</text></view><text class="animal-feature">公开档案 · 毛色 {{item.coatColor || '暂未记录'}}</text><view class="status-row"><text class="status adoption">{{item.adoptionText}}</text><text class="status context">{{item.contextText}}</text></view></view>
       <text class="chevron">›</text>
     </view>
     <view wx:if="{{errorMessage}}" class="inline-error"><text>{{errorMessage}}</text><text class="retry-link" bindtap="loadMore">重试加载</text></view>

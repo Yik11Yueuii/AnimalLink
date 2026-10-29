@@ -6,7 +6,7 @@
 .author-copy text { display: block; }
 .author-name { font-size: 28rpx; font-weight: 700; }
 .post-time { margin-top: 7rpx; color: #9a857a; font-size: 22rpx; }
-.type-chip { padding: 8rpx 14rpx; color: #a55237; border-radius: 999rpx; background: #fff0e9; font-size: 21rpx; }
+.type-chip { max-width: 180rpx; overflow: hidden; padding: 8rpx 14rpx; color: #a55237; border-radius: 999rpx; background: #fff0e9; font-size: 21rpx; text-overflow: ellipsis; white-space: nowrap; }
 .post-content { display: block; margin-top: 30rpx; color: #4f382c; font-size: 30rpx; line-height: 1.85; }
 .media-placeholder { position: relative; overflow: hidden; margin-top: 26rpx; height: 300rpx; border-radius: 26rpx; }
 .media-placeholder image { width: 100%; height: 100%; opacity: .7; }
@@ -34,3 +34,8 @@
 .retry-link { margin-left: 18rpx; font-weight: 700; }
 .comments-more { margin-top: 16rpx; color: #4f7468; border-radius: 20rpx; background: #edf7f2; font-size: 24rpx; }
 .readonly-note { margin-top: 24rpx; padding: 18rpx; color: #80685d; border-radius: 18rpx; background: #fbf4ed; font-size: 22rpx; line-height: 1.55; }
+@media (max-width: 360px) {
+  .post-detail, .comments-section { padding: 24rpx; }
+  .type-chip { max-width: 136rpx; }
+  .engagement { gap: 20rpx; font-size: 21rpx; }
+}
