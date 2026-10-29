@@ -17,7 +17,7 @@
     </view>
   </view>
 
-  <view class="result-meta"><text>首批高校</text><text>{{universityTotal}} 所可浏览</text></view>
+  <view class="result-meta"><text>首批高校</text><text>{{universityTotal}} 所高校</text></view>
   <view wx:if="{{loading}}" class="state-card surface"><text class="state-icon">⌛</text><text class="state-title">正在读取高校目录</text></view>
   <view wx:elif="{{errorMessage}}" class="state-card surface"><text class="state-icon">!</text><text class="state-title">加载失败</text><text class="state-copy">{{errorMessage}}</text><button class="primary-button" bindtap="onRetry">重试</button></view>
   <view wx:elif="{{universities.length === 0}}" class="state-card surface"><text class="state-icon">⌕</text><text class="state-title">没有匹配的高校</text><text class="state-copy">换一个关键词或地区再试试。</text></view>
