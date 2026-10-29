@@ -40,6 +40,15 @@ management:
       show-details: when_authorized
       show-components: always
 animallink:
+  authentication:
+    incident-admin-assertion:
+      expected-issuer: ${AUTH_INCIDENT_ASSERTION_ISSUER:api-gateway}
+      expected-subject: ${AUTH_INCIDENT_ASSERTION_SUBJECT:api-gateway}
+      expected-audience: ${AUTH_INCIDENT_ASSERTION_AUDIENCE:incident-service}
+      maximum-lifetime: ${AUTH_INCIDENT_ASSERTION_MAXIMUM_LIFETIME:PT30S}
+      clock-skew: ${AUTH_INCIDENT_ASSERTION_CLOCK_SKEW:PT5S}
+      replay-capacity: ${AUTH_INCIDENT_ASSERTION_REPLAY_CAPACITY:10000}
+      keys: ${AUTH_INCIDENT_ASSERTION_KEYS:}
   messaging:
     enabled: ${ANIMALLINK_MESSAGING_ENABLED:true}
   identity:

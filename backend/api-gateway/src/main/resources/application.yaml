@@ -74,6 +74,20 @@ animallink:
       lifetime: ${AUTH_ANIMAL_ASSERTION_LIFETIME:PT15S}
       current-key-id: ${AUTH_ANIMAL_ASSERTION_CURRENT_KEY_ID:}
       keys: ${AUTH_ANIMAL_ASSERTION_KEYS:}
+    incident-admin-assertion:
+      issuer: ${AUTH_INCIDENT_ASSERTION_ISSUER:api-gateway}
+      subject: ${AUTH_INCIDENT_ASSERTION_SUBJECT:api-gateway}
+      audience: ${AUTH_INCIDENT_ASSERTION_AUDIENCE:incident-service}
+      lifetime: ${AUTH_INCIDENT_ASSERTION_LIFETIME:PT15S}
+      current-key-id: ${AUTH_INCIDENT_ASSERTION_CURRENT_KEY_ID:}
+      keys: ${AUTH_INCIDENT_ASSERTION_KEYS:}
+    adoption-admin-assertion:
+      issuer: ${AUTH_ADOPTION_ASSERTION_ISSUER:api-gateway}
+      subject: ${AUTH_ADOPTION_ASSERTION_SUBJECT:api-gateway}
+      audience: ${AUTH_ADOPTION_ASSERTION_AUDIENCE:adoption-service}
+      lifetime: ${AUTH_ADOPTION_ASSERTION_LIFETIME:PT15S}
+      current-key-id: ${AUTH_ADOPTION_ASSERTION_CURRENT_KEY_ID:}
+      keys: ${AUTH_ADOPTION_ASSERTION_KEYS:}
     identity-session:
       base-url: ${IDENTITY_INTERNAL_BASE_URL:http://identity-service}
       connect-timeout: ${IDENTITY_SESSION_CONNECT_TIMEOUT:PT2S}

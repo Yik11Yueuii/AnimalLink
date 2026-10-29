@@ -34,6 +34,22 @@ export default defineConfig(({ mode }) => {
           target: env.GOVERNANCE_GATEWAY_TARGET || 'http://127.0.0.1:8080',
           changeOrigin: false,
         },
+        '/animal/api/v1/public/animals': {
+          target: env.GOVERNANCE_GATEWAY_TARGET || 'http://127.0.0.1:8080',
+          changeOrigin: false,
+        },
+        '/incident/api/v1/admin/rescues': {
+          target: env.GOVERNANCE_GATEWAY_TARGET || 'http://127.0.0.1:8080',
+          changeOrigin: false,
+        },
+        '/adoption/api/v1/admin/applications': {
+          target: env.GOVERNANCE_GATEWAY_TARGET || 'http://127.0.0.1:8080',
+          changeOrigin: false,
+        },
+        '/identity/api/v1/campuses': {
+          target: env.GOVERNANCE_GATEWAY_TARGET || 'http://127.0.0.1:8080',
+          changeOrigin: false,
+        },
       },
     },
     test: {

@@ -40,6 +40,15 @@ management:
       show-details: when_authorized
       show-components: always
 animallink:
+  authentication:
+    adoption-admin-assertion:
+      expected-issuer: ${AUTH_ADOPTION_ASSERTION_ISSUER:api-gateway}
+      expected-subject: ${AUTH_ADOPTION_ASSERTION_SUBJECT:api-gateway}
+      expected-audience: ${AUTH_ADOPTION_ASSERTION_AUDIENCE:adoption-service}
+      maximum-lifetime: ${AUTH_ADOPTION_ASSERTION_MAXIMUM_LIFETIME:PT30S}
+      clock-skew: ${AUTH_ADOPTION_ASSERTION_CLOCK_SKEW:PT5S}
+      replay-capacity: ${AUTH_ADOPTION_ASSERTION_REPLAY_CAPACITY:10000}
+      keys: ${AUTH_ADOPTION_ASSERTION_KEYS:}
   messaging:
     enabled: ${ANIMALLINK_MESSAGING_ENABLED:true}
   identity:
