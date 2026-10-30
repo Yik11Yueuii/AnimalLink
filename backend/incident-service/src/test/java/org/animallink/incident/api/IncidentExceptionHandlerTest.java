@@ -1,6 +1,8 @@
 package org.animallink.incident.api;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import static org.junit.jupiter.api.Assertions.*;
 class IncidentExceptionHandlerTest {
  private final IncidentExceptionHandler h=new IncidentExceptionHandler();
@@ -10,5 +12,6 @@ class IncidentExceptionHandlerTest {
  @Test void draftNotFoundIs404(){var r=h.n(new EventController.NotFound("草稿不存在"));assertEquals(404,r.getStatusCode().value());assertEquals("EVENT_DRAFT_NOT_FOUND",error(r).code());}
  @Test void conflictIs409(){var r=h.c(new EventController.Conflict("当前 Event 不接受 Evidence"));assertEquals(409,r.getStatusCode().value());assertEquals("EVENT_NOT_ACCEPTING_EVIDENCE",error(r).code());}
  @Test void dependencyIs503(){var r=h.d(new EventController.Dependency("animal-service 暂不可用"));assertEquals(503,r.getStatusCode().value());assertEquals("ANIMAL_SERVICE_UNAVAILABLE",error(r).code());}
+ @Test void responseStatusExceptionPreservesItsHttpStatus(){var r=h.status(new ResponseStatusException(HttpStatus.NOT_FOUND,"private rescue"));assertEquals(404,r.getStatusCode().value());assertEquals("REQUEST_REJECTED",error(r).code());assertFalse(error(r).message().contains("private"));}
  @Test void unexpectedIs500(){var r=h.internal(new RuntimeException("jdbc password"));assertEquals(500,r.getStatusCode().value());assertEquals("INTERNAL_ERROR",error(r).code());assertFalse(error(r).message().contains("jdbc"));}
 }

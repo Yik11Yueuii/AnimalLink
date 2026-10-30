@@ -20,7 +20,7 @@ Page({
     hasMoreUniversities: false,
     selectedUniversityId: '',
     openingUniversityId: '',
-    returnTo: 'circle' as 'animals' | 'circle',
+    returnTo: 'circle' as 'animals' | 'circle' | 'rescue',
     loading: true,
     loadingMore: false,
     errorMessage: '',
@@ -29,7 +29,9 @@ Page({
   onLoad(options: Record<string, string | undefined>) {
     this.setData({
       selectedUniversityId: getSelectedCampus()?.universityId ?? '',
-      returnTo: options.returnTo === 'animals' ? 'animals' : 'circle',
+      returnTo: options.returnTo === 'animals' || options.returnTo === 'rescue'
+        ? options.returnTo
+        : 'circle',
     })
     void this.loadUniversities(true)
   },
@@ -67,7 +69,12 @@ Page({
       const community = await dataSource.getUniversityCommunity(university.id)
       if (requestVersion !== communityRequestVersion) return
       saveSelectedCampus(community)
-      wx.switchTab({ url: this.data.returnTo === 'animals' ? '/pages/animals/index' : '/pages/circle/index' })
+      const destination = this.data.returnTo === 'animals'
+        ? '/pages/animals/index'
+        : this.data.returnTo === 'rescue'
+          ? '/pages/rescue/index'
+          : '/pages/circle/index'
+      wx.switchTab({ url: destination })
     } catch (error) {
       if (requestVersion !== communityRequestVersion) return
       this.setData({ selectionError: readableError(error) })

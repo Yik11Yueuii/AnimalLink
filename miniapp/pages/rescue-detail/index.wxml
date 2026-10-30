@@ -1,0 +1,11 @@
+<view class="page-shell">
+  <view wx:if="{{offline}}" class="mode-banner">本地离线演示 · 以下为虚构公开救助案例</view>
+  <view wx:if="{{loading}}" class="state-card surface"><text class="state-icon">⌛</text><text class="state-title">正在读取公开处理进度</text></view>
+  <view wx:elif="{{errorMessage}}" class="state-card surface"><text class="state-icon">!</text><text class="state-title">救助详情加载失败</text><text class="state-copy">{{errorMessage}}</text><button class="primary-button" bindtap="onRetry">重试</button></view>
+  <block wx:elif="{{detail}}">
+    <view class="hero surface"><text class="eyebrow">VERIFIED RESCUE</text><view class="status-row"><text class="status status-{{detail.rescue.rescueStatus}}">{{statusText}}</text><text class="muted">更新于 {{detail.rescue.updatedAt}}</text></view><text class="summary">{{detail.rescue.publicSummary}}</text></view>
+    <view wx:if="{{detail.rescue.animal}}" class="animal-card surface" bindtap="openAnimal"><image src="/assets/animal-placeholder.jpg" mode="aspectFill" /><view><text class="animal-title">{{detail.rescue.animal.displayName}}</text><text class="animal-copy">关联 Animal · {{detail.rescue.animal.species === 'CAT' ? '猫' : (detail.rescue.animal.species === 'DOG' ? '狗' : '其他') }} · 查看公开档案</text></view><text class="arrow">›</text></view>
+    <view class="section surface"><text class="section-title">公开处理进度</text><view wx:if="{{detail.progress.length === 0}}" class="empty">暂无可公开的处理节点</view><view wx:else><view wx:for="{{detail.progress}}" wx:key="index" class="timeline-item"><view class="dot"></view><view><text class="progress-label">{{item.label}}</text><text class="progress-time">{{item.occurredAt}}</text></view></view></view></view>
+    <view class="notice">为保护上报人、志愿者和现场安全，本页不展示精确位置、事件描述、证据、处理记录或个人身份。</view>
+  </block>
+</view>

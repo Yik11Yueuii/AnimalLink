@@ -3,6 +3,7 @@ export type DataMode = 'api' | 'offline-demo'
 export interface RuntimeConfig {
   animalDataMode: DataMode
   communityDataMode: DataMode
+  rescueDataMode: DataMode
   gatewayBaseUrl: string
 }
 
@@ -11,5 +12,6 @@ export interface RuntimeConfig {
 export const runtimeConfig: RuntimeConfig = {
   animalDataMode: 'offline-demo',
   communityDataMode: 'offline-demo',
+  rescueDataMode: 'offline-demo',
   gatewayBaseUrl: '',
 }

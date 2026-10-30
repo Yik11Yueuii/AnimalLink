@@ -1,8 +1,21 @@
 <view class="page-shell">
-  <view class="skeleton surface">
-    <text class="eyebrow">RESCUE</text>
-    <text class="page-title">校园救助</text>
-    <text class="skeleton-copy">救助事件浏览、上报与志愿者处理将在后续阶段接入。当前不会创建或修改任何救助记录。</text>
-    <view class="boundary">当前页面不提供虚假的求助、认领或处理操作。</view>
+  <view wx:if="{{offline}}" class="mode-banner">本地离线演示 · 以下为虚构公开救助案例，不代表真实校园记录</view>
+  <view class="heading"><view><text class="eyebrow">PUBLIC RESCUE</text><text class="page-title">校园救助</text></view><button class="campus-button" bindtap="changeCampus">{{campus ? (campus.shortName || campus.name) : '选择高校'}}⌄</button></view>
+  <view class="intro surface">只展示已核查事件的公开处理状态；位置、上报人、证据和处理记录不会在这里公开。</view>
+  <picker mode="selector" range="{{statusLabels}}" value="{{statusIndex}}" bindchange="onStatusChange"><view class="status-picker">处理状态 · {{statusLabels[statusIndex]}}⌄</view></picker>
+  <view class="result-meta"><text>{{campus ? campus.name : '当前 Campus'}}</text><text>{{total}} 条公开救助</text></view>
+  <view wx:if="{{loading}}" class="state-card surface"><text class="state-icon">⌛</text><text class="state-title">正在读取公开救助信息</text></view>
+  <view wx:elif="{{errorMessage && rescues.length === 0}}" class="state-card surface"><text class="state-icon">!</text><text class="state-title">救助信息加载失败</text><text class="state-copy">{{errorMessage}}</text><button class="primary-button" bindtap="onRetry">重试</button></view>
+  <view wx:elif="{{rescues.length === 0}}" class="state-card surface"><text class="state-icon">○</text><text class="state-title">暂无符合条件的公开救助</text><text class="state-copy">可以切换处理状态或浏览其他已开通高校。</text></view>
+  <view wx:else class="rescue-list">
+    <view wx:for="{{rescues}}" wx:key="eventId" class="rescue-card surface" data-id="{{item.eventId}}" bindtap="openDetail">
+      <view class="card-top"><text class="status status-{{item.rescueStatus}}">{{item.statusText}}</text><text class="time">更新于 {{item.updatedText}}</text></view>
+      <text class="summary">{{item.publicSummary}}</text>
+      <view wx:if="{{item.animal}}" class="animal-row"><text class="animal-badge">关联 Animal</text><text>{{item.animal.displayName}} · {{item.animal.species === 'CAT' ? '猫' : (item.animal.species === 'DOG' ? '狗' : '其他') }}</text></view>
+      <text class="detail-link">查看公开进度 ›</text>
+    </view>
+    <view wx:if="{{errorMessage}}" class="inline-error"><text>{{errorMessage}}</text><text class="retry-link" bindtap="loadMore">重试加载</text></view>
+    <button wx:if="{{hasMore}}" class="load-more" loading="{{loadingMore}}" disabled="{{loadingMore}}" bindtap="loadMore">{{loadingMore ? '加载中' : '加载更多救助事件'}}</button>
+    <text wx:else class="list-end">已展示当前筛选下的全部公开救助</text>
   </view>
 </view>

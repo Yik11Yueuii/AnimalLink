@@ -3,6 +3,7 @@
     "pages/circle/index",
     "pages/animals/index",
     "pages/rescue/index",
+    "pages/rescue-detail/index",
     "pages/my/index",
     "pages/campus/index",
     "pages/animal-detail/index",
