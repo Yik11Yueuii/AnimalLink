@@ -56,3 +56,24 @@ test('offline demo never fabricates a WeChat identity', async () => {
     runtimeConfig.userAuthenticationMode = previousMode
   }
 })
+
+test('logout clears the local opaque session even when server revocation cannot be confirmed', async () => {
+  const storage = new Map<string, string>([['animallink.miniapp.user-session', TOKEN]])
+  const previousMode = runtimeConfig.userAuthenticationMode
+  const previousBaseUrl = runtimeConfig.gatewayBaseUrl
+  ;(globalThis as unknown as { wx: Record<string, unknown> }).wx = {
+    getStorageSync: (key: string) => storage.get(key),
+    setStorageSync: (key: string, value: string) => storage.set(key, value),
+    removeStorageSync: (key: string) => storage.delete(key),
+    request: ({ fail }: { fail: (value: { errMsg: string }) => void }) => fail({ errMsg: 'request:fail timeout' }),
+  }
+  try {
+    runtimeConfig.userAuthenticationMode = 'api'
+    runtimeConfig.gatewayBaseUrl = 'https://localhost:8443'
+    await assert.rejects(() => logoutMiniappUser(), /timeout/)
+    assert.equal(storedMiniappSession(), undefined)
+  } finally {
+    runtimeConfig.userAuthenticationMode = previousMode
+    runtimeConfig.gatewayBaseUrl = previousBaseUrl
+  }
+})

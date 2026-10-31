@@ -59,6 +59,8 @@ animallink:
     app-id: ${WECHAT_MINIPROGRAM_APP_ID:}
     app-secret: ${WECHAT_MINIPROGRAM_APP_SECRET:}
     code-exchange-base-url: ${WECHAT_CODE_EXCHANGE_BASE_URL:https://api.weixin.qq.com}
+    code-exchange-connect-timeout: ${WECHAT_CODE_EXCHANGE_CONNECT_TIMEOUT:PT2S}
+    code-exchange-read-timeout: ${WECHAT_CODE_EXCHANGE_READ_TIMEOUT:PT5S}
     session:
       idle-timeout: ${WECHAT_SESSION_IDLE_TIMEOUT:PT168H}
       absolute-timeout: ${WECHAT_SESSION_ABSOLUTE_TIMEOUT:PT720H}
