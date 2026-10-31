@@ -42,7 +42,7 @@ public class InternalWechatCampusIdentityController {
     }
 
     @GetMapping
-    public ResponseEntity<?> mine(@RequestParam String actorUserId, HttpServletRequest request) {
+    public ResponseEntity<?> mine(@RequestParam("actorUserId") String actorUserId, HttpServletRequest request) {
         if (!gateway(request, actorUserId)) return forbidden();
         try { return ResponseEntity.ok(snapshot(actor(actorUserId))); }
         catch (UnauthorizedException rejected) { return forbidden(); }
