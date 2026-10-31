@@ -121,12 +121,14 @@ class ExternalIdentityBoundaryFilterTest {
     }
 
     @Test
-    void miniappSessionHeaderIsAcceptedOnlyForExactCurrentUserAndLogoutRoutes() {
+    void miniappSessionHeaderIsAcceptedOnlyForExactVerifiedSessionRoutes() {
         var filter = new ExternalIdentityBoundaryFilter(new MockEnvironment());
         for (var allowed : new Object[][] {
                 {HttpMethod.POST, "/auth/wechat/login"},
                 {HttpMethod.GET, "/auth/wechat/me"},
-                {HttpMethod.POST, "/auth/wechat/logout"}}) {
+                {HttpMethod.POST, "/auth/wechat/logout"},
+                {HttpMethod.GET, "/auth/wechat/campus-identities"},
+                {HttpMethod.POST, "/auth/wechat/campus-identities/applications"}}) {
             var exchange = MockServerWebExchange.from(MockServerHttpRequest
                     .method((HttpMethod) allowed[0], (String) allowed[1])
                     .header("X-Miniapp-Session", "forged-or-real-session-value").build());
@@ -139,7 +141,11 @@ class ExternalIdentityBoundaryFilterTest {
                 {HttpMethod.GET, "/auth/wechat/login"},
                 {HttpMethod.POST, "/auth/wechat/me"},
                 {HttpMethod.GET, "/auth/wechat/logout"},
-                {HttpMethod.GET, "/auth/wechat/me/extra"}}) {
+                {HttpMethod.GET, "/auth/wechat/me/extra"},
+                {HttpMethod.POST, "/auth/wechat/campus-identities"},
+                {HttpMethod.GET, "/auth/wechat/campus-identities/applications"},
+                {HttpMethod.GET, "/auth/wechat/campus-identities/extra"},
+                {HttpMethod.POST, "/auth/wechat/campus-identities/applications/extra"}}) {
             var exchange = MockServerWebExchange.from(MockServerHttpRequest
                     .method((HttpMethod) denied[0], (String) denied[1])
                     .header("X-Miniapp-Session", "forged-or-real-session-value").build());
