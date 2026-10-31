@@ -13,11 +13,17 @@ import {
   type CampusIdentitySnapshot,
 } from '../../services/userAuthentication'
 import { getSelectedCampus } from '../../state/campus'
+import {
+  localDateTimeFromInstant,
+  localDateTimeInput,
+  localDateTimeToInstant,
+  rescueDraftFingerprint,
+} from '../../utils/rescueDraftForm'
 
 const emptyForm = () => ({
   description: '',
   abnormalitySummary: '',
-  occurredAt: new Date().toISOString().slice(0, 16),
+  occurredAt: localDateTimeInput(),
   publicLocationDescription: '',
   exactLocationDescription: '',
 })
@@ -30,6 +36,8 @@ Page({
     notice: '',
     draftId: '',
     draftStorageKey: '',
+    savedDraftFingerprint: '',
+    hasUnsavedChanges: false,
     submittedEventId: '',
     form: emptyForm(),
   },
@@ -78,11 +86,13 @@ Page({
         form: {
           description: draft.description,
           abnormalitySummary: draft.abnormalitySummary || '',
-          occurredAt: new Date(draft.occurredAt).toISOString().slice(0, 16),
+          occurredAt: localDateTimeFromInstant(draft.occurredAt),
           publicLocationDescription: draft.publicLocationDescription,
           exactLocationDescription: draft.exactLocationDescription || '',
         },
         notice: '已恢复仅属于当前账号和高校的草稿。',
+        savedDraftFingerprint: rescueDraftFingerprint(draft),
+        hasUnsavedChanges: false,
       })
     } catch (error) {
       this.clearPrivateDraft()
@@ -92,10 +102,11 @@ Page({
 
   formInput(event: WechatMiniprogram.Input) {
     const field = event.currentTarget.dataset.field as keyof RescueDraftInput
-    this.setData({ [`form.${field}`]: event.detail.value })
+    this.setData({ [`form.${field}`]: event.detail.value, hasUnsavedChanges: true })
   },
 
   async saveDraft() {
+    if (this.data.loading) return
     const input = this.input()
     if (!input) return
     this.setData({ loading: true, error: '', notice: '' })
@@ -107,7 +118,12 @@ Page({
         throw new Error('草稿校园与当前选择不一致，已拒绝保存。')
       }
       wx.setStorageSync(this.data.draftStorageKey, draft.id)
-      this.setData({ draftId: draft.id, notice: '草稿已安全保存，仅你本人可以继续编辑。' })
+      this.setData({
+        draftId: draft.id,
+        notice: '草稿已安全保存，仅你本人可以继续编辑。',
+        savedDraftFingerprint: rescueDraftFingerprint(draft),
+        hasUnsavedChanges: false,
+      })
     } catch (error) {
       this.handleError(error)
     } finally {
@@ -116,10 +132,18 @@ Page({
   },
 
   async submit() {
+    if (this.data.loading) return
     if (!this.data.draftId) {
       this.setData({ error: '请先保存草稿，再确认正式提交。' })
       return
     }
+    const input = this.input()
+    if (!input) return
+    if (this.data.hasUnsavedChanges || rescueDraftFingerprint(input) !== this.data.savedDraftFingerprint) {
+      this.setData({ error: '草稿有未保存修改，请先保存最新内容后再提交。' })
+      return
+    }
+    this.setData({ loading: true, error: '', notice: '' })
     const confirmed = await new Promise<boolean>((resolve) => {
       wx.showModal({
         title: '确认提交救助事件',
@@ -128,9 +152,10 @@ Page({
         fail: () => resolve(false),
       })
     })
-    if (!confirmed) return
-
-    this.setData({ loading: true, error: '', notice: '' })
+    if (!confirmed) {
+      this.setData({ loading: false })
+      return
+    }
     try {
       const event = await submitRescueDraft(this.data.draftId)
       this.clearPrivateDraft()
@@ -153,7 +178,7 @@ Page({
 
   clearPrivateDraft() {
     if (this.data.draftStorageKey) wx.removeStorageSync(this.data.draftStorageKey)
-    this.setData({ draftId: '', form: emptyForm() })
+    this.setData({ draftId: '', form: emptyForm(), savedDraftFingerprint: '', hasUnsavedChanges: false })
   },
 
   input(): RescueDraftInput | null {
@@ -166,7 +191,7 @@ Page({
       campusId: campus.id,
       description: form.description.trim(),
       abnormalitySummary: form.abnormalitySummary.trim() || undefined,
-      occurredAt: new Date(form.occurredAt).toISOString(),
+      occurredAt: localDateTimeToInstant(form.occurredAt),
       publicLocationDescription: form.publicLocationDescription.trim(),
       exactLocationDescription: form.exactLocationDescription.trim() || undefined,
     }

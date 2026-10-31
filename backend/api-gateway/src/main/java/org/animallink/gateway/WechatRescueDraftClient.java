@@ -29,7 +29,7 @@ public class WechatRescueDraftClient {
     public Mono<Object> patch(String token, String id, Object body) { return call(token,"PATCH","/auth/wechat/rescue-drafts/"+id,body,Object.class); }
     public Mono<Object> submit(String token, String id) { return call(token,"POST","/auth/wechat/rescue-drafts/"+id+"/submit",null,Object.class); }
     private Mono<Object> call(String token,String method,String externalPath,Object body,Class<Object> type) {
-        return sessions.current(token).flatMap(actor -> Mono.fromCallable(() -> signer.sign(actor.userId(),method,externalPath)).flatMap(assertion -> {
+        return sessions.current(token).flatMap(actor -> Mono.fromCallable(() -> signer.sign(actor.userId(),actor.systemRole(),method,externalPath)).flatMap(assertion -> {
             String internal=IncidentMiniappGatewayPolicy.downstreamPath(externalPath); WebClient.RequestHeadersSpec<?> request;
             if("POST".equals(method)) request=client.post().uri(internal).header(HttpHeaders.AUTHORIZATION,"Bearer "+assertion).contentType(MediaType.APPLICATION_JSON).bodyValue(body==null?java.util.Map.of():body);
             else if("PATCH".equals(method)) request=client.patch().uri(internal).header(HttpHeaders.AUTHORIZATION,"Bearer "+assertion).contentType(MediaType.APPLICATION_JSON).bodyValue(body);
@@ -39,10 +39,12 @@ public class WechatRescueDraftClient {
     }
     private <T> Mono<T> result(org.springframework.web.reactive.function.client.ClientResponse response,Class<T> type) {
         if(response.statusCode().is2xxSuccessful())return response.bodyToMono(type);
+        if(response.statusCode().equals(HttpStatus.BAD_REQUEST))return response.releaseBody().then(Mono.error(new BadRequest()));
         if(response.statusCode().equals(HttpStatus.UNAUTHORIZED))return response.releaseBody().then(Mono.error(new WechatSessionClient.Invalid()));
         if(response.statusCode().equals(HttpStatus.FORBIDDEN))return response.releaseBody().then(Mono.error(new Forbidden()));
+        if(response.statusCode().equals(HttpStatus.NOT_FOUND))return response.releaseBody().then(Mono.error(new NotFound()));
         if(response.statusCode().equals(HttpStatus.CONFLICT))return response.releaseBody().then(Mono.error(new Conflict()));
         return response.releaseBody().then(Mono.error(new Unavailable()));
     }
-    public static final class Forbidden extends RuntimeException{} public static final class Conflict extends RuntimeException{} public static final class Unavailable extends RuntimeException{}
+    public static final class BadRequest extends RuntimeException{} public static final class Forbidden extends RuntimeException{} public static final class NotFound extends RuntimeException{} public static final class Conflict extends RuntimeException{} public static final class Unavailable extends RuntimeException{}
 }
