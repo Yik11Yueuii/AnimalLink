@@ -3,3 +3,8 @@
 .avatar { display: flex; align-items: center; justify-content: center; margin: 0 auto 28rpx; width: 110rpx; height: 110rpx; color: #fff; border-radius: 50%; background: #e97757; font-weight: 800; }
 .profile-copy { margin-top: 24rpx; color: #80685d; font-size: 28rpx; }
 .boundary { margin-top: 36rpx; padding: 24rpx; color: #4e7468; border-radius: 22rpx; background: #edf7f2; font-size: 25rpx; line-height: 1.6; }
+.login-button, .quiet-button { margin-top: 34rpx; border-radius: 999rpx; font-size: 28rpx; }
+.login-button { color: #fff; background: #d96849; }
+.quiet-button { color: #80685d; background: #f7eee5; }
+.error-copy { margin-top: 24rpx; color: #bc4b38; font-size: 25rpx; }
+.demo-copy { margin-top: 24rpx; color: #8b7468; font-size: 23rpx; }

@@ -121,6 +121,39 @@ class ExternalIdentityBoundaryFilterTest {
     }
 
     @Test
+    void miniappSessionHeaderIsAcceptedOnlyForExactCurrentUserAndLogoutRoutes() {
+        var filter = new ExternalIdentityBoundaryFilter(new MockEnvironment());
+        for (var allowed : new Object[][] {
+                {HttpMethod.POST, "/auth/wechat/login"},
+                {HttpMethod.GET, "/auth/wechat/me"},
+                {HttpMethod.POST, "/auth/wechat/logout"}}) {
+            var exchange = MockServerWebExchange.from(MockServerHttpRequest
+                    .method((HttpMethod) allowed[0], (String) allowed[1])
+                    .header("X-Miniapp-Session", "forged-or-real-session-value").build());
+            var forwarded = run(filter, exchange).get();
+            assertNotNull(forwarded, (String) allowed[1]);
+            boolean sessionEndpoint = !"/auth/wechat/login".equals(allowed[1]);
+            assertEquals(sessionEndpoint, forwarded.getRequest().getHeaders().containsKey("X-Miniapp-Session"));
+        }
+        for (var denied : new Object[][] {
+                {HttpMethod.GET, "/auth/wechat/login"},
+                {HttpMethod.POST, "/auth/wechat/me"},
+                {HttpMethod.GET, "/auth/wechat/logout"},
+                {HttpMethod.GET, "/auth/wechat/me/extra"}}) {
+            var exchange = MockServerWebExchange.from(MockServerHttpRequest
+                    .method((HttpMethod) denied[0], (String) denied[1])
+                    .header("X-Miniapp-Session", "forged-or-real-session-value").build());
+            assertNull(run(filter, exchange).get(), (String) denied[1]);
+            assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
+        }
+        var publicRequest = MockServerWebExchange.from(MockServerHttpRequest.get("/identity/api/v1/campuses")
+                .header("X-Miniapp-Session", "forged-or-real-session-value").build());
+        var forwarded = run(filter, publicRequest).get();
+        assertNotNull(forwarded);
+        assertFalse(forwarded.getRequest().getHeaders().containsKey("X-Miniapp-Session"));
+    }
+
+    @Test
     void localSimulationRequiresExplicitOptInLoopbackListenerAndLoopbackPeer() {
         Environment env = dev("local", "127.0.0.1");
         var filter = new ExternalIdentityBoundaryFilter(env);
