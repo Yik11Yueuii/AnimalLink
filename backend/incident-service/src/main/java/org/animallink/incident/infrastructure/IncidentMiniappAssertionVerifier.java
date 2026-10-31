@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -25,6 +26,7 @@ public class IncidentMiniappAssertionVerifier {
     private final String issuer, subject, audience; private final Duration maximumLifetime, clockSkew;
     private final int replayCapacity; private final Map<String, byte[]> keys; private final Clock clock;
     private final ConcurrentHashMap<String, Instant> replay = new ConcurrentHashMap<>();
+    @Autowired
     public IncidentMiniappAssertionVerifier(
             @Value("${animallink.authentication.incident-miniapp-assertion.expected-issuer:api-gateway}") String issuer,
             @Value("${animallink.authentication.incident-miniapp-assertion.expected-subject:api-gateway}") String subject,
