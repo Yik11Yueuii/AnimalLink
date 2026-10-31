@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFile } from 'node:fs/promises'
 import { runtimeConfig } from '../config/runtime'
 
 type PageDefinition = { data: Record<string, unknown>; [name: string]: unknown }
@@ -44,4 +45,14 @@ test('a late campus-identity response cannot restore a logged-out or switched us
     runtimeConfig.userAuthenticationMode = previousMode
     runtimeConfig.gatewayBaseUrl = previousBaseUrl
   }
+})
+
+test('My page renders memberships and applications independently, with inactive memberships not styled as active', async () => {
+  const wxml = await readFile('pages/my/index.wxml', 'utf8')
+  assert.match(wxml, /wx:if="\{\{identity\.memberships\.length\}\}"/)
+  assert.match(wxml, /wx:if="\{\{identity\.applications\.length\}\}"/)
+  assert.doesNotMatch(wxml, /wx:elif="\{\{identity\.applications\.length\}\}"/)
+  assert.match(wxml, /!identity\.memberships\.length && !identity\.applications\.length/)
+  assert.match(wxml, /item\.status === 'ACTIVE' \? 'status-active' : 'status-inactive'/)
+  assert.match(wxml, /item\.status === 'ACTIVE' \? '有效成员身份' : item\.status/)
 })

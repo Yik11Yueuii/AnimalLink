@@ -8,17 +8,20 @@
       <view class="identity-panel" wx:if="{{identity}}">
         <text class="section-title">校园身份</text>
         <block wx:if="{{identity.memberships.length}}">
+          <text class="identity-group-title">已有校园成员身份</text>
           <view class="identity-row" wx:for="{{identity.memberships}}" wx:key="id">
-            <text>{{item.campus.name}} · {{item.membershipType}}</text><text class="status-active">{{item.status}}</text>
+            <text>{{item.campus.name}} · {{item.membershipType}}</text>
+            <text class="{{item.status === 'ACTIVE' ? 'status-active' : 'status-inactive'}}">{{item.status === 'ACTIVE' ? '有效成员身份' : item.status}}</text>
           </view>
         </block>
-        <block wx:elif="{{identity.applications.length}}">
+        <block wx:if="{{identity.applications.length}}">
+          <text class="identity-group-title">校园身份申请记录</text>
           <view class="identity-row" wx:for="{{identity.applications}}" wx:key="id">
             <text>{{item.campus.name}} · {{item.requestedMembershipType}}</text><text class="status-pending">{{item.status}}</text>
             <text wx:if="{{item.reviewReason}}" class="review-reason">审核说明：{{item.reviewReason}}</text>
           </view>
         </block>
-        <view wx:else class="identity-empty">尚未提交校园身份申请。</view>
+        <view wx:if="{{!identity.memberships.length && !identity.applications.length}}" class="identity-empty">尚未提交校园身份申请。</view>
         <button class="quiet-button" bindtap="openIdentityForm">申请校园身份</button>
       </view>
       <view wx:if="{{showIdentityForm}}" class="identity-form">
