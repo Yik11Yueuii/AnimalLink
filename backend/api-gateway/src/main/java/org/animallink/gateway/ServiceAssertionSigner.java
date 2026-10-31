@@ -69,8 +69,14 @@ public class ServiceAssertionSigner {
     }
 
     public String sign() {
+        return signForActor(null);
+    }
+
+    /** Binds a gateway-verified ordinary-user actor to the short-lived assertion. */
+    public String signForActor(String actorUserId) {
         if (!configurationValid) throw new ServiceAssertionUnavailableException();
         try {
+            String actor = requireUuidOrNull(actorUserId);
             Instant issuedAt = clock.instant();
             var claims = new JWTClaimsSet.Builder()
                     .issuer(issuer)
@@ -79,10 +85,10 @@ public class ServiceAssertionSigner {
                     .claim("target", audience)
                     .issueTime(Date.from(issuedAt))
                     .expirationTime(Date.from(issuedAt.plus(lifetime)))
-                    .jwtID(UUID.randomUUID().toString())
-                    .build();
+                    .jwtID(UUID.randomUUID().toString());
+            if (actor != null) claims.claim("actor", actor);
             var jwt = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.HS256)
-                    .type(JOSEObjectType.JWT).keyID(currentKeyId).build(), claims);
+                    .type(JOSEObjectType.JWT).keyID(currentKeyId).build(), claims.build());
             jwt.sign(new MACSigner(keys.get(currentKeyId)));
             return jwt.serialize();
         } catch (Exception failure) {
@@ -108,6 +114,17 @@ public class ServiceAssertionSigner {
     private static String requireIdentifier(String value) {
         if (value == null || value.isBlank() || value.length() > 128) throw new IllegalArgumentException();
         return value;
+    }
+
+    private static String requireUuidOrNull(String value) {
+        if (value == null) return null;
+        try {
+            UUID parsed = UUID.fromString(value);
+            if (!parsed.toString().equalsIgnoreCase(value)) throw new IllegalArgumentException();
+            return parsed.toString();
+        } catch (IllegalArgumentException invalid) {
+            throw new ServiceAssertionUnavailableException();
+        }
     }
 
     public static final class ServiceAssertionUnavailableException extends RuntimeException {

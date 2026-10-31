@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
+import java.util.UUID;
 
 @Component
 public class ServiceAssertionVerifier {
@@ -94,11 +95,13 @@ public class ServiceAssertionVerifier {
             Instant expiresAt = instant(claims.getExpirationTime());
             Instant now = clock.instant();
             String target = claims.getStringClaim("target");
+            String actor = claims.getStringClaim("actor");
             String tokenId = claims.getJWTID();
             if (!expectedIssuer.equals(claims.getIssuer())
                     || !expectedSubject.equals(claims.getSubject())
                     || !Collections.singletonList(expectedAudience).equals(claims.getAudience())
                     || !expectedAudience.equals(target)
+                    || (actor != null && !isCanonicalUuid(actor))
                     || issuedAt == null || expiresAt == null || tokenId == null
                     || !TOKEN_ID.matcher(tokenId).matches()
                     || issuedAt.isAfter(now.plus(clockSkew))
@@ -108,7 +111,7 @@ public class ServiceAssertionVerifier {
                 throw new ServiceAssertionRejectedException();
             }
             rejectReplay(keyId + ':' + tokenId, expiresAt.plus(clockSkew), now);
-            return new AuthenticatedService(claims.getIssuer(), claims.getSubject(), target, tokenId);
+            return new AuthenticatedService(claims.getIssuer(), claims.getSubject(), target, tokenId, actor);
         } catch (ServiceAssertionRejectedException rejected) {
             throw rejected;
         } catch (Exception invalid) {
@@ -148,12 +151,17 @@ public class ServiceAssertionVerifier {
         return value;
     }
 
+    private static boolean isCanonicalUuid(String value) {
+        try { return UUID.fromString(value).toString().equalsIgnoreCase(value); }
+        catch (IllegalArgumentException invalid) { return false; }
+    }
+
     private static Duration requirePositive(Duration value) {
         if (value == null || value.isZero() || value.isNegative()) throw new IllegalArgumentException();
         return value;
     }
 
-    public record AuthenticatedService(String issuer, String subject, String target, String assertionId) {
+    public record AuthenticatedService(String issuer, String subject, String target, String assertionId, String actorUserId) {
     }
 
     public static final class ServiceAssertionRejectedException extends RuntimeException {

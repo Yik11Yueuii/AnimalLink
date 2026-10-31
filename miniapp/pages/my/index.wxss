@@ -7,4 +7,14 @@
 .login-button { color: #fff; background: #d96849; }
 .quiet-button { color: #80685d; background: #f7eee5; }
 .error-copy { margin-top: 24rpx; color: #bc4b38; font-size: 25rpx; }
+.retry-button { margin-top: 16rpx; color: #a95340; background: transparent; font-size: 24rpx; }
 .demo-copy { margin-top: 24rpx; color: #8b7468; font-size: 23rpx; }
+.identity-panel, .identity-form { margin-top: 28rpx; padding: 24rpx; text-align: left; border-radius: 22rpx; background: #fff7ed; }
+.section-title { color: #5e493e; font-weight: 700; font-size: 28rpx; }
+.identity-row { display: flex; flex-wrap: wrap; gap: 10rpx; margin-top: 18rpx; color: #705a4d; font-size: 25rpx; }
+.identity-group-title { margin-top: 20rpx; color: #80685d; font-size: 23rpx; font-weight: 700; }
+.status-active, .status-pending, .status-inactive { padding: 2rpx 12rpx; border-radius: 999rpx; font-size: 22rpx; }
+.status-active { color: #31715b; background: #e3f3eb; }.status-pending { color: #a46a2a; background: #fff0cf; }
+.status-inactive { color: #755f52; background: #eee8e3; }
+.review-reason, .identity-empty { width: 100%; color: #80685d; font-size: 23rpx; line-height: 1.5; }
+.picker-field, .form-input { box-sizing: border-box; width: 100%; min-height: 76rpx; margin-top: 18rpx; padding: 18rpx; color: #705a4d; border-radius: 16rpx; background: #fffdfa; font-size: 25rpx; }

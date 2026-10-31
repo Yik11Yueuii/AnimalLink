@@ -30,7 +30,7 @@ jobs:
       - name: Run Identity WeChat MySQL integration test
         run: >-
           ./mvnw -pl backend/identity-service -am
-          -Dtest=WechatAuthenticationMySqlIntegrationTest
+          -Dtest=WechatAuthenticationMySqlIntegrationTest,InternalWechatCampusIdentityHttpIntegrationTest
           -Dsurefire.failIfNoSpecifiedTests=false test
 
       - name: Print Surefire failure summary

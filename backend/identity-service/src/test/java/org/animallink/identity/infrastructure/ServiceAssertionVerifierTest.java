@@ -66,6 +66,17 @@ class ServiceAssertionVerifierTest {
                 .isInstanceOf(ServiceAssertionVerifier.ServiceAssertionRejectedException.class);
     }
 
+    @Test
+    void permitsAnOptionalCanonicalActorButRejectsAnInvalidActorClaim() throws Exception {
+        var verifier = verifier(KEYS);
+        String actor = "00000000-0000-0000-0000-000000000001";
+        assertThat(verifier.verify("Bearer " + tokenWithActor(KEY, "v1", "identity-service", actor,
+                "actor-assertion-01")).actorUserId()).isEqualTo(actor);
+        assertThatThrownBy(() -> verifier.verify("Bearer " + tokenWithActor(KEY, "v1", "identity-service",
+                "not-a-user-id", "actor-assertion-02")))
+                .isInstanceOf(ServiceAssertionVerifier.ServiceAssertionRejectedException.class);
+    }
+
     private ServiceAssertionVerifier verifier(String keys) {
         return new ServiceAssertionVerifier("api-gateway", "api-gateway", "identity-service",
                 Duration.ofSeconds(30), Duration.ofSeconds(5), 10, keys,
@@ -77,6 +88,16 @@ class ServiceAssertionVerifierTest {
         var claims = new JWTClaimsSet.Builder().issuer(issuer).subject(subject)
                 .audience(target).claim("target", target).issueTime(Date.from(issuedAt))
                 .expirationTime(Date.from(expiresAt)).jwtID(jti).build();
+        var jwt = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.HS256)
+                .type(JOSEObjectType.JWT).keyID(keyId).build(), claims);
+        jwt.sign(new MACSigner(signingKey));
+        return jwt.serialize();
+    }
+
+    private String tokenWithActor(byte[] signingKey, String keyId, String target, String actor, String jti) throws Exception {
+        var claims = new JWTClaimsSet.Builder().issuer("api-gateway").subject("api-gateway")
+                .audience(target).claim("target", target).claim("actor", actor).issueTime(Date.from(NOW))
+                .expirationTime(Date.from(NOW.plusSeconds(15))).jwtID(jti).build();
         var jwt = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.HS256)
                 .type(JOSEObjectType.JWT).keyID(keyId).build(), claims);
         jwt.sign(new MACSigner(signingKey));

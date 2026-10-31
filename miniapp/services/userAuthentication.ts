@@ -14,6 +14,13 @@ export interface CurrentMiniappUser {
 
 interface LoginResponse extends CurrentMiniappUser { token: string }
 
+export interface CampusIdentityCampus { id: string; name: string; shortName: string | null; city: string; status: string }
+export interface CampusMembership { id: string; campus: CampusIdentityCampus; membershipType: 'STUDENT' | 'ALUMNI'; status: string; expectedGraduationDate: string | null; approvedAt: string | null }
+export interface CampusVerificationApplication { id: string; campus: CampusIdentityCampus; requestedMembershipType: 'STUDENT' | 'ALUMNI'; applicantName: string; affiliationNote: string | null; expectedGraduationDate: string | null; status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED'; reviewReason: string | null; reviewedAt: string | null; createdAt: string; updatedAt: string; credentialPrecheckStatus: string }
+export interface CampusIdentitySnapshot { memberships: CampusMembership[]; applications: CampusVerificationApplication[] }
+export interface IdentityCampusOption { id: string; name: string; shortName: string | null; city: string; status: string }
+export interface CampusIdentityApplicationInput { campusId: string; requestedMembershipType: 'STUDENT' | 'ALUMNI'; applicantName: string; affiliationNote?: string; expectedGraduationDate?: string; materialMediaId?: string }
+
 const apiAvailable = () => runtimeConfig.userAuthenticationMode === 'api' && !!runtimeConfig.gatewayBaseUrl.trim()
 const request = <T>(path: string, method: 'GET' | 'POST', data?: Record<string, string>, token?: string) => new Promise<T>((resolve, reject) => {
   if (!apiAvailable()) { reject(new ApiRequestError('当前为离线演示模式，未启用真实微信登录。', null)); return }
@@ -50,4 +57,25 @@ export const logoutMiniappUser = async (): Promise<void> => {
   const token = storedMiniappSession()
   try { if (token && apiAvailable()) await request('/auth/wechat/logout', 'POST', {}, token) }
   finally { clearMiniappSession() }
+}
+
+export const currentCampusIdentity = async (): Promise<CampusIdentitySnapshot | null> => {
+  const token = storedMiniappSession()
+  if (!token || !apiAvailable()) return null
+  try { return await request<CampusIdentitySnapshot>('/auth/wechat/campus-identities', 'GET', undefined, token) }
+  catch (error) { if (error instanceof ApiRequestError && error.statusCode === 401) clearMiniappSession(); throw error }
+}
+
+export const listIdentityCampuses = () => request<IdentityCampusOption[]>('/identity/api/v1/campuses', 'GET')
+
+export const submitCampusIdentity = async (input: CampusIdentityApplicationInput): Promise<CampusVerificationApplication> => {
+  const token = storedMiniappSession()
+  if (!token) throw new ApiRequestError('请先完成微信登录。', 401)
+  const data: Record<string, string> = {
+    campusId: input.campusId, requestedMembershipType: input.requestedMembershipType, applicantName: input.applicantName,
+  }
+  if (input.affiliationNote) data.affiliationNote = input.affiliationNote
+  if (input.expectedGraduationDate) data.expectedGraduationDate = input.expectedGraduationDate
+  if (input.materialMediaId) data.materialMediaId = input.materialMediaId
+  return request<CampusVerificationApplication>('/auth/wechat/campus-identities/applications', 'POST', data, token)
 }

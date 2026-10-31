@@ -60,6 +60,12 @@ public class CampusVerificationApplicationService {
     @Transactional
     public ApplicantCampusVerificationView submit(SubmitVerificationCommand command) {
         UserAccount user = currentUserProvider.requireCurrentUser();
+        return submitForVerifiedUser(user, command);
+    }
+
+    /** Used only after an internal gateway has authenticated the ordinary-user session. */
+    @Transactional
+    public ApplicantCampusVerificationView submitForVerifiedUser(UserAccount user, SubmitVerificationCommand command) {
         String campusId = IdRules.requireUuid(command.campusId(), "campusId");
         String materialMediaId = IdRules.optionalUuid(command.materialMediaId(), "materialMediaId");
         Campus campus = campusRepository.findActiveById(campusId)
@@ -118,9 +124,16 @@ public class CampusVerificationApplicationService {
     }
 
     public List<ApplicantCampusVerificationView> listMine() {
-        UserAccount user = currentUserProvider.requireCurrentUser();
+        return listForVerifiedUser(currentUserProvider.requireCurrentUser());
+    }
+
+    public List<ApplicantCampusVerificationView> listForVerifiedUser(UserAccount user) {
         return verificationRepository.findVerificationsByUserId(user.id()).stream()
                 .map(this::withCampus).map(this::applicantView).toList();
+    }
+
+    public List<org.animallink.identity.domain.CampusMembershipView> membershipsForVerifiedUser(UserAccount user) {
+        return membershipRepository.findMembershipsByUserId(user.id());
     }
 
     public ApplicantCampusVerificationView getMine(String verificationId) {
