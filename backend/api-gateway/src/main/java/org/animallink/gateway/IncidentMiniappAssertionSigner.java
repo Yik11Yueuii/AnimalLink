@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -24,6 +25,7 @@ import org.springframework.stereotype.Component;
 public class IncidentMiniappAssertionSigner {
     private static final Pattern KEY_ID = Pattern.compile("[A-Za-z0-9._-]{1,64}");
     private final String issuer, subject, audience, keyId; private final Duration lifetime; private final Map<String, byte[]> keys; private final Clock clock;
+    @Autowired
     public IncidentMiniappAssertionSigner(@Value("${animallink.authentication.incident-miniapp-assertion.issuer:api-gateway}") String issuer,
             @Value("${animallink.authentication.incident-miniapp-assertion.subject:api-gateway}") String subject,
             @Value("${animallink.authentication.incident-miniapp-assertion.audience:incident-service}") String audience,
