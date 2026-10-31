@@ -108,14 +108,16 @@ public class ExternalIdentityBoundaryFilter implements WebFilter, Ordered {
                 || (HttpMethod.GET.equals(method) && WechatAuthenticationController.ME_PATH.equals(path))
                 || (HttpMethod.POST.equals(method) && WechatAuthenticationController.LOGOUT_PATH.equals(path))
                 || (HttpMethod.GET.equals(method) && WechatCampusIdentityController.SNAPSHOT_PATH.equals(path))
-                || (HttpMethod.POST.equals(method) && WechatCampusIdentityController.APPLICATIONS_PATH.equals(path));
+                || (HttpMethod.POST.equals(method) && WechatCampusIdentityController.APPLICATIONS_PATH.equals(path))
+                || IncidentMiniappGatewayPolicy.allowed(method == null ? null : method.name(), path);
     }
 
     private static boolean isWechatSessionEndpoint(HttpMethod method, String path) {
         return (HttpMethod.GET.equals(method) && WechatAuthenticationController.ME_PATH.equals(path))
                 || (HttpMethod.POST.equals(method) && WechatAuthenticationController.LOGOUT_PATH.equals(path))
                 || (HttpMethod.GET.equals(method) && WechatCampusIdentityController.SNAPSHOT_PATH.equals(path))
-                || (HttpMethod.POST.equals(method) && WechatCampusIdentityController.APPLICATIONS_PATH.equals(path));
+                || (HttpMethod.POST.equals(method) && WechatCampusIdentityController.APPLICATIONS_PATH.equals(path))
+                || IncidentMiniappGatewayPolicy.allowed(method == null ? null : method.name(), path);
     }
 
     private static boolean isUuid(String value) {
