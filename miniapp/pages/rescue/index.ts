@@ -23,6 +23,7 @@ Page({
   },
   onPullDownRefresh() { void this.refresh().finally(() => wx.stopPullDownRefresh()) },
   changeCampus() { wx.navigateTo({ url: '/pages/campus/index?returnTo=rescue' }) },
+  reportRescue() { wx.navigateTo({ url: '/pages/rescue-report/index' }) },
   onStatusChange(event: WechatMiniprogram.PickerChange) { const statusIndex = Number(event.detail.value); catalog.setStatus(options[statusIndex]?.value ?? ''); this.setData({ statusIndex }); void this.refresh() },
   openDetail(event: WechatMiniprogram.TouchEvent) { const eventId = String(event.currentTarget.dataset.id ?? ''); const campusId = this.data.campus?.id; if (eventId && campusId) wx.navigateTo({ url: `/pages/rescue-detail/index?eventId=${encodeURIComponent(eventId)}&campusId=${encodeURIComponent(campusId)}` }) },
   onRetry() { void this.refresh() },

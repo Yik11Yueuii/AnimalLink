@@ -11,6 +11,27 @@ permissions:
   contents: read
 
 jobs:
+  rescue-write:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Verify runner Docker Engine
+        run: docker version
+      - name: Run rescue write MySQL integration test
+        run: >-
+          ./mvnw -pl backend/incident-service -am
+          -Dtest=MiniappRescueDraftIntegrationTest
+          -Dsurefire.failIfNoSpecifiedTests=false test
+      - name: Print Surefire failure summary
+        if: failure()
+        run: |
+          find backend/incident-service/target/surefire-reports -maxdepth 1 -type f \( -name '*.txt' -o -name 'TEST-*.xml' \) -print -exec sed -n '1,240p' {} \; || true
   public-rescue-read:
     runs-on: ubuntu-latest
     timeout-minutes: 15
