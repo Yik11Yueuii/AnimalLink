@@ -85,7 +85,9 @@ public class ExternalIdentityBoundaryFilter implements WebFilter, Ordered {
         String devId = isolatedRequest && suppliedIds != null && suppliedIds.size() == 1
                 && isUuid(suppliedIds.getFirst()) ? suppliedIds.getFirst() : null;
         var request = exchange.getRequest().mutate().headers(headers -> {
-            headers.keySet().removeIf(ExternalIdentityBoundaryFilter::isIdentityClaim);
+            headers.keySet().removeIf(name -> isIdentityClaim(name)
+                    && !(WechatAuthenticationController.SESSION_HEADER.equalsIgnoreCase(name)
+                    && isWechatSessionEndpoint(method, path)));
             if (devId != null) headers.set("X-User-Id", devId);
             // Future authenticated assertions must be added here only after verification.
         }).build();
@@ -101,7 +103,15 @@ public class ExternalIdentityBoundaryFilter implements WebFilter, Ordered {
         return (HttpMethod.GET.equals(method) && (AdminAuthenticationController.CSRF_PATH.equals(path)
                 || AdminAuthenticationController.SESSION_PATH.equals(path)))
                 || (HttpMethod.POST.equals(method) && (AdminAuthenticationController.LOGIN_PATH.equals(path)
-                || AdminAuthenticationController.LOGOUT_PATH.equals(path)));
+                || AdminAuthenticationController.LOGOUT_PATH.equals(path)))
+                || (HttpMethod.POST.equals(method) && WechatAuthenticationController.LOGIN_PATH.equals(path))
+                || (HttpMethod.GET.equals(method) && WechatAuthenticationController.ME_PATH.equals(path))
+                || (HttpMethod.POST.equals(method) && WechatAuthenticationController.LOGOUT_PATH.equals(path));
+    }
+
+    private static boolean isWechatSessionEndpoint(HttpMethod method, String path) {
+        return (HttpMethod.GET.equals(method) && WechatAuthenticationController.ME_PATH.equals(path))
+                || (HttpMethod.POST.equals(method) && WechatAuthenticationController.LOGOUT_PATH.equals(path));
     }
 
     private static boolean isUuid(String value) {
@@ -118,6 +128,7 @@ public class ExternalIdentityBoundaryFilter implements WebFilter, Ordered {
                 || n.equals("proxy-authorization") || n.equals("x-forwarded-user")
                 || n.equals("x-remote-user") || n.equals("x-original-user")
                 || n.equals("x-user") || n.equals("x-userid") || n.equals("x-identity")
+                || n.equals("x-miniapp-session")
                 || n.equals("x-principal") || n.equals("x-authenticated") || n.equals("x-auth")
                 || n.startsWith("x-user-") || n.startsWith("x-internal-")
                 || n.startsWith("x-auth-") || n.startsWith("x-authenticated-")

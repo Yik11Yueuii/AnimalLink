@@ -55,6 +55,13 @@ animallink:
       cleanup-batch-size: ${AUTH_RETENTION_CLEANUP_BATCH_SIZE:1000}
       initial-delay-ms: ${AUTH_RETENTION_INITIAL_DELAY_MS:3600000}
       fixed-delay-ms: ${AUTH_RETENTION_FIXED_DELAY_MS:3600000}
+  wechat:
+    app-id: ${WECHAT_MINIPROGRAM_APP_ID:}
+    app-secret: ${WECHAT_MINIPROGRAM_APP_SECRET:}
+    code-exchange-base-url: ${WECHAT_CODE_EXCHANGE_BASE_URL:https://api.weixin.qq.com}
+    session:
+      idle-timeout: ${WECHAT_SESSION_IDLE_TIMEOUT:PT168H}
+      absolute-timeout: ${WECHAT_SESSION_ABSOLUTE_TIMEOUT:PT720H}
   intelligence:
     base-url: ${INTELLIGENCE_BASE_URL:http://localhost:8085}
     connect-timeout-ms: ${INTELLIGENCE_CONNECT_TIMEOUT_MS:2000}

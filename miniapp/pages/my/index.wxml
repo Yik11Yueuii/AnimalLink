@@ -2,7 +2,17 @@
   <view class="profile surface">
     <view class="avatar">AL</view>
     <text class="page-title">My</text>
-    <text class="profile-copy">微信登录与个人身份尚未接入；当前仅支持公开浏览。</text>
-    <view class="boundary">本阶段不模拟用户身份，也不展示虚假的校园成员或志愿者权限。</view>
+    <block wx:if="{{user}}">
+      <text class="profile-copy">{{user.displayName}}</text>
+      <view class="boundary">已完成普通用户登录。尚未进行校园成员或志愿者认证。</view>
+      <button class="quiet-button" loading="{{loading}}" bindtap="logout">退出登录</button>
+    </block>
+    <block wx:else>
+      <text class="profile-copy">登录后可安全使用后续个人服务；公开浏览无需登录。</text>
+      <button class="login-button" loading="{{loading}}" bindtap="login">微信登录</button>
+      <view class="boundary">不会自动获取手机号、头像昵称，也不会虚构校园成员或志愿者身份。</view>
+    </block>
+    <text wx:if="{{error}}" class="error-copy">{{error}}</text>
+    <text wx:if="{{offline}}" class="demo-copy">本地演示模式 · 未启用真实微信登录</text>
   </view>
 </view>

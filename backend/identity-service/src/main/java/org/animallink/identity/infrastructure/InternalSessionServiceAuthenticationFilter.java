@@ -18,7 +18,11 @@ public class InternalSessionServiceAuthenticationFilter extends OncePerRequestFi
     public static final String PATH = "/internal/v1/auth/sessions/validate";
     public static final String LOGIN_PATH = "/internal/v1/auth/sessions/login";
     public static final String REVOKE_PATH = "/internal/v1/auth/sessions/revoke";
-    private static final Set<String> PROTECTED_PATHS = Set.of(PATH, LOGIN_PATH, REVOKE_PATH);
+    public static final String WECHAT_LOGIN_PATH = "/internal/v1/wechat/sessions/login";
+    public static final String WECHAT_VALIDATE_PATH = "/internal/v1/wechat/sessions/validate";
+    public static final String WECHAT_REVOKE_PATH = "/internal/v1/wechat/sessions/revoke";
+    private static final Set<String> PROTECTED_PATHS = Set.of(PATH, LOGIN_PATH, REVOKE_PATH,
+            WECHAT_LOGIN_PATH, WECHAT_VALIDATE_PATH, WECHAT_REVOKE_PATH);
     public static final String PRINCIPAL_ATTRIBUTE = InternalSessionServiceAuthenticationFilter.class.getName()
             + ".principal";
 
