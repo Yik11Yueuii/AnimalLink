@@ -1,10 +1,16 @@
 .intro text { display: block; }
 .intro-copy { margin-top: 20rpx; font-size: 26rpx; line-height: 1.65; }
 .filters { margin-top: 30rpx; padding: 18rpx; }
-.province-picker { padding: 18rpx; border-radius: 20rpx; background: #f2faf6; color: #527b6c; font-size: 26rpx; font-weight: 700; }
-.search-row { display: flex; gap: 16rpx; margin-top: 14rpx; }
-.search-row input { flex: 1; min-width: 0; padding: 0 18rpx; font-size: 27rpx; }
-.search-row button { margin: 0; width: 150rpx; }
+.search-row { display: flex; flex-wrap: wrap; align-items: center; }
+/* Keep the native input visible even when the platform supplies button defaults. */
+.search-field { flex: 1 1 280rpx; min-width: 280rpx; height: 44px; box-sizing: border-box; border: 1rpx solid #eaded5; border-radius: 16rpx; background: #fbf6ee; }
+.search-field .university-search-input { display: block; width: 100%; height: 100%; box-sizing: border-box; padding: 0 16rpx; color: #4f382c; font-size: 26rpx; }
+.search-placeholder { color: #9a857a; }
+.search-row .search-button, .search-row .province-button { display: block; flex: none; min-width: 0; height: 44px; min-height: 44px; box-sizing: border-box; padding: 0 10rpx; line-height: 44px; white-space: nowrap; font-size: 24rpx; font-weight: 600; border-radius: 16rpx; }
+.search-row .search-button { width: 104rpx; margin: 0 0 0 8rpx; }
+.province-entry { flex: 0 0 168rpx; margin-left: 8rpx; }
+.search-row .province-button { width: 168rpx; margin: 0 0 0 auto; background: #f1f7f2; color: #527b6c; }
+.search-hint { display: block; margin-top: 12rpx; color: #8b7468; font-size: 22rpx; line-height: 1.5; }
 .result-meta { display: flex; justify-content: space-between; margin: 28rpx 4rpx 14rpx; color: #8b7468; font-size: 24rpx; }
 .university-list { margin-top: 18rpx; }
 .university { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; margin-bottom: 18rpx; padding: 28rpx; }
@@ -19,8 +25,36 @@
 .availability.closed { background: #f3eee9; color: #8b7468; }
 .university-location { margin-top: 10rpx; color: #8b7468; font-size: 24rpx; line-height: 1.5; }
 .institution-code { margin-top: 7rpx; color: #ae9a8e; font-size: 21rpx; }
-.choose { flex: none; color: #d76545; font-size: 25rpx; font-weight: 700; }
+.choose { flex: none; max-width: 150rpx; color: #d76545; font-size: 25rpx; font-weight: 700; }
 .choose-disabled { color: #9a857a; }
 .load-more { margin: 18rpx auto 0; background: transparent; color: #d76545; font-size: 25rpx; }
 .load-more::after { border-color: #efc6b9; }
 .selection-error { margin-bottom: 18rpx; padding: 18rpx 22rpx; border-radius: 18rpx; background: #fff0ec; color: #b34f34; font-size: 24rpx; line-height: 1.5; }
+.province-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 28rpx; padding-bottom: calc(28rpx + env(safe-area-inset-bottom)); box-sizing: border-box; background: rgba(55, 40, 32, .38); }
+.province-panel { display: flex; flex-direction: column; width: 100%; max-width: 900rpx; max-height: 84vh; border-radius: 28rpx; overflow: hidden; background: #fffdfa; box-shadow: 0 20rpx 80rpx rgba(55, 40, 32, .2); }
+.panel-header { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 16rpx; padding: 24rpx; border-bottom: 1rpx solid #eaded5; }
+.panel-title, .panel-hint, .school-name { display: block; }
+.panel-title { font-size: 30rpx; font-weight: 700; }
+.panel-hint { margin-top: 6rpx; font-size: 22rpx; color: #8b7468; }
+.close-button { flex: none; margin: 0; padding: 0 20rpx; line-height: 80rpx; font-size: 25rpx; background: #fff0e9; color: #8b4a34; border-radius: 18rpx; }
+.cascade { display: flex; min-height: 0; height: 55vh; }
+.province-column { flex: none; width: 30%; height: 100%; background: #f7f1e9; }
+.province-option { padding: 24rpx 16rpx; font-size: 25rpx; line-height: 1.6; overflow-wrap: anywhere; border-left: 6rpx solid transparent; }
+.province-option.active { border-left-color: #e97757; background: #fffdfa; color: #ba5235; font-weight: 700; }
+.school-column { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.province-meta { flex: none; padding: 18rpx 20rpx; font-size: 22rpx; color: #8b7468; background: #fff9f3; }
+.school-scroll { flex: 1; min-height: 0; height: 0; }
+.school-option { margin: 0 20rpx; padding: 24rpx 0; border-bottom: 1rpx solid #eee4db; }
+.school-name { font-size: 27rpx; font-weight: 700; line-height: 1.5; }
+.school-option .availability { display: inline-block; margin-top: 12rpx; }
+.unavailable { color: #8b7468; }
+.panel-state { padding: 36rpx 20rpx; color: #8b7468; font-size: 24rpx; line-height: 1.7; text-align: center; }
+.panel-state text { display: block; }
+.panel-error { flex: none; max-height: 12vh; overflow-y: auto; padding: 18rpx 24rpx; color: #b34f34; background: #fff0ec; font-size: 24rpx; }
+.list-end { padding: 24rpx 16rpx; text-align: center; color: #ae9a8e; font-size: 21rpx; }
+@media (max-width: 360px) {
+  .filters { padding: 12rpx; }
+  .province-entry { flex-basis: 100%; margin: 12rpx 0 0; }
+  .university { flex-wrap: wrap; padding: 24rpx; }
+  .choose { margin-left: auto; }
+}
