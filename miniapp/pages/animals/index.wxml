@@ -2,10 +2,13 @@
   <view wx:if="{{offline}}" class="mode-banner">本地离线演示 · 以下为明确标注的模拟公开数据</view>
   <view class="heading">
     <view><text class="eyebrow">ANIMAL ARCHIVES</text><text class="page-title">校园动物</text></view>
-    <button class="campus-button" bindtap="changeCampus">{{campus ? (campus.shortName || campus.name) : '选择 Campus'}}⌄</button>
+    <view class="campus-label" aria-label="当前高校 {{campus ? (campus.shortName || campus.name) : '尚未选择'}}">
+      <text class="campus-label-prefix">当前高校</text>
+      <text class="campus-label-name">{{campus ? (campus.shortName || campus.name) : '尚未选择'}}</text>
+    </view>
   </view>
   <view class="search-panel surface">
-    <view class="search-row"><input value="{{q}}" placeholder="名称或毛色" confirm-type="search" bindinput="onKeywordInput" bindconfirm="onSearch" /><button bindtap="onSearch">搜索</button></view>
+    <view class="search-row"><input value="{{q}}" placeholder="名称或毛色" confirm-type="search" bindinput="onKeywordInput" bindconfirm="onSearch" /><button class="search-button" bindtap="onSearch">搜索</button></view>
     <picker mode="selector" range="{{speciesLabels}}" value="{{speciesIndex}}" bindchange="onSpeciesChange"><view class="species-picker">物种 · {{speciesLabels[speciesIndex]}}⌄</view></picker>
   </view>
   <view class="result-meta"><text>{{campus ? campus.name : '当前 Campus'}}</text><text>{{total}} 条公开档案</text></view>
