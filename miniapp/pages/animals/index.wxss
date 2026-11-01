@@ -1,10 +1,12 @@
 .heading { display: flex; align-items: flex-start; justify-content: space-between; }
 .heading text { display: block; }
-.campus-button { margin: 2rpx 0 0 20rpx; padding: 0 22rpx; min-width: 170rpx; color: #4f7468; border: 1rpx solid #b8d8cc; border-radius: 22rpx; background: #eff8f4; font-size: 24rpx; }
+.campus-label { display: flex; flex: 0 1 300rpx; align-items: center; gap: 10rpx; overflow: hidden; margin: 2rpx 0 0 20rpx; padding: 12rpx 18rpx; color: #4f7468; border: 1rpx solid #cfe3da; border-radius: 22rpx; background: #f3f8f5; }
+.campus-label-prefix { flex: 0 0 auto; color: #789188; font-size: 20rpx; }
+.campus-label-name { overflow: hidden; min-width: 0; font-size: 23rpx; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .search-panel { margin-top: 28rpx; padding: 18rpx; }
 .search-row { display: flex; gap: 12rpx; }
-.search-row input { flex: 1; min-width: 0; padding: 0 14rpx; height: 76rpx; border-radius: 18rpx; background: #f8f3ed; font-size: 25rpx; }
-.search-row button { margin: 0; width: 132rpx; height: 76rpx; color: #fff; border-radius: 18rpx; background: #e97757; font-size: 26rpx; line-height: 76rpx; }
+.search-row input { box-sizing: border-box; flex: 1; min-width: 0; padding: 0 14rpx; height: 76rpx; border-radius: 18rpx; background: #f8f3ed; font-size: 25rpx; }
+.search-row .search-button { display: flex; flex: 0 0 144rpx; align-items: center; justify-content: center; box-sizing: border-box; margin: 0; width: 144rpx; height: 76rpx; padding: 0; color: #fff; border-radius: 18rpx; background: #e97757; font-size: 26rpx; line-height: 1; text-align: center; white-space: nowrap; }
 .species-picker { margin-top: 14rpx; padding: 18rpx; color: #715d52; border-radius: 18rpx; background: #f1f8f5; font-size: 25rpx; }
 .result-meta { display: flex; justify-content: space-between; padding: 24rpx 4rpx 12rpx; color: #8b7468; font-size: 24rpx; }
 .animal-card { display: flex; align-items: center; margin-bottom: 18rpx; padding: 18rpx; }
@@ -25,6 +27,10 @@
 .load-more { color: #8b4a34; border-radius: 22rpx; background: #fff0e9; font-size: 26rpx; }
 .list-end { display: block; padding: 26rpx; color: #9a857a; text-align: center; font-size: 23rpx; }
 @media (max-width: 360px) {
+  .heading { gap: 12rpx; }
+  .campus-label { flex-basis: 250rpx; margin-left: 0; padding: 10rpx 14rpx; }
+  .campus-label-prefix { font-size: 18rpx; }
+  .campus-label-name { font-size: 21rpx; }
   .animal-image { width: 124rpx; height: 124rpx; }
   .animal-body { padding: 0 12rpx; }
   .animal-name { max-width: 190rpx; font-size: 29rpx; }

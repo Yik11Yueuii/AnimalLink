@@ -54,9 +54,6 @@ Page({
   onPullDownRefresh() {
     void this.refresh().finally(() => wx.stopPullDownRefresh())
   },
-  changeCampus() {
-    wx.navigateTo({ url: '/pages/campus/index?returnTo=animals' })
-  },
   onKeywordInput(event: WechatMiniprogram.Input) {
     this.setData({ q: event.detail.value })
   },
