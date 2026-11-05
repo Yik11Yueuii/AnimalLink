@@ -14,8 +14,12 @@ export interface AnimalDetailLoadResult {
 export const loadAnimalDetail = async (
   source: PublicAnimalDataSource,
   animalId: string,
+  loadTimeline = true,
 ): Promise<AnimalDetailLoadResult> => {
   const animal = await source.getAnimal(animalId)
+  if (!loadTimeline) {
+    return { animal, timeline: [], timelineStatus: 'protected', timelineError: null }
+  }
   try {
     const timeline = await source.getTimeline(animalId, 0, 20)
     return { animal, timeline: timeline.items, timelineStatus: 'loaded', timelineError: null }

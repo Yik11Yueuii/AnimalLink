@@ -1,4 +1,5 @@
-import { getPublicAnimalDataSource, isAnimalOfflineDemo } from '../../services/sourceFactory'
+import { resolveCurrentCampusContext } from '../../services/campusContext'
+import { getPublicAnimalDataSource, isAnimalOfflineDemo, isPublicDataApiMode } from '../../services/sourceFactory'
 import { AnimalCatalog } from '../../state/animalCatalog'
 import { getSelectedCampus } from '../../state/campus'
 import type { AnimalSpecies, AnimalSummaryResponse, CampusResponse } from '../../types/api'
@@ -26,6 +27,7 @@ const toCard = (animal: AnimalSummaryResponse): AnimalCard => ({
 })
 
 Page({
+  campusResolutionVersion: 0,
   data: {
     offline: isAnimalOfflineDemo(),
     campus: null as CampusResponse | null,
@@ -37,6 +39,7 @@ Page({
     loading: false,
     loadingMore: false,
     hasMore: false,
+    campusValidationFailed: false,
     errorMessage: '',
   },
   onShow() {
@@ -45,12 +48,29 @@ Page({
       wx.navigateTo({ url: '/pages/campus/index?returnTo=animals' })
       return
     }
+    if (!isPublicDataApiMode()) { this.activateCampus(campus); return }
+    const version = ++this.campusResolutionVersion
     if (campus.id !== this.data.campus?.id) {
-      catalog.selectCampus(campus.id)
-      this.setData({ campus, animals: [], total: 0, errorMessage: '' })
-      void this.refresh()
+      catalog.selectCampus('')
+      this.setData({ campus, animals: [], total: 0, loading: true, campusValidationFailed: false, errorMessage: '' })
     }
+    void resolveCurrentCampusContext().then((resolution) => {
+      if (version !== this.campusResolutionVersion || resolution.status === 'superseded') return
+      if (resolution.status === 'missing') {
+        catalog.selectCampus('')
+        this.setData({ campus: null, animals: [], total: 0, loading: false, campusValidationFailed: false, errorMessage: '' })
+        wx.navigateTo({ url: '/pages/campus/index?returnTo=animals' })
+        return
+      }
+      if (resolution.status === 'unavailable') {
+        this.setData({ loading: false, campusValidationFailed: true, errorMessage: '暂时无法验证当前高校，请检查网络后重试。' })
+        return
+      }
+      this.activateCampus(resolution.campus)
+    })
   },
+  onHide() { this.campusResolutionVersion += 1 },
+  onUnload() { this.campusResolutionVersion += 1 },
   onPullDownRefresh() {
     void this.refresh().finally(() => wx.stopPullDownRefresh())
   },
@@ -72,10 +92,21 @@ Page({
     if (animalId) wx.navigateTo({ url: `/pages/animal-detail/index?animalId=${encodeURIComponent(animalId)}` })
   },
   onRetry() {
+    if (this.data.campusValidationFailed) { this.onShow(); return }
     void this.refresh()
   },
   loadMore() {
     void this.loadNextPage()
+  },
+  activateCampus(campus: CampusResponse) {
+    if (campus.id !== catalog.snapshot.campusId) {
+      catalog.selectCampus(campus.id)
+      this.setData({ campus, animals: [], total: 0, campusValidationFailed: false, errorMessage: '' })
+      void this.refresh()
+      return
+    }
+    this.setData({ campus, campusValidationFailed: false })
+    this.applySnapshot(catalog.snapshot)
   },
   async refresh() {
     const pending = catalog.refresh()
