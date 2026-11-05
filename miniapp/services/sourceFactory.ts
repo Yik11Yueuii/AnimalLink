@@ -7,35 +7,51 @@ import { OfflineCommunityDataSource } from './offlineCommunityDataSource'
 import { ApiRescueDataSource, type RescueDataSource } from './rescueDataSource'
 import { OfflineRescueDataSource } from './offlineRescueDataSource'
 
-let source: PublicAnimalDataSource | null = null
-let communitySource: CommunityDataSource | null = null
-let rescueSource: RescueDataSource | null = null
+export interface PublicDataSources {
+  animal: PublicAnimalDataSource
+  community: CommunityDataSource
+  rescue: RescueDataSource
+}
+
+export const createPublicDataSources = (
+  config: typeof runtimeConfig,
+  requesterFactory = createJsonRequester,
+): PublicDataSources => {
+  if (config.publicDataMode === 'offline-demo') {
+    return {
+      animal: new OfflinePublicAnimalDataSource(),
+      community: new OfflineCommunityDataSource(),
+      rescue: new OfflineRescueDataSource(),
+    }
+  }
+  const request = requesterFactory(config.gatewayBaseUrl)
+  return {
+    animal: new ApiPublicAnimalDataSource(request),
+    community: new ApiCommunityDataSource(request),
+    rescue: new ApiRescueDataSource(request),
+  }
+}
+
+let sources: PublicDataSources | null = null
+const getSources = () => {
+  if (!sources) sources = createPublicDataSources(runtimeConfig)
+  return sources
+}
 
 export const getPublicAnimalDataSource = (): PublicAnimalDataSource => {
-  if (source) return source
-  source = runtimeConfig.animalDataMode === 'offline-demo'
-    ? new OfflinePublicAnimalDataSource()
-    : new ApiPublicAnimalDataSource(createJsonRequester(runtimeConfig.gatewayBaseUrl))
-  return source
+  return getSources().animal
 }
 
 export const getCommunityDataSource = (): CommunityDataSource => {
-  if (communitySource) return communitySource
-  communitySource = runtimeConfig.communityDataMode === 'offline-demo'
-    ? new OfflineCommunityDataSource()
-    : new ApiCommunityDataSource(createJsonRequester(runtimeConfig.gatewayBaseUrl))
-  return communitySource
+  return getSources().community
 }
 
 export const getRescueDataSource = (): RescueDataSource => {
-  if (rescueSource) return rescueSource
-  rescueSource = runtimeConfig.rescueDataMode === 'offline-demo'
-    ? new OfflineRescueDataSource()
-    : new ApiRescueDataSource(createJsonRequester(runtimeConfig.gatewayBaseUrl))
-  return rescueSource
+  return getSources().rescue
 }
 
 export const isAnimalOfflineDemo = () => runtimeConfig.animalDataMode === 'offline-demo'
 
 export const isCommunityOfflineDemo = () => runtimeConfig.communityDataMode === 'offline-demo'
 export const isRescueOfflineDemo = () => runtimeConfig.rescueDataMode === 'offline-demo'
+export const isPublicDataApiMode = () => runtimeConfig.publicDataMode === 'api'

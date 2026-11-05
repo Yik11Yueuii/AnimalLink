@@ -1,19 +1,24 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test, { after, before, beforeEach } from 'node:test'
+import { runtimeConfig } from '../config/runtime'
+import { ApiRequestError } from '../services/apiClient'
 import { getPublicAnimalDataSource, getRescueDataSource } from '../services/sourceFactory'
+import { resetCampusValidationCacheForTest } from '../state/campus'
 import type { AnimalSearchCriteria, CampusResponse, PageResponse, AnimalSummaryResponse } from '../types/api'
 import type { PublicRescuePage, PublicRescueStatus } from '../types/rescue'
 
 interface CampusAwarePage {
-  data: { campus: CampusResponse | null }
+  data: { campus: CampusResponse | null; campusValidationFailed?: boolean; errorMessage?: string }
   setData(update: Record<string, unknown>): void
   onShow(): void
+  onRetry?(): void
 }
 
 const animalSource = getPublicAnimalDataSource()
 const rescueSource = getRescueDataSource()
 const originalAnimalSearch = animalSource.searchAnimals
+const originalCommunityLookup = animalSource.getUniversityCommunity
 const originalRescueSearch = rescueSource.search
 let animalDefinition: CampusAwarePage
 let rescueDefinition: CampusAwarePage
@@ -42,6 +47,7 @@ const flushPageRefresh = async () => {
   await Promise.resolve()
   await Promise.resolve()
   await Promise.resolve()
+  await new Promise<void>((resolve) => setImmediate(resolve))
 }
 
 before(async () => {
@@ -58,8 +64,13 @@ beforeEach(() => {
   rescueCalls = []
   ;(globalThis as unknown as { wx: unknown }).wx = {
     getStorageSync: (key: string) => storage.get(key),
+    setStorageSync: (key: string, value: unknown) => storage.set(key, value),
+    removeStorageSync: (key: string) => storage.delete(key),
     navigateTo: ({ url }: { url: string }) => routes.push(url),
   }
+  runtimeConfig.publicDataMode = 'offline-demo'
+  resetCampusValidationCacheForTest()
+  animalSource.getUniversityCommunity = originalCommunityLookup
   animalSource.searchAnimals = async criteria => {
     animalCalls.push(criteria)
     return { items: [], page: criteria.page, size: criteria.size, total: 0 } as PageResponse<AnimalSummaryResponse>
@@ -72,7 +83,9 @@ beforeEach(() => {
 
 after(() => {
   animalSource.searchAnimals = originalAnimalSearch
+  animalSource.getUniversityCommunity = originalCommunityLookup
   rescueSource.search = originalRescueSearch
+  runtimeConfig.publicDataMode = 'offline-demo'
 })
 
 test('Circle keeps the only daily campus switch while Animals and Rescue render passive campus labels', async () => {
@@ -124,7 +137,7 @@ test('Animals and Rescue retain the first-use campus selection guide', () => {
     '/pages/campus/index?returnTo=animals',
     '/pages/campus/index?returnTo=rescue',
   ])
-  assert.deepEqual(animalCalls, [])
+  assert.equal(animalCalls.length, 0)
   assert.deepEqual(rescueCalls, [])
 })
 
@@ -151,4 +164,46 @@ test('Animals and Rescue reread the shared Campus Context and refresh after a Ci
   assert.deepEqual(animalCalls.map(call => call.campusId), ['campus-a', 'campus-b'])
   assert.deepEqual(rescueCalls.map(call => call.campusId), ['campus-a', 'campus-b'])
   assert.deepEqual(routes, [])
+})
+
+test('API mode preserves Campus on network failure and retry validates before loading business data', async () => {
+  runtimeConfig.publicDataMode = 'api'
+  const animals = createPage(animalDefinition)
+  const selected = campus('campus-api', '真实高校')
+  storage.set('animallink.selectedCampus.v1', selected)
+  let lookupCalls = 0
+  animalSource.getUniversityCommunity = async () => {
+    lookupCalls += 1
+    if (lookupCalls === 1) throw new ApiRequestError('network unavailable', null)
+    return selected
+  }
+
+  animals.onShow()
+  await flushPageRefresh()
+  assert.equal(animals.data.campus?.id, selected.id)
+  assert.equal(animals.data.campusValidationFailed, true)
+  assert.deepEqual(storage.get('animallink.selectedCampus.v1'), selected)
+  assert.deepEqual(animalCalls, [])
+
+  animals.onRetry?.()
+  await flushPageRefresh()
+  assert.equal(lookupCalls, 2)
+  assert.equal(animals.data.campusValidationFailed, false)
+  assert.deepEqual((animalCalls as AnimalSearchCriteria[]).map(call => call.campusId), [selected.id])
+  assert.deepEqual(routes, [])
+})
+
+test('API mode clears mismatched stored Campus and redirects before old Campus data can load', async () => {
+  runtimeConfig.publicDataMode = 'api'
+  const animals = createPage(animalDefinition)
+  const selected = campus('campus-old', '旧高校')
+  storage.set('animallink.selectedCampus.v1', selected)
+  animalSource.getUniversityCommunity = async () => campus('campus-new', '服务端高校')
+
+  animals.onShow()
+  await flushPageRefresh()
+  assert.equal(storage.has('animallink.selectedCampus.v1'), false)
+  assert.equal(animals.data.campus, null)
+  assert.deepEqual(animalCalls, [])
+  assert.deepEqual(routes, ['/pages/campus/index?returnTo=animals'])
 })

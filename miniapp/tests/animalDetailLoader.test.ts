@@ -52,6 +52,18 @@ test('a successful timeline read is returned normally', async () => {
   assert.deepEqual(result.timeline, [timeline])
 })
 
+test('API public mode skips the protected Timeline request and keeps the Animal visible', async () => {
+  let timelineCalls = 0
+  const result = await loadAnimalDetail(sourceWithTimeline(async () => {
+    timelineCalls += 1
+    throw new Error('must not be called')
+  }), animal.id, false)
+  assert.equal(timelineCalls, 0)
+  assert.equal(result.animal, animal)
+  assert.equal(result.timelineStatus, 'protected')
+  assert.deepEqual(result.timeline, [])
+})
+
 test('an Animal detail failure is not converted to empty data or an offline fallback', async () => {
   const failure = new ApiRequestError('Animal 请求失败', 503)
   const source = sourceWithTimeline(async () => ({ items: [], page: 0, size: 20, total: 0 }))

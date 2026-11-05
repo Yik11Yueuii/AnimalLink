@@ -1,4 +1,5 @@
-import { getRescueDataSource, isRescueOfflineDemo } from '../../services/sourceFactory'
+import { resolveCurrentCampusContext } from '../../services/campusContext'
+import { getRescueDataSource, isPublicDataApiMode, isRescueOfflineDemo } from '../../services/sourceFactory'
 import { RescueCatalog } from '../../state/rescueCatalog'
 import { getSelectedCampus } from '../../state/campus'
 import type { CampusResponse } from '../../types/api'
@@ -15,18 +16,39 @@ const dateText = (value: string) => value ? value.replace('T', ' ').slice(0, 16)
 const catalog = new RescueCatalog(getRescueDataSource(), 3)
 
 Page({
-  data: { offline: isRescueOfflineDemo(), campus: null as CampusResponse | null, statusIndex: 0, statusLabels: options.map((item) => item.label), rescues: [] as RescueCard[], total: 0, loading: false, loadingMore: false, hasMore: false, errorMessage: '' },
+  campusResolutionVersion: 0,
+  data: { offline: isRescueOfflineDemo(), campus: null as CampusResponse | null, statusIndex: 0, statusLabels: options.map((item) => item.label), rescues: [] as RescueCard[], total: 0, loading: false, loadingMore: false, hasMore: false, campusValidationFailed: false, errorMessage: '' },
   onShow() {
     const campus = getSelectedCampus()
     if (!campus) { wx.navigateTo({ url: '/pages/campus/index?returnTo=rescue' }); return }
-    if (campus.id !== this.data.campus?.id) { catalog.selectCampus(campus.id); this.setData({ campus, rescues: [], total: 0, errorMessage: '' }); void this.refresh() }
+    if (!isPublicDataApiMode()) { this.activateCampus(campus); return }
+    const version = ++this.campusResolutionVersion
+    if (campus.id !== this.data.campus?.id) { catalog.selectCampus(''); this.setData({ campus, rescues: [], total: 0, loading: true, campusValidationFailed: false, errorMessage: '' }) }
+    void resolveCurrentCampusContext().then((resolution) => {
+      if (version !== this.campusResolutionVersion || resolution.status === 'superseded') return
+      if (resolution.status === 'missing') {
+        catalog.selectCampus(''); this.setData({ campus: null, rescues: [], total: 0, loading: false, campusValidationFailed: false, errorMessage: '' })
+        wx.navigateTo({ url: '/pages/campus/index?returnTo=rescue' }); return
+      }
+      if (resolution.status === 'unavailable') { this.setData({ loading: false, campusValidationFailed: true, errorMessage: '暂时无法验证当前高校，请检查网络后重试。' }); return }
+      this.activateCampus(resolution.campus)
+    })
   },
+  onHide() { this.campusResolutionVersion += 1 },
+  onUnload() { this.campusResolutionVersion += 1 },
   onPullDownRefresh() { void this.refresh().finally(() => wx.stopPullDownRefresh()) },
   reportRescue() { wx.navigateTo({ url: '/pages/rescue-report/index' }) },
   onStatusChange(event: WechatMiniprogram.PickerChange) { const statusIndex = Number(event.detail.value); catalog.setStatus(options[statusIndex]?.value ?? ''); this.setData({ statusIndex }); void this.refresh() },
   openDetail(event: WechatMiniprogram.TouchEvent) { const eventId = String(event.currentTarget.dataset.id ?? ''); const campusId = this.data.campus?.id; if (eventId && campusId) wx.navigateTo({ url: `/pages/rescue-detail/index?eventId=${encodeURIComponent(eventId)}&campusId=${encodeURIComponent(campusId)}` }) },
-  onRetry() { void this.refresh() },
+  onRetry() {
+    if (this.data.campusValidationFailed) { this.onShow(); return }
+    void this.refresh()
+  },
   loadMore() { void this.loadNextPage() },
+  activateCampus(campus: CampusResponse) {
+    if (campus.id !== catalog.snapshot.campusId) { catalog.selectCampus(campus.id); this.setData({ campus, rescues: [], total: 0, campusValidationFailed: false, errorMessage: '' }); void this.refresh(); return }
+    this.setData({ campus, campusValidationFailed: false }); this.applySnapshot(catalog.snapshot)
+  },
   async refresh() { const pending = catalog.refresh(); this.applySnapshot(catalog.snapshot); this.applySnapshot(await pending) },
   async loadNextPage() { const pending = catalog.loadMore(); this.applySnapshot(catalog.snapshot); this.applySnapshot(await pending) },
   applySnapshot(snapshot: ReturnType<typeof rescueSnapshot>) { this.setData({ rescues: snapshot.items.map((item) => ({ ...item, statusText: labels[item.rescueStatus], updatedText: dateText(item.updatedAt) })), total: snapshot.total, loading: snapshot.loading, loadingMore: snapshot.loadingMore, hasMore: snapshot.hasMore, errorMessage: snapshot.errorMessage }) },
