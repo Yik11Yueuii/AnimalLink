@@ -31,15 +31,22 @@
         <input class="form-input" data-field="applicantName" value="{{form.applicantName}}" bindinput="formInput" placeholder="真实姓名" maxlength="80" />
         <input class="form-input" data-field="affiliationNote" value="{{form.affiliationNote}}" bindinput="formInput" placeholder="院系或校友说明（可选）" maxlength="255" />
         <picker mode="date" bindchange="formInput" data-field="expectedGraduationDate"><view class="picker-field">预计毕业日期（学生可选）：{{form.expectedGraduationDate || '未填写'}}</view></picker>
-        <button class="login-button" loading="{{loading}}" bindtap="submitIdentity">提交人工审核</button>
+        <button class="login-button" loading="{{loading}}" disabled="{{loading}}" bindtap="submitIdentity">提交人工审核</button>
         <button class="quiet-button" bindtap="closeIdentityForm">取消</button>
         <text class="demo-copy">本阶段不上传学籍材料；提交不会自动获得校园成员身份。</text>
       </view>
-      <button class="quiet-button" loading="{{loading}}" bindtap="logout">退出登录</button>
+      <button class="quiet-button" loading="{{loading}}" disabled="{{loading}}" bindtap="logout">退出登录</button>
     </block>
     <block wx:else>
       <text class="profile-copy">登录后可安全使用后续个人服务；公开浏览无需登录。</text>
-      <button class="login-button" loading="{{loading}}" bindtap="login">微信登录</button>
+      <text wx:if="{{authPhase === 'restoring'}}" class="profile-copy">正在验证登录状态…</text>
+      <text wx:if="{{authPhase === 'loggingIn'}}" class="profile-copy">正在完成微信登录…</text>
+      <text wx:if="{{authPhase === 'loggingOut'}}" class="profile-copy">正在退出登录…</text>
+      <text wx:if="{{authPhase === 'restricted'}}" class="profile-copy">当前会话暂无法访问身份信息，可重试验证或主动退出。</text>
+      <text wx:if="{{authPhase === 'sessionUnverified'}}" class="profile-copy">当前会话状态尚未确认，可重试验证或主动退出。</text>
+      <button wx:if="{{!offline && !sessionRetryAvailable && authPhase === 'unauthenticated'}}" class="login-button" loading="{{loading}}" disabled="{{loading}}" bindtap="login">微信登录</button>
+      <button wx:if="{{sessionRetryAvailable && !loading}}" class="retry-button" bindtap="restoreSession">重试登录状态查询</button>
+      <button wx:if="{{sessionRetryAvailable && !loading}}" class="quiet-button" bindtap="logout">退出当前会话并切换账号</button>
       <view class="boundary">不会自动获取手机号、头像昵称，也不会虚构校园成员或志愿者身份。</view>
     </block>
     <text wx:if="{{error}}" class="error-copy">{{error}}</text>
