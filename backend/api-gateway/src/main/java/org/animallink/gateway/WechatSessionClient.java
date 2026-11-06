@@ -38,15 +38,36 @@ public class WechatSessionClient {
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + assertion).contentType(MediaType.APPLICATION_JSON).bodyValue(body)
                 .exchangeToMono(response -> {
                     if (response.statusCode().is2xxSuccessful()) return response.bodyToMono(type);
-                    if (response.statusCode().equals(HttpStatus.UNAUTHORIZED)) return response.releaseBody().then(Mono.error(new Invalid()));
-                    if (response.statusCode().equals(HttpStatus.BAD_REQUEST)) return response.releaseBody().then(Mono.error(new Invalid()));
-                    if (response.statusCode().equals(HttpStatus.SERVICE_UNAVAILABLE)) return response.releaseBody().then(Mono.error(new Unavailable()));
+                    if (response.statusCode().equals(HttpStatus.UNAUTHORIZED)
+                            || response.statusCode().equals(HttpStatus.FORBIDDEN)
+                            || response.statusCode().equals(HttpStatus.TOO_MANY_REQUESTS)) {
+                        return response.bodyToMono(InternalError.class).defaultIfEmpty(new InternalError(null))
+                                .flatMap(error -> Mono.<T>error(classify(path, response.statusCode().value(), error.code())));
+                    }
+                    if (response.statusCode().equals(HttpStatus.BAD_REQUEST) && !LOGIN.equals(path))
+                        return response.releaseBody().then(Mono.error(new Invalid()));
                     return response.releaseBody().then(Mono.error(new Unavailable()));
-                })).timeout(timeout.plusMillis(250)).onErrorMap(error -> !(error instanceof Invalid) && !(error instanceof Unavailable), error -> new Unavailable());
+                })).timeout(timeout.plusMillis(250)).onErrorMap(error -> !(error instanceof Invalid)
+                        && !(error instanceof RiskBlocked) && !(error instanceof RateLimited)
+                        && !(error instanceof Unavailable), error -> new Unavailable());
+    }
+    private static RuntimeException classify(String path, int status, String code) {
+        if (LOGIN.equals(path)) {
+            if (status == 401 && "WECHAT_CODE_INVALID".equals(code)) return new Invalid();
+            if (status == 403 && "WECHAT_USER_BLOCKED".equals(code)) return new RiskBlocked();
+            if (status == 429 && "WECHAT_RATE_LIMITED".equals(code)) return new RateLimited();
+        } else if (status == 401 && "SESSION_INVALID".equals(code)) {
+            return new Invalid();
+        }
+        return new Unavailable();
     }
     private static boolean validIssued(IssuedSession v) { return v != null && v.token()!=null && v.token().matches("[A-Za-z0-9_-]{43}") && v.userId()!=null && v.displayName()!=null && v.idleExpiresAt()!=null && v.absoluteExpiresAt()!=null; }
     record Code(String code) {} record Token(String token) {} record Revocation(boolean revoked) {}
+    record InternalError(String code) {}
     public record IssuedSession(String token,String userId,String displayName,Instant idleExpiresAt,Instant absoluteExpiresAt) {}
     public record CurrentUser(String userId,String displayName,String systemRole,Instant idleExpiresAt,Instant absoluteExpiresAt) {}
-    public static final class Invalid extends RuntimeException {} public static final class Unavailable extends RuntimeException {}
+    public static final class Invalid extends RuntimeException {}
+    public static final class RiskBlocked extends RuntimeException {}
+    public static final class RateLimited extends RuntimeException {}
+    public static final class Unavailable extends RuntimeException {}
 }

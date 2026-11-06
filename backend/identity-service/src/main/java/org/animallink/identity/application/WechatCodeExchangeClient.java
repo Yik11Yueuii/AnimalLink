@@ -10,6 +10,12 @@ public interface WechatCodeExchangeClient {
     final class RejectedCodeException extends RuntimeException {
     }
 
+    final class RiskBlockedException extends RuntimeException {
+    }
+
+    final class RateLimitedException extends RuntimeException {
+    }
+
     final class UnavailableException extends RuntimeException {
     }
 }

@@ -48,10 +48,10 @@ class AdminBootstrapApplicationContextIntegrationTest {
 
             JdbcTemplate jdbc = context.getBean(JdbcTemplate.class);
             assertThat(jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM flyway_schema_history WHERE success=1", Integer.class)).isEqualTo(8);
+                    "SELECT COUNT(*) FROM flyway_schema_history WHERE success=1", Integer.class)).isEqualTo(9);
             assertThat(jdbc.queryForObject(
                     "SELECT MAX(CAST(version AS UNSIGNED)) FROM flyway_schema_history WHERE success=1",
-                    Integer.class)).isEqualTo(8);
+                    Integer.class)).isEqualTo(9);
 
             AdminBootstrapService service = context.getBean(AdminBootstrapService.class);
             var authorization = AdminBootstrapService.LocalBootstrapAuthorization
