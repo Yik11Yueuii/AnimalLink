@@ -9,6 +9,8 @@ public record ObservationFinalizationCommand(
         String campusId,
         String sourceAiTaskId,
         String sourceMatchingRecordId,
+        String attemptId,
+        long fencingVersion,
         String decisionType,
         String selectedAnimalId,
         String postText,

@@ -99,6 +99,42 @@ public class ObservationParsingService {
                 succeeded.completedAt(), null, null, null, null, null, 2), draft, null, null);
     }
 
+    /**
+     * Creates a server-audited draft from user input without contacting an AI provider.
+     * The task uses a server-selected MANUAL marker and still requires the normal confirm step.
+     */
+    public AiTaskView createManualDraft(ManualObservationCommand command) {
+        IdentityGateway.CurrentUser user = authorization.requireActiveMember(command.campusId());
+        validator.validate(command.draft());
+        mediaGateway.loadAll(command.mediaObjectKeys());
+        Instant now = Instant.now();
+        String taskId = UUID.randomUUID().toString();
+        AiTask pending = new AiTask(taskId, user.id(), command.campusId(),
+                AiTaskType.ANIMAL_OBSERVATION_PARSE, AiTaskStatus.PENDING,
+                "MANUAL", "MANUAL", "manual-v1", inputSummary(command), now,
+                null, null, null, null, null, null, null, 0);
+        repository.create(pending, command.mediaObjectKeys());
+        if (!repository.markRunning(taskId, 0)) throw new Conflict("手工草稿任务状态已变化");
+        String structuredJson = writeJson(command.draft());
+        Instant completedAt = Instant.now();
+        AiResult result = new AiResult(UUID.randomUUID().toString(), taskId, RESULT_TYPE,
+                "MANUAL_ENTRY", structuredJson, SCHEMA_VERSION, completedAt);
+        AiTask running = new AiTask(taskId, user.id(), command.campusId(), pending.taskType(),
+                AiTaskStatus.RUNNING, pending.modelProvider(), pending.modelName(),
+                pending.promptVersion(), pending.inputSummary(), pending.createdAt(), now,
+                null, null, null, null, null, null, 1);
+        AiTask succeeded = new AiTask(taskId, user.id(), command.campusId(), pending.taskType(),
+                AiTaskStatus.SUCCEEDED, pending.modelProvider(), pending.modelName(),
+                pending.promptVersion(), pending.inputSummary(), pending.createdAt(), now,
+                completedAt, null, null, null, null, null, 1);
+        repository.complete(succeeded, result);
+        return new AiTaskView(new AiTask(succeeded.id(), succeeded.userId(), succeeded.campusId(),
+                succeeded.taskType(), succeeded.status(), succeeded.modelProvider(),
+                succeeded.modelName(), succeeded.promptVersion(), succeeded.inputSummary(),
+                succeeded.createdAt(), succeeded.startedAt(), succeeded.completedAt(), null,
+                null, null, null, null, 2), command.draft(), null, null);
+    }
+
     public AiTaskView getOwned(String taskId) {
         IdentityGateway.CurrentUser user = authorization.requireActiveUser();
         return toOwnedView(taskId, user.id());
@@ -189,6 +225,19 @@ public class ObservationParsingService {
                     "hasOccurredAt", command.occurredAt() != null));
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("无法生成 AI 输入摘要", exception);
+        }
+    }
+
+    private String inputSummary(ManualObservationCommand command) {
+        try {
+            return objectMapper.writeValueAsString(Map.of(
+                    "mediaCount", command.mediaObjectKeys().size(),
+                    "hasText", command.text() != null && !command.text().isBlank(),
+                    "hasLocationDescription", command.locationDescription() != null,
+                    "hasOccurredAt", command.occurredAt() != null,
+                    "source", "MANUAL"));
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("无法生成手工输入摘要", exception);
         }
     }
 

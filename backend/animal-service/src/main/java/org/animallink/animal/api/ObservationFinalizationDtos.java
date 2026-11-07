@@ -14,12 +14,31 @@ public final class ObservationFinalizationDtos {
     private ObservationFinalizationDtos() {
     }
 
+    public record RegisterAttemptRequest(
+            @NotBlank String userId, @NotBlank String campusId,
+            @NotBlank String sourceAiTaskId, @NotBlank String sourceMatchingRecordId,
+            @NotBlank String attemptId, @NotBlank String decisionType,
+            String selectedAnimalId) { }
+
+    public record RegisterAttemptResponse(long fencingVersion) { }
+
+    public record RetireAttemptRequest(
+            @NotBlank String userId, @NotBlank String campusId,
+            @NotBlank String sourceAiTaskId, @NotBlank String sourceMatchingRecordId,
+            @NotBlank String attemptId, @Positive long fencingVersion,
+            @NotBlank String decisionType, @NotBlank String selectedAnimalId,
+            @NotBlank String failureCode) { }
+
+    public record RetireAttemptResponse(boolean retired) { }
+
     @JsonIgnoreProperties(ignoreUnknown = false)
     public record InternalFinalizeRequest(
             @NotBlank @Size(max = 36) String userId,
             @NotBlank @Size(max = 36) String campusId,
             @NotBlank @Size(max = 36) String sourceAiTaskId,
             @NotBlank @Size(max = 36) String sourceMatchingRecordId,
+            @NotBlank @Size(max = 36) String attemptId,
+            @NotNull @Positive Long fencingVersion,
             @NotBlank @Size(max = 32) String decisionType,
             @Size(max = 36) String selectedAnimalId,
             @NotBlank @Size(max = 2000) String postText,
@@ -27,7 +46,7 @@ public final class ObservationFinalizationDtos {
             @NotNull @Valid ConfirmedDraftRequest confirmedDraft) {
         ObservationFinalizationCommand toCommand() {
             return new ObservationFinalizationCommand(userId, campusId, sourceAiTaskId,
-                    sourceMatchingRecordId, decisionType, selectedAnimalId, postText,
+                    sourceMatchingRecordId, attemptId, fencingVersion, decisionType, selectedAnimalId, postText,
                     mediaObjectKeys, confirmedDraft.toCommand());
         }
     }

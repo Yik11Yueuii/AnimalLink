@@ -5,6 +5,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import org.animallink.intelligence.application.AiTaskView;
 import org.animallink.intelligence.application.ObservationParseCommand;
+import org.animallink.intelligence.application.ManualObservationCommand;
 import org.animallink.intelligence.domain.AiTaskStatus;
 import org.animallink.intelligence.domain.AnimalObservationDraft;
 
@@ -37,6 +38,32 @@ public final class AiDtos {
 
     @JsonIgnoreProperties(ignoreUnknown = false)
     public record ConfirmRequest(@NotNull @Valid AnimalObservationDraft draft) {}
+
+    /**
+     * Explicit manual path used only when intelligent parsing is unavailable.
+     * Provider and task state remain server-controlled.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record ManualObservationRequest(
+            @NotBlank @Pattern(regexp = "^[0-9a-fA-F-]{36}$") String campusId,
+            @NotNull @Size(min = 1, max = 6)
+            List<@NotBlank @Size(max = 512) String> mediaObjectKeys,
+            @Size(max = 2000) String text,
+            @Size(max = 255) String locationDescription,
+            @PastOrPresent Instant occurredAt,
+            @NotNull @Valid AnimalObservationDraft draft,
+            @Null(message = "modelProvider 由服务端决定") String modelProvider,
+            @Null(message = "modelName 由服务端决定") String modelName,
+            @Null(message = "status 由服务端决定") String status) {
+        ManualObservationCommand toCommand() {
+            return new ManualObservationCommand(campusId, mediaObjectKeys, blankToNull(text),
+                    blankToNull(locationDescription), occurredAt, draft);
+        }
+
+        private String blankToNull(String value) {
+            return value == null || value.isBlank() ? null : value.trim();
+        }
+    }
 
     public record TaskResponse(
             String taskId,

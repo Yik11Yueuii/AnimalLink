@@ -70,14 +70,21 @@ public class CandidateMatchingService {
             throw new TaskNotConfirmed("AI 草稿须经用户确认后才能进行候选匹配");
         }
         AnimalObservationDraft draft = readDraft(bundle.confirmation().confirmedStructuredJson());
-        List<AnimalCandidateGateway.CandidateSnapshot> recalled = animalGateway.recall(
-                bundle.task().campusId(), draft.species().name(), recallLimit);
-        List<List<Double>> observationVectors = recalled.isEmpty() ? List.of() : observationVectors(taskId);
-        List<Scored> scored = recalled.stream()
-                .map(candidate -> score(candidate, draft, observationVectors, weights))
-                .sorted(Comparator.comparingDouble(Scored::finalScore).reversed()
-                        .thenComparing(value -> value.snapshot().id()))
-                .toList();
+        List<AnimalCandidateGateway.CandidateSnapshot> recalled;
+        List<Scored> scored;
+        try {
+            recalled = animalGateway.recall(bundle.task().campusId(), draft.species().name(), recallLimit);
+            List<List<Double>> observationVectors = recalled.isEmpty() ? List.of() : observationVectors(taskId);
+            scored = recalled.stream()
+                    .map(candidate -> score(candidate, draft, observationVectors, weights))
+                    .sorted(Comparator.comparingDouble(Scored::finalScore).reversed()
+                            .thenComparing(value -> value.snapshot().id()))
+                    .toList();
+        } catch (CandidateServiceUnavailable | EmbeddingTimeout | EmbeddingUnavailable
+                 | InvalidEmbeddingVector exception) {
+            return persistFallback(user, bundle.task(), selected, weights, topK,
+                    fallbackReason(exception));
+        }
         boolean lowConfidence = scored.isEmpty() || scored.getFirst().finalScore() < LOW_CONFIDENCE_THRESHOLD;
         List<MatchingCandidate> topCandidates = new ArrayList<>();
         for (int index = 0; index < Math.min(topK, scored.size()); index++) {
@@ -92,10 +99,29 @@ public class CandidateMatchingService {
         }
         MatchingRecord record = new MatchingRecord(UUID.randomUUID().toString(), user.id(), taskId,
                 bundle.task().campusId(), ALGORITHM_VERSION, WEIGHT_VERSION, selected,
-                weights, topK, recalled.size(), lowConfidence, Instant.now(),
+                MatchingMode.AUTOMATED, null, weights, topK, recalled.size(), lowConfidence, Instant.now(),
                 List.copyOf(topCandidates));
         matchingRepository.save(record);
         return record;
+    }
+
+    private MatchingRecord persistFallback(IdentityGateway.CurrentUser user, AiTask task,
+                                           MatchingExperiment experiment,
+                                           Map<String, Double> weights, int topK,
+                                           String fallbackReason) {
+        MatchingRecord record = new MatchingRecord(UUID.randomUUID().toString(), user.id(), task.id(),
+                task.campusId(), ALGORITHM_VERSION, WEIGHT_VERSION, experiment,
+                MatchingMode.MANUAL_FALLBACK, fallbackReason, weights, topK, 0, true,
+                Instant.now(), List.of());
+        matchingRepository.save(record);
+        return record;
+    }
+
+    private String fallbackReason(RuntimeException exception) {
+        if (exception instanceof CandidateServiceUnavailable) return "CANDIDATE_SERVICE_UNAVAILABLE";
+        if (exception instanceof EmbeddingTimeout) return "EMBEDDING_TIMEOUT";
+        if (exception instanceof EmbeddingUnavailable) return "EMBEDDING_UNAVAILABLE";
+        return "INVALID_EMBEDDING_VECTOR";
     }
 
     public MatchingRecord getOwned(String recordId) {

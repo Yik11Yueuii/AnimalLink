@@ -1,0 +1,95 @@
+name: Phase 2C MySQL and service assertion integration
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/phase2c-mysql-integration.yml'
+      - 'backend/pom.xml'
+      - 'backend/animal-service/**'
+      - 'backend/intelligence-service/**'
+
+permissions:
+  contents: read
+
+jobs:
+  phase2c-targeted:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Verify isolated Docker Engine
+        run: docker version
+      - name: Generate test-only observation assertion key
+        run: echo "ANIMALLINK_AUTHENTICATION_OBSERVATION_ASSERTION_KEY=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+      - name: Run Phase 2C MySQL, concurrency and assertion tests
+        run: >-
+          ./mvnw -pl backend/intelligence-service,backend/animal-service -am
+          -Dtest=Phase2CIncrementalMigrationTest,Phase2CObservationFinalizationIntegrationTest,Phase2CManualFallbackUnitTest,ObservationServiceAssertionVerifierTest,ObservationServiceAssertionSignerTest,HttpObservationFinalizationGatewayTest,InternalObservationFinalizationSecurityTest
+          -Dsurefire.failIfNoSpecifiedTests=false test
+      - name: Retain targeted Surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase2c-targeted-surefire
+          path: |
+            backend/intelligence-service/target/surefire-reports/**
+            backend/animal-service/target/surefire-reports/**
+          retention-days: 7
+          if-no-files-found: warn
+
+  full-intelligence:
+    needs: phase2c-targeted
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Verify isolated Docker Engine
+        run: docker version
+      - name: Run complete Intelligence module tests
+        run: ./mvnw -pl backend/intelligence-service -am test
+      - name: Retain Intelligence Surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase2c-intelligence-surefire
+          path: backend/intelligence-service/target/surefire-reports/**
+          retention-days: 7
+          if-no-files-found: warn
+
+  full-animal:
+    needs: phase2c-targeted
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Verify isolated Docker Engine
+        run: docker version
+      - name: Build repository MinIO image required by existing media test
+        run: docker build -t animallink-minio:RELEASE.2025-10-15T17-29-55Z infra/minio
+      - name: Generate test-only observation assertion key
+        run: echo "ANIMALLINK_AUTHENTICATION_OBSERVATION_ASSERTION_KEY=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+      - name: Run complete Animal module tests
+        run: ./mvnw -pl backend/animal-service -am test
+      - name: Retain Animal Surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase2c-animal-surefire
+          path: backend/animal-service/target/surefire-reports/**
+          retention-days: 7
+          if-no-files-found: warn

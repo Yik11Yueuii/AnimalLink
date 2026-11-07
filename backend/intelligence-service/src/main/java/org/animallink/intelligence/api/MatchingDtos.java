@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.animallink.intelligence.domain.MatchingCandidate;
 import org.animallink.intelligence.domain.MatchingExperiment;
+import org.animallink.intelligence.domain.MatchingMode;
 import org.animallink.intelligence.domain.MatchingRecord;
 
 import java.time.Instant;
@@ -26,6 +27,8 @@ public final class MatchingDtos {
             String algorithmVersion,
             String weightVersion,
             MatchingExperiment experimentCode,
+            MatchingMode matchingMode,
+            String fallbackReason,
             Map<String, Double> weights,
             int topK,
             int candidateCount,
@@ -38,6 +41,7 @@ public final class MatchingDtos {
                     : record.lowConfidence() ? "NO_STRONG_MATCH" : null;
             return new MatchResponse(record.id(), record.aiTaskId(), record.campusId(),
                     record.algorithmVersion(), record.weightVersion(), record.experiment(),
+                    record.matchingMode(), record.fallbackReason(),
                     record.weights(), record.topK(), record.candidateCount(), record.lowConfidence(),
                     reason, record.candidates().stream().map(CandidateResponse::from).toList(),
                     record.createdAt());
