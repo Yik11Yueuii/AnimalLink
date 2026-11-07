@@ -6,6 +6,7 @@ import org.animallink.animal.domain.DependencyUnavailableException;
 import org.animallink.animal.domain.ActiveAdoptionRelationRequiredException;
 import org.animallink.animal.domain.CrossCampusAnimalException;
 import org.animallink.animal.domain.DuplicateFinalizeConflictException;
+import org.animallink.animal.domain.ObservationAttemptConflictException;
 import org.animallink.animal.domain.ForbiddenException;
 import org.animallink.animal.domain.IdempotencyKeyReusedException;
 import org.animallink.animal.domain.MediaCopyException;
@@ -30,6 +31,12 @@ import java.time.Instant;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+    @ExceptionHandler(ObservationAttemptConflictException.class)
+    ResponseEntity<ApiError> observationAttemptConflict(ObservationAttemptConflictException exception,
+                                                        HttpServletRequest request) {
+        return response(HttpStatus.CONFLICT, "OBSERVATION_ATTEMPT_CONFLICT",
+                exception.getMessage(), request);
+    }
     @ExceptionHandler(ResourceNotFoundException.class)
     ResponseEntity<ApiError> notFound(ResourceNotFoundException exception,
                                       HttpServletRequest request) {

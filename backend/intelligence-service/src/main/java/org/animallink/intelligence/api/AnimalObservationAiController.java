@@ -17,6 +17,12 @@ public class AnimalObservationAiController {
         return AiDtos.TaskResponse.from(service.parse(request.toCommand()));
     }
 
+    @PostMapping("/api/v1/ai/animal-observation/manual")
+    @ResponseStatus(HttpStatus.CREATED)
+    AiDtos.TaskResponse manual(@Valid @RequestBody AiDtos.ManualObservationRequest request) {
+        return AiDtos.TaskResponse.from(service.createManualDraft(request.toCommand()));
+    }
+
     @GetMapping("/api/v1/ai/tasks/{taskId}")
     AiDtos.TaskResponse task(@PathVariable("taskId") String taskId) {
         return AiDtos.TaskResponse.from(service.getOwned(taskId));

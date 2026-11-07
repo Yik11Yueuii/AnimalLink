@@ -4,12 +4,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.animallink.animal.application.*;
 import org.animallink.animal.domain.*;
+import org.animallink.animal.infrastructure.ObservationServiceAssertionVerifier;
+import org.animallink.animal.infrastructure.JdbcObservationAttemptGate;
+import org.animallink.animal.infrastructure.JdbcObservationAssertionReplayStore;
+import org.animallink.animal.infrastructure.JdbcObservationFinalizationRepository;
+import org.animallink.animal.infrastructure.JdbcAnimalRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -61,12 +67,34 @@ class Phase2CObservationFinalizationIntegrationTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired ObjectMapper objectMapper;
     @Autowired AnimalIdentityProposalService proposalService;
+    @Autowired ObservationFinalizationService finalizationService;
+    @Autowired JdbcObservationAttemptGate attemptGate;
+    @Autowired JdbcObservationAssertionReplayStore replayStore;
+    @SpyBean JdbcObservationFinalizationRepository finalizationRepository;
+    @SpyBean JdbcAnimalRepository animalRepository;
+    @Autowired org.springframework.transaction.support.TransactionTemplate transactions;
     @MockBean IdentityGateway identityGateway;
     @MockBean PermanentPostMediaGateway mediaGateway;
+    // Business persistence is exercised here; assertion validation has a dedicated unit suite.
+    @MockBean ObservationServiceAssertionVerifier assertionVerifier;
+
+    @Test
+    void replayNoncePersistsAcrossVerifierInstancesAndExpiresSafely() {
+        String nonce = UUID.randomUUID().toString();
+        var secondInstance = new JdbcObservationAssertionReplayStore(jdbc);
+        assertThat(replayStore.consume(nonce, java.time.Instant.now().plusSeconds(20))).isTrue();
+        assertThat(secondInstance.consume(nonce, java.time.Instant.now().plusSeconds(20))).isFalse();
+        String expired = UUID.randomUUID().toString();
+        jdbc.update("INSERT INTO observation_assertion_replay (jti, expires_at) VALUES (?, ?)",
+                expired, java.sql.Timestamp.from(java.time.Instant.now().minusSeconds(120)));
+        assertThat(secondInstance.consume(expired, java.time.Instant.now().plusSeconds(20))).isTrue();
+    }
 
     @BeforeEach
     void setUp() {
         jdbc.update("DELETE FROM observation_finalization");
+        jdbc.update("DELETE FROM observation_attempt_history");
+        jdbc.update("DELETE FROM observation_attempt_gate");
         jdbc.update("DELETE FROM animal_identity_proposal");
         jdbc.update("DELETE FROM post_like");
         jdbc.update("DELETE FROM comment");
@@ -111,7 +139,7 @@ class Phase2CObservationFinalizationIntegrationTest {
 
         internalFinalize(matchingId, "NO_MATCH", null)
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("DUPLICATE_FINALIZE_CONFLICT"));
+                .andExpect(jsonPath("$.code").value("OBSERVATION_ATTEMPT_CONFLICT"));
 
         internalFinalize(UUID.randomUUID().toString(), "SELECT_EXISTING", ARCHIVED_ANIMAL_ID)
                 .andExpect(status().isConflict())
@@ -124,6 +152,219 @@ class Phase2CObservationFinalizationIntegrationTest {
                 UUID.randomUUID().toString())
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("SELECTED_ANIMAL_NOT_FOUND"));
+    }
+
+    @Test
+    void sameObservationTaskCannotCreateFormalRecordsFromDifferentMatchingRecords()
+            throws Exception {
+        String taskId = UUID.randomUUID().toString();
+        String first = internalFinalize(UUID.randomUUID().toString(), taskId,
+                "SELECT_EXISTING", ACTIVE_ANIMAL_ID)
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String postId = objectMapper.readTree(first).get("postId").asText();
+
+        internalFinalize(UUID.randomUUID().toString(), taskId,
+                "SELECT_EXISTING", ACTIVE_ANIMAL_ID)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("OBSERVATION_ATTEMPT_CONFLICT"));
+        internalFinalize(UUID.randomUUID().toString(), taskId, "NO_MATCH", null)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("OBSERVATION_ATTEMPT_CONFLICT"));
+        assertThat(count("observation_finalization")).isEqualTo(1);
+        assertThat(count("post")).isEqualTo(1);
+    }
+
+    @Test
+    void finalizedAttemptCannotBeRetiredOrReplaced() throws Exception {
+        String match = UUID.randomUUID().toString();
+        String task = UUID.nameUUIDFromBytes(("ai-task:" + match).getBytes()).toString();
+        internalFinalize(match, task, "SELECT_EXISTING", ACTIVE_ANIMAL_ID)
+                .andExpect(status().isOk());
+        jdbc.update("UPDATE animal SET identity_status = 'ARCHIVED' WHERE id = ?", ACTIVE_ANIMAL_ID);
+        assertThatThrownBy(() -> finalizationService.retireAttempt(MEMBER_ID, task, match,
+                match, 1, CAMPUS_ID, "SELECT_EXISTING", ACTIVE_ANIMAL_ID,
+                "SELECTED_ANIMAL_ARCHIVED"))
+                .isInstanceOf(ObservationAttemptConflictException.class);
+        assertThat(jdbc.queryForObject("SELECT status FROM observation_attempt_gate WHERE source_ai_task_id = ?",
+                String.class, task)).isEqualTo("FINALIZED");
+        assertThat(count("post")).isEqualTo(1);
+    }
+
+    @Test
+    void retiredAttemptAndOlderVersionCannotWriteOrBeRegisteredAgain() throws Exception {
+        String match = UUID.randomUUID().toString();
+        String task = UUID.nameUUIDFromBytes(("ai-task:" + match).getBytes()).toString();
+        long first = finalizationService.registerAttempt(MEMBER_ID, CAMPUS_ID, task, match, match,
+                "SELECT_EXISTING", ARCHIVED_ANIMAL_ID);
+        assertThat(first).isEqualTo(1);
+        assertThat(finalizationService.registerAttempt(MEMBER_ID, CAMPUS_ID, task, match, match,
+                "SELECT_EXISTING", ARCHIVED_ANIMAL_ID))
+                .isEqualTo(first);
+        assertThatThrownBy(() -> finalizationService.registerAttempt(MEMBER_ID, CAMPUS_ID,
+                task, match, UUID.randomUUID().toString(), "NO_MATCH", null))
+                .isInstanceOf(ObservationAttemptConflictException.class);
+        finalizationService.retireAttempt(MEMBER_ID, task, match, match, first, CAMPUS_ID,
+                "SELECT_EXISTING", ARCHIVED_ANIMAL_ID, "SELECTED_ANIMAL_ARCHIVED");
+        jdbc.update("UPDATE animal SET identity_status = 'ACTIVE' WHERE id = ?", ARCHIVED_ANIMAL_ID);
+        internalFinalize(match, task, "SELECT_EXISTING", ARCHIVED_ANIMAL_ID)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("OBSERVATION_ATTEMPT_CONFLICT"));
+        String next = UUID.randomUUID().toString();
+        assertThat(finalizationService.registerAttempt(MEMBER_ID, CAMPUS_ID, task, match, next,
+                "SELECT_EXISTING", ARCHIVED_ANIMAL_ID))
+                .isEqualTo(2);
+        internalFinalize(match, task, "SELECT_EXISTING", ARCHIVED_ANIMAL_ID)
+                .andExpect(status().isConflict());
+        assertThat(count("post")).isZero();
+        var newRequest = (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.readTree(
+                finalizeJson(match, task, "SELECT_EXISTING", ARCHIVED_ANIMAL_ID));
+        newRequest.put("attemptId", next);
+        newRequest.put("fencingVersion", 2);
+        mockMvc.perform(post("/internal/v1/observation-finalizations")
+                        .header("X-Internal-Service", "intelligence-service")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(newRequest)))
+                .andExpect(status().isOk());
+        assertThat(count("post")).isEqualTo(1);
+        internalFinalize(match, task, "SELECT_EXISTING", ARCHIVED_ANIMAL_ID)
+                .andExpect(status().isConflict());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM observation_attempt_history WHERE source_ai_task_id = ?",
+                Integer.class, task)).isEqualTo(2);
+    }
+
+    @Test
+    void retirementWinsAgainstAlreadyRunningOldFinalize() throws Exception {
+        String match = UUID.randomUUID().toString();
+        String task = UUID.nameUUIDFromBytes(("ai-task:" + match).getBytes()).toString();
+        finalizationService.registerAttempt(MEMBER_ID, CAMPUS_ID, task, match, match,
+                "SELECT_EXISTING", ACTIVE_ANIMAL_ID);
+        CountDownLatch copying = new CountDownLatch(1);
+        CountDownLatch releaseCopy = new CountDownLatch(1);
+        when(mediaGateway.copyObservationMedia(anyList(), anyString())).thenAnswer(invocation -> {
+            copying.countDown();
+            if (!releaseCopy.await(10, TimeUnit.SECONDS)) throw new AssertionError("媒体复制测试超时");
+            return List.of(new PermanentPostMediaGateway.PermanentMedia(
+                    "posts/test/01.jpg", "image/jpeg", org.animallink.animal.domain.MediaType.IMAGE, 128, 0));
+        });
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            Future<Integer> old = pool.submit(() -> internalFinalize(match, task,
+                    "SELECT_EXISTING", ACTIVE_ANIMAL_ID).andReturn().getResponse().getStatus());
+            assertThat(copying.await(10, TimeUnit.SECONDS)).isTrue();
+            jdbc.update("UPDATE animal SET identity_status = 'ARCHIVED' WHERE id = ?", ACTIVE_ANIMAL_ID);
+            finalizationService.retireAttempt(MEMBER_ID, task, match, match, 1, CAMPUS_ID,
+                    "SELECT_EXISTING", ACTIVE_ANIMAL_ID, "SELECTED_ANIMAL_ARCHIVED");
+            jdbc.update("UPDATE animal SET identity_status = 'ACTIVE' WHERE id = ?", ACTIVE_ANIMAL_ID);
+            releaseCopy.countDown();
+            assertThat(old.get(10, TimeUnit.SECONDS)).isEqualTo(409);
+            assertThat(count("post")).isZero();
+            assertThat(jdbc.queryForObject("SELECT status FROM observation_attempt_gate WHERE source_ai_task_id = ?",
+                    String.class, task)).isEqualTo("RETIRED");
+        } finally {
+            releaseCopy.countDown();
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void archivedAfterPrecheckIsRejectedAndAttemptCanRetire() throws Exception {
+        String match = UUID.randomUUID().toString();
+        String task = UUID.randomUUID().toString();
+        CountDownLatch copying = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        when(mediaGateway.copyObservationMedia(anyList(), anyString())).thenAnswer(invocation -> {
+            copying.countDown();
+            if (!release.await(10, TimeUnit.SECONDS)) throw new AssertionError("copy timeout");
+            return List.of(new PermanentPostMediaGateway.PermanentMedia(
+                    "posts/test/01.jpg", "image/jpeg", org.animallink.animal.domain.MediaType.IMAGE, 128, 0));
+        });
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            Future<Integer> result = pool.submit(() -> internalFinalize(match, task,
+                    "SELECT_EXISTING", ACTIVE_ANIMAL_ID).andReturn().getResponse().getStatus());
+            assertThat(copying.await(10, TimeUnit.SECONDS)).isTrue();
+            transactions.executeWithoutResult(status -> jdbc.update(
+                    "UPDATE animal SET identity_status = 'ARCHIVED' WHERE id = ?", ACTIVE_ANIMAL_ID));
+            release.countDown();
+            assertThat(result.get(10, TimeUnit.SECONDS)).isEqualTo(409);
+            assertThat(count("post")).isZero();
+            assertThat(count("observation_finalization")).isZero();
+            assertThat(jdbc.queryForObject("SELECT status FROM observation_attempt_gate WHERE source_ai_task_id = ?",
+                    String.class, task)).isEqualTo("ACTIVE");
+            finalizationService.retireAttempt(MEMBER_ID, task, match, match, 1, CAMPUS_ID,
+                    "SELECT_EXISTING", ACTIVE_ANIMAL_ID, "SELECTED_ANIMAL_ARCHIVED");
+            assertThat(jdbc.queryForObject("SELECT status FROM observation_attempt_gate WHERE source_ai_task_id = ?",
+                    String.class, task)).isEqualTo("RETIRED");
+        } finally {
+            release.countDown();
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void formalizationAnimalLockBlocksConcurrentArchiveUntilCommit() throws Exception {
+        String match = UUID.randomUUID().toString();
+        String task = UUID.randomUUID().toString();
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicLong ownerConnection = new java.util.concurrent.atomic.AtomicLong();
+        doAnswer(invocation -> {
+            Object result = invocation.callRealMethod();
+            ownerConnection.set(jdbc.queryForObject("SELECT CONNECTION_ID()", Long.class));
+            locked.countDown();
+            if (!release.await(10, TimeUnit.SECONDS)) throw new AssertionError("lock timeout");
+            return result;
+        }).when(animalRepository).findByIdForUpdate(ACTIVE_ANIMAL_ID);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<Integer> formal = pool.submit(() -> internalFinalize(match, task,
+                    "SELECT_EXISTING", ACTIVE_ANIMAL_ID).andReturn().getResponse().getStatus());
+            assertThat(locked.await(10, TimeUnit.SECONDS)).isTrue();
+            Future<Long> blocked = pool.submit(() -> {
+                java.util.concurrent.atomic.AtomicLong otherConnection = new java.util.concurrent.atomic.AtomicLong();
+                assertThatThrownBy(() -> transactions.executeWithoutResult(status -> {
+                    otherConnection.set(jdbc.queryForObject("SELECT CONNECTION_ID()", Long.class));
+                    jdbc.execute("SET SESSION innodb_lock_wait_timeout = 1");
+                    try {
+                        jdbc.update("UPDATE animal SET identity_status = 'ARCHIVED' WHERE id = ?", ACTIVE_ANIMAL_ID);
+                    } finally {
+                        jdbc.execute("SET SESSION innodb_lock_wait_timeout = 50");
+                    }
+                })).isInstanceOf(org.springframework.dao.CannotAcquireLockException.class);
+                return otherConnection.get();
+            });
+            assertThat(blocked.get(8, TimeUnit.SECONDS)).isNotEqualTo(ownerConnection.get());
+            assertThat(count("post")).isZero();
+            release.countDown();
+            assertThat(formal.get(10, TimeUnit.SECONDS)).isEqualTo(200);
+            assertThat(jdbc.update("UPDATE animal SET identity_status = 'ARCHIVED' WHERE id = ?",
+                    ACTIVE_ANIMAL_ID)).isEqualTo(1);
+            assertThat(count("post")).isEqualTo(1);
+            assertThat(count("observation_finalization")).isEqualTo(1);
+        } finally {
+            release.countDown();
+            pool.shutdownNow();
+            reset(animalRepository);
+        }
+    }
+
+    @Test
+    void aggregateWriteFailureRollsBackPostAndFenceState() throws Exception {
+        String match = UUID.randomUUID().toString();
+        String task = UUID.nameUUIDFromBytes(("ai-task:" + match).getBytes()).toString();
+        doThrow(new IllegalStateException("injected aggregate write failure"))
+                .when(finalizationRepository).insertAggregate(any(), any(), anyList(), isNull());
+        try {
+            org.junit.jupiter.api.Assertions.assertThrows(jakarta.servlet.ServletException.class,
+                    () -> internalFinalize(match, task, "SELECT_EXISTING", ACTIVE_ANIMAL_ID));
+            assertThat(count("post")).isZero();
+            assertThat(count("observation_finalization")).isZero();
+            assertThat(jdbc.queryForObject(
+                    "SELECT status FROM observation_attempt_gate WHERE source_ai_task_id = ?",
+                    String.class, task)).isEqualTo("ACTIVE");
+        } finally {
+            reset(finalizationRepository);
+        }
     }
 
     @Test
@@ -287,19 +528,41 @@ class Phase2CObservationFinalizationIntegrationTest {
 
     private org.springframework.test.web.servlet.ResultActions internalFinalize(
             String matchingId, String decisionType, String selectedAnimalId) throws Exception {
+        return internalFinalize(matchingId,
+                UUID.nameUUIDFromBytes(("ai-task:" + matchingId).getBytes()).toString(), decisionType,
+                selectedAnimalId);
+    }
+
+    private org.springframework.test.web.servlet.ResultActions internalFinalize(
+            String matchingId, String sourceAiTaskId, String decisionType,
+            String selectedAnimalId) throws Exception {
+        try {
+            transactions.execute(status -> attemptGate.register(sourceAiTaskId, matchingId,
+                    MEMBER_ID, CAMPUS_ID, matchingId, decisionType, selectedAnimalId));
+        } catch (ObservationAttemptConflictException alreadyOwned) {
+            // Let the HTTP request assert the conflict against the persisted gate.
+        }
         return mockMvc.perform(post("/internal/v1/observation-finalizations")
                 .header("X-Internal-Service", "intelligence-service")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(finalizeJson(matchingId, decisionType, selectedAnimalId)));
+                .content(finalizeJson(matchingId, sourceAiTaskId, decisionType, selectedAnimalId)));
     }
 
     private String finalizeJson(String matchingId, String decisionType,
                                 String selectedAnimalId) throws Exception {
+        return finalizeJson(matchingId, UUID.randomUUID().toString(), decisionType,
+                selectedAnimalId);
+    }
+
+    private String finalizeJson(String matchingId, String sourceAiTaskId, String decisionType,
+                                String selectedAnimalId) throws Exception {
         var payload = objectMapper.createObjectNode();
         payload.put("userId", MEMBER_ID);
         payload.put("campusId", CAMPUS_ID);
-        payload.put("sourceAiTaskId", UUID.randomUUID().toString());
+        payload.put("sourceAiTaskId", sourceAiTaskId);
         payload.put("sourceMatchingRecordId", matchingId);
+        payload.put("attemptId", matchingId);
+        payload.put("fencingVersion", 1);
         payload.put("decisionType", decisionType);
         if (selectedAnimalId != null) payload.put("selectedAnimalId", selectedAnimalId);
         payload.put("postText", "今天在东门记录到一只橘白猫");

@@ -16,5 +16,17 @@ public interface MatchingRepository {
 
     Optional<MatchingDecision> findDecisionByRecordId(String recordId);
 
+    Optional<MatchingDecision> findDecisionByAiTaskId(String taskId);
+
+    Optional<MatchingDecisionIntent> findIntentByAiTaskId(String taskId);
+
+    void saveIntent(MatchingDecisionIntent intent);
+
+    void setIntentVersion(String intentId, long version);
+
+    void setIntentFailure(String intentId, String failureCode);
+
+    void retireIntent(MatchingDecisionIntent intent);
+
     void saveDecision(MatchingDecision decision);
 }

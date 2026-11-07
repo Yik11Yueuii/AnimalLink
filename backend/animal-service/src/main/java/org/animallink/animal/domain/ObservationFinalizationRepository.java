@@ -8,6 +8,8 @@ import java.util.Optional;
 public interface ObservationFinalizationRepository {
     Optional<ObservationFinalization> findFinalization(String matchingRecordId);
 
+    Optional<ObservationFinalization> findFinalizationByAiTaskId(String aiTaskId);
+
     void insertAggregate(ObservationFinalization finalization, Post post,
                          List<PostMedia> media, AnimalIdentityProposal proposal);
 

@@ -151,7 +151,7 @@ class AnimalMergeIntegrationTest {
         assertThat(jdbc.queryForObject("""
                 SELECT COUNT(*) FROM flyway_schema_history
                 WHERE version IS NOT NULL AND success=1
-                """, Integer.class)).isEqualTo(13);
+                """, Integer.class)).isEqualTo(16);
         assertThat(jdbc.queryForObject("""
                 SELECT COUNT(*) FROM information_schema.columns
                 WHERE table_schema=DATABASE() AND table_name='animal_adoption_status_command'

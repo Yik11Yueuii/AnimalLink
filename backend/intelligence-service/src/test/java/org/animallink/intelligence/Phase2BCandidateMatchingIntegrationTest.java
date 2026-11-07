@@ -175,29 +175,34 @@ class Phase2BCandidateMatchingIntegrationTest {
     }
 
     @Test
-    void dependencyEmbeddingFailuresAndInvalidVectorsHaveDistinctErrors() throws Exception {
+    void matchingDependencyFailuresPersistAuditableManualFallbackRecords() throws Exception {
         String taskOne = insertTask("SUCCEEDED", true, ObservationSpecies.CAT, "橘白", "东门", OCCURRED_AT);
         when(animalGateway.recall(anyString(), anyString(), anyInt()))
                 .thenThrow(new CandidateServiceUnavailable("Animal 候选服务暂不可用", null));
-        match(taskOne, "{}").andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.code").value("ANIMAL_SERVICE_UNAVAILABLE"));
+        match(taskOne, "{}").andExpect(status().isCreated())
+                .andExpect(jsonPath("$.matchingMode").value("MANUAL_FALLBACK"))
+                .andExpect(jsonPath("$.fallbackReason").value("CANDIDATE_SERVICE_UNAVAILABLE"))
+                .andExpect(jsonPath("$.candidateCount").value(0));
 
         reset(animalGateway);
         when(animalGateway.recall(anyString(), anyString(), anyInt())).thenReturn(defaultCandidates());
         doThrow(new EmbeddingTimeout("Embedding 超时", null)).when(embeddingClient).embed(any());
         String taskTwo = insertTask("SUCCEEDED", true, ObservationSpecies.CAT, "橘白", "东门", OCCURRED_AT);
-        match(taskTwo, "{}").andExpect(status().isGatewayTimeout())
-                .andExpect(jsonPath("$.code").value("EMBEDDING_TIMEOUT"));
+        match(taskTwo, "{}").andExpect(status().isCreated())
+                .andExpect(jsonPath("$.matchingMode").value("MANUAL_FALLBACK"))
+                .andExpect(jsonPath("$.fallbackReason").value("EMBEDDING_TIMEOUT"));
 
         doThrow(new EmbeddingUnavailable("Embedding 不可用")).when(embeddingClient).embed(any());
         String taskThree = insertTask("SUCCEEDED", true, ObservationSpecies.CAT, "橘白", "东门", OCCURRED_AT);
-        match(taskThree, "{}").andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.code").value("EMBEDDING_UNAVAILABLE"));
+        match(taskThree, "{}").andExpect(status().isCreated())
+                .andExpect(jsonPath("$.matchingMode").value("MANUAL_FALLBACK"))
+                .andExpect(jsonPath("$.fallbackReason").value("EMBEDDING_UNAVAILABLE"));
 
         doReturn(List.of(0.0, 0.0)).when(embeddingClient).embed(any());
         String taskFour = insertTask("SUCCEEDED", true, ObservationSpecies.CAT, "橘白", "东门", OCCURRED_AT);
-        match(taskFour, "{}").andExpect(status().isBadGateway())
-                .andExpect(jsonPath("$.code").value("INVALID_EMBEDDING_VECTOR"));
+        match(taskFour, "{}").andExpect(status().isCreated())
+                .andExpect(jsonPath("$.matchingMode").value("MANUAL_FALLBACK"))
+                .andExpect(jsonPath("$.fallbackReason").value("INVALID_EMBEDDING_VECTOR"));
 
         doAnswer(invocation -> vector(invocation.<MediaObjectGateway.MediaInput>getArgument(0).objectKey()))
                 .when(embeddingClient).embed(any());

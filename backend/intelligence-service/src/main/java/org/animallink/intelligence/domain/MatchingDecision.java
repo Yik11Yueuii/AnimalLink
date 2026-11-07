@@ -5,6 +5,7 @@ import java.time.Instant;
 public record MatchingDecision(
         String id,
         String matchingRecordId,
+        String sourceAiTaskId,
         String userId,
         MatchingDecisionType decisionType,
         String selectedAnimalId,

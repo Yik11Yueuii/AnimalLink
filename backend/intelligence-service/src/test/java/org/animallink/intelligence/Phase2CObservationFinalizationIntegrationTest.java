@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -24,6 +25,12 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -58,12 +65,20 @@ class Phase2CObservationFinalizationIntegrationTest {
     @Autowired MockMvc mockMvc;
     @Autowired JdbcTemplate jdbc;
     @Autowired ObjectMapper objectMapper;
+    @SpyBean org.animallink.intelligence.infrastructure.JdbcMatchingRepository matchingRepository;
+    @Autowired org.animallink.intelligence.domain.AiTaskRepository aiTaskRepository;
+    @Autowired CampusMembershipAuthorization membershipAuthorization;
+    @Autowired org.springframework.transaction.support.TransactionTemplate transactionTemplate;
     @MockBean IdentityGateway identityGateway;
     @MockBean ObservationFinalizationGateway finalizationGateway;
+    @MockBean MediaObjectGateway mediaObjectGateway;
+    @MockBean AnimalCandidateGateway animalCandidateGateway;
 
     @BeforeEach
     void setUp() {
         jdbc.update("DELETE FROM matching_decision");
+        jdbc.update("DELETE FROM matching_decision_intent_history");
+        jdbc.update("DELETE FROM matching_decision_intent");
         jdbc.update("DELETE FROM matching_candidate");
         jdbc.update("DELETE FROM matching_record");
         jdbc.update("DELETE FROM animal_embedding");
@@ -74,6 +89,10 @@ class Phase2CObservationFinalizationIntegrationTest {
         when(identityGateway.requireCurrentUser()).thenReturn(user(USER_ID));
         when(identityGateway.campusMembership(USER_ID, CAMPUS_ID))
                 .thenReturn(new IdentityGateway.MembershipFact(true, "STUDENT", "ACTIVE"));
+        when(animalCandidateGateway.recall(anyString(), anyString(), anyInt()))
+                .thenThrow(new org.animallink.intelligence.domain.ApiExceptions.CandidateServiceUnavailable(
+                        "Animal 候选服务暂不可用", null));
+        when(finalizationGateway.registerAttempt(any())).thenReturn(1L);
         when(finalizationGateway.finalizeObservation(any())).thenAnswer(invocation -> {
             ObservationFinalizationGateway.FinalizationCommand command =
                     invocation.getArgument(0);
@@ -171,6 +190,177 @@ class Phase2CObservationFinalizationIntegrationTest {
     }
 
     @Test
+    void oneObservationCannotCreateFormalRecordsThroughDifferentMatchingExperiments()
+            throws Exception {
+        String firstMatch = insertMatch(false, "SUCCEEDED");
+        String secondMatch = duplicateMatchForSameTask(firstMatch);
+
+        finalizeMatch(firstMatch, "SELECT_EXISTING", RANK_ONE)
+                .andExpect(status().isOk());
+        finalizeMatch(secondMatch, "SELECT_EXISTING", RANK_ONE)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.decision.matchingRecordId").value(firstMatch));
+        finalizeMatch(secondMatch, "NO_MATCH", null)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("MATCH_ALREADY_FINALIZED"));
+
+        assertThat(count("matching_decision")).isEqualTo(1);
+        verify(finalizationGateway, times(1)).finalizeObservation(any());
+    }
+
+    @Test
+    void concurrentUnsureCannotOvertakeExistingAnimalAfterFormalizationStarts() throws Exception {
+        verifyConflictingDecisionCannotOvertake("UNSURE");
+    }
+
+    @Test
+    void concurrentNoMatchCannotOvertakeExistingAnimalAfterFormalizationStarts() throws Exception {
+        verifyConflictingDecisionCannotOvertake("NO_MATCH");
+    }
+
+    @Test
+    void slowIdentityMembershipLookupDoesNotHoldMatchingRecordLock() throws Exception {
+        String matchId = insertMatch(false, "SUCCEEDED");
+        CountDownLatch identityEntered = new CountDownLatch(1);
+        CountDownLatch releaseIdentity = new CountDownLatch(1);
+        when(identityGateway.campusMembership(USER_ID, CAMPUS_ID)).thenAnswer(invocation -> {
+            identityEntered.countDown();
+            if (!releaseIdentity.await(10, TimeUnit.SECONDS)) {
+                throw new AssertionError("等待 Identity 测试替身超时");
+            }
+            return new IdentityGateway.MembershipFact(true, "STUDENT", "ACTIVE");
+        });
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<Integer> finalization = executor.submit(() -> finalizeMatch(
+                    matchId, "UNSURE", null).andReturn().getResponse().getStatus());
+            assertThat(identityEntered.await(10, TimeUnit.SECONDS)).isTrue();
+            Future<String> independentLock = executor.submit(() -> transactionTemplate.execute(
+                    status -> jdbc.queryForObject(
+                            "SELECT id FROM matching_record WHERE id = ? FOR UPDATE",
+                            String.class, matchId)));
+            assertThat(independentLock.get(5, TimeUnit.SECONDS)).isEqualTo(matchId);
+            releaseIdentity.countDown();
+            assertThat(finalization.get(10, TimeUnit.SECONDS)).isEqualTo(200);
+        } finally {
+            releaseIdentity.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    private void verifyConflictingDecisionCannotOvertake(String conflictingDecision) throws Exception {
+        String existingMatch = insertMatch(false, "SUCCEEDED");
+        String conflictingMatch = duplicateMatchForSameTask(existingMatch);
+        CountDownLatch animalCreated = new CountDownLatch(1);
+        CountDownLatch releaseAnimalResponse = new CountDownLatch(1);
+        AtomicInteger formalPosts = new AtomicInteger();
+        doAnswer(invocation -> {
+            formalPosts.incrementAndGet();
+            animalCreated.countDown();
+            if (!releaseAnimalResponse.await(10, TimeUnit.SECONDS)) {
+                throw new AssertionError("等待并发决策超时");
+            }
+            ObservationFinalizationGateway.FinalizationCommand command = invocation.getArgument(0);
+            return new ObservationFinalizationGateway.FinalizationResult(
+                    UUID.randomUUID().toString(), null, command.selectedAnimalId());
+        }).when(finalizationGateway).finalizeObservation(any());
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<Integer> existing = executor.submit(() -> finalizeMatch(
+                    existingMatch, "SELECT_EXISTING", RANK_ONE).andReturn().getResponse().getStatus());
+            assertThat(animalCreated.await(10, TimeUnit.SECONDS)).isTrue();
+            Future<Integer> other = executor.submit(() -> finalizeMatch(
+                    conflictingMatch, conflictingDecision, null).andReturn().getResponse().getStatus());
+            int otherStatus = other.get(10, TimeUnit.SECONDS);
+            releaseAnimalResponse.countDown();
+            int existingStatus = existing.get(10, TimeUnit.SECONDS);
+            assertThat(existingStatus).isEqualTo(200);
+            assertThat(otherStatus).isEqualTo(409);
+            assertThat(formalPosts.get()).isEqualTo(1);
+            assertThat(count("matching_decision_intent")).isEqualTo(1);
+            assertThat(jdbc.queryForObject("SELECT decision_type FROM matching_decision",
+                    String.class)).isEqualTo("SELECT_EXISTING");
+        } finally {
+            releaseAnimalResponse.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void intentWriteFailureNeverCallsAnimal() throws Exception {
+        String matchId = insertMatch(false, "SUCCEEDED");
+        doThrow(new IllegalStateException("injected intent write failure"))
+                .when(matchingRepository).saveIntent(any());
+        try {
+            org.junit.jupiter.api.Assertions.assertThrows(jakarta.servlet.ServletException.class,
+                    () -> finalizeMatch(matchId, "SELECT_EXISTING", RANK_ONE));
+            assertThat(count("matching_decision_intent")).isZero();
+            assertThat(count("matching_decision")).isZero();
+            verifyNoInteractions(finalizationGateway);
+        } finally {
+            org.mockito.Mockito.reset(matchingRepository);
+        }
+    }
+
+    @Test
+    void animalUnavailableLeavesImmutableIntentForRetry() throws Exception {
+        String matchId = insertMatch(false, "SUCCEEDED");
+        doThrow(new FinalizationServiceUnavailable("animal-service 暂不可用", null))
+                .when(finalizationGateway).finalizeObservation(any());
+        finalizeMatch(matchId, "SELECT_EXISTING", RANK_ONE)
+                .andExpect(status().isServiceUnavailable());
+        assertThat(count("matching_decision_intent")).isEqualTo(1);
+        assertThat(count("matching_decision")).isZero();
+        finalizeMatch(matchId, "NO_MATCH", null)
+                .andExpect(status().isConflict());
+
+        doReturn(new ObservationFinalizationGateway.FinalizationResult(
+                UUID.randomUUID().toString(), null, RANK_ONE))
+                .when(finalizationGateway).finalizeObservation(any());
+        ObservationFinalizationService restartedService = new ObservationFinalizationService(
+                matchingRepository, aiTaskRepository, membershipAuthorization,
+                finalizationGateway, objectMapper, transactionTemplate);
+        var recovered = restartedService.finalizeDecision(matchId,
+                new FinalizeObservationCommand(
+                        org.animallink.intelligence.domain.MatchingDecisionType.SELECT_EXISTING,
+                        RANK_ONE, "人工确认后的校园观察"));
+        assertThat(recovered.selectedAnimalId()).isEqualTo(RANK_ONE);
+        assertThat(count("matching_decision")).isEqualTo(1);
+        var sent = org.mockito.ArgumentCaptor.forClass(
+                ObservationFinalizationGateway.FinalizationCommand.class);
+        verify(finalizationGateway, times(2)).finalizeObservation(sent.capture());
+        assertThat(sent.getAllValues().get(0).attemptId())
+                .isEqualTo(sent.getAllValues().get(1).attemptId());
+        assertThat(sent.getAllValues().get(0).fencingVersion())
+                .isEqualTo(sent.getAllValues().get(1).fencingVersion());
+    }
+
+    @Test
+    void animalSuccessThenDecisionWriteFailureCanRecoverOriginalIntent() throws Exception {
+        String matchId = insertMatch(false, "SUCCEEDED");
+        String createdPostId = UUID.randomUUID().toString();
+        doReturn(new ObservationFinalizationGateway.FinalizationResult(
+                createdPostId, null, RANK_ONE))
+                .when(finalizationGateway).finalizeObservation(any());
+        doThrow(new IllegalStateException("injected decision write failure"))
+                .when(matchingRepository).saveDecision(any());
+        try {
+            org.junit.jupiter.api.Assertions.assertThrows(jakarta.servlet.ServletException.class,
+                    () -> finalizeMatch(matchId, "SELECT_EXISTING", RANK_ONE));
+            assertThat(count("matching_decision_intent")).isEqualTo(1);
+            assertThat(count("matching_decision")).isZero();
+        } finally {
+            org.mockito.Mockito.reset(matchingRepository);
+        }
+        finalizeMatch(matchId, "UNSURE", null)
+                .andExpect(status().isConflict());
+        finalizeMatch(matchId, "SELECT_EXISTING", RANK_ONE)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.createdPost.id").value(createdPostId));
+        assertThat(count("matching_decision")).isEqualTo(1);
+    }
+
+    @Test
     void ownerMembershipTaskAndAnimalServiceFailuresAreDistinct() throws Exception {
         String ownerMatch = insertMatch(false, "SUCCEEDED");
         when(identityGateway.requireCurrentUser()).thenReturn(user(OTHER_USER_ID));
@@ -215,6 +405,130 @@ class Phase2CObservationFinalizationIntegrationTest {
         finalizeMatch(crossCampus, "SELECT_EXISTING", RANK_ONE)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("CROSS_CAMPUS_ANIMAL"));
+    }
+
+    @Test
+    void deterministicCandidateFailureIsRetiredBeforeReDecision() throws Exception {
+        String matchId = insertMatch(false, "SUCCEEDED");
+        doAnswer(invocation -> {
+            ObservationFinalizationGateway.FinalizationCommand request = invocation.getArgument(0);
+            if (request.decisionType() == org.animallink.intelligence.domain.MatchingDecisionType.SELECT_EXISTING)
+                throw new AnimalFinalizationRejected(409, "SELECTED_ANIMAL_ARCHIVED", "候选不可用");
+            return new ObservationFinalizationGateway.FinalizationResult(
+                    UUID.randomUUID().toString(), UUID.randomUUID().toString(), null);
+        }).when(finalizationGateway).finalizeObservation(any());
+
+        finalizeMatch(matchId, "SELECT_EXISTING", RANK_ONE)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SELECTED_ANIMAL_ARCHIVED"));
+        verify(finalizationGateway).retireAttempt(argThat(command ->
+                command.failureCode().equals("SELECTED_ANIMAL_ARCHIVED")
+                        && command.fencingVersion() == 1));
+        assertThat(count("matching_decision_intent")).isZero();
+        assertThat(count("matching_decision_intent_history")).isEqualTo(1);
+        finalizeMatch(matchId, "NO_MATCH", null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.decision.decisionType").value("NO_MATCH"));
+        assertThat(count("matching_decision")).isEqualTo(1);
+        assertThat(jdbc.queryForObject("""
+                SELECT deterministic_failure_code FROM matching_decision_intent_history
+                WHERE source_ai_task_id = (SELECT source_ai_task_id FROM matching_record WHERE id = ?)
+                """, String.class, matchId)).isEqualTo("SELECTED_ANIMAL_ARCHIVED");
+    }
+
+    @Test
+    void unknownRetireOutcomeKeepsOriginalIntentUntilConfirmed() throws Exception {
+        String matchId = insertMatch(false, "SUCCEEDED");
+        doThrow(new AnimalFinalizationRejected(409, "SELECTED_ANIMAL_ARCHIVED", "候选不可用"))
+                .when(finalizationGateway).finalizeObservation(any());
+        doThrow(new FinalizationServiceUnavailable("Animal 撤销结果未知", null))
+                .when(finalizationGateway).retireAttempt(any());
+        finalizeMatch(matchId, "SELECT_EXISTING", RANK_ONE)
+                .andExpect(status().isServiceUnavailable());
+        assertThat(count("matching_decision_intent")).isEqualTo(1);
+        finalizeMatch(matchId, "UNSURE", null)
+                .andExpect(status().isServiceUnavailable());
+        assertThat(count("matching_decision_intent")).isEqualTo(1);
+        assertThat(count("matching_decision_intent_history")).isZero();
+
+        doNothing().when(finalizationGateway).retireAttempt(any());
+        finalizeMatch(matchId, "UNSURE", null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.decision.decisionType").value("UNSURE"));
+        assertThat(count("matching_decision_intent_history")).isEqualTo(1);
+        assertThat(count("matching_decision")).isEqualTo(1);
+    }
+
+    @Test
+    void retiredAnimalAttemptSurvivesIntelligenceArchiveFailureAndProcessRestart() throws Exception {
+        String matchId = insertMatch(false, "SUCCEEDED");
+        doThrow(new AnimalFinalizationRejected(409, "SELECTED_ANIMAL_ARCHIVED", "候选不可用"))
+                .when(finalizationGateway).finalizeObservation(any());
+        doThrow(new IllegalStateException("injected archive failure"))
+                .when(matchingRepository).retireIntent(any());
+        try {
+            org.junit.jupiter.api.Assertions.assertThrows(jakarta.servlet.ServletException.class,
+                    () -> finalizeMatch(matchId, "SELECT_EXISTING", RANK_ONE));
+            assertThat(count("matching_decision_intent")).isEqualTo(1);
+            assertThat(jdbc.queryForObject("""
+                    SELECT deterministic_failure_code FROM matching_decision_intent
+                    WHERE matching_record_id = ?
+                    """, String.class, matchId)).isEqualTo("SELECTED_ANIMAL_ARCHIVED");
+        } finally {
+            org.mockito.Mockito.reset(matchingRepository);
+        }
+        ObservationFinalizationService restarted = new ObservationFinalizationService(
+                matchingRepository, aiTaskRepository, membershipAuthorization,
+                finalizationGateway, objectMapper, transactionTemplate);
+        var completed = restarted.finalizeDecision(matchId,
+                new FinalizeObservationCommand(
+                        org.animallink.intelligence.domain.MatchingDecisionType.UNSURE, null, null));
+        assertThat(completed.decisionType().name()).isEqualTo("UNSURE");
+        verify(finalizationGateway, times(2)).retireAttempt(any());
+        assertThat(count("matching_decision_intent_history")).isEqualTo(1);
+    }
+
+    @Test
+    void manualDraftAndMatchingFallbackKeepHumanDecisionAuditable() throws Exception {
+        String taskResponse = mockMvc.perform(post("/api/v1/ai/animal-observation/manual")
+                        .header("X-User-Id", USER_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(manualDraftJson()))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.modelProvider").value("MANUAL"))
+                .andExpect(jsonPath("$.confirmedDraft").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+        String taskId = objectMapper.readTree(taskResponse).get("taskId").asText();
+
+        mockMvc.perform(post("/api/v1/ai/tasks/{id}/confirm", taskId)
+                        .header("X-User-Id", USER_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"draft\":" + draftJson() + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.confirmedDraft.species").value("CAT"));
+
+        String matchResponse = mockMvc.perform(post(
+                        "/api/v1/ai/tasks/{id}/match-candidates", taskId)
+                        .header("X-User-Id", USER_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"topK\":3,\"experimentCode\":\"D\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.matchingMode").value("MANUAL_FALLBACK"))
+                .andExpect(jsonPath("$.fallbackReason").value("CANDIDATE_SERVICE_UNAVAILABLE"))
+                .andExpect(jsonPath("$.candidateCount").value(0))
+                .andReturn().getResponse().getContentAsString();
+        String matchId = objectMapper.readTree(matchResponse).get("matchingRecordId").asText();
+
+        finalizeMatch(matchId, "SELECT_EXISTING", RANK_ONE)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SELECTED_ANIMAL_NOT_CANDIDATE"));
+        finalizeMatch(matchId, "NO_MATCH", null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.decision.decisionType").value("NO_MATCH"))
+                .andExpect(jsonPath("$.proposalId").isString());
+        assertThat(jdbc.queryForObject("SELECT matching_mode FROM matching_record WHERE id = ?",
+                String.class, matchId)).isEqualTo("MANUAL_FALLBACK");
     }
 
     private org.springframework.test.web.servlet.ResultActions finalizeMatch(
@@ -286,6 +600,40 @@ class Phase2CObservationFinalizationIntegrationTest {
         insertCandidate(matchId, 1, RANK_ONE, 0.91);
         insertCandidate(matchId, 2, RANK_TWO, 0.61);
         return matchId;
+    }
+
+    private String duplicateMatchForSameTask(String sourceMatchId) {
+        String taskId = jdbc.queryForObject("SELECT ai_task_id FROM matching_record WHERE id = ?",
+                String.class, sourceMatchId);
+        String matchId = UUID.randomUUID().toString();
+        jdbc.update("""
+                INSERT INTO matching_record
+                    (id, user_id, ai_task_id, campus_id, algorithm_version,
+                     weight_version, experiment_code, weights_json, top_k,
+                     candidate_count, low_confidence, created_at)
+                VALUES (?, ?, ?, ?, 'test-v1', 'weights-v1', 'A',
+                    JSON_OBJECT('image', 1.0), 1, 1, false, CURRENT_TIMESTAMP(6))
+                """, matchId, USER_ID, taskId, CAMPUS_ID);
+        insertCandidate(matchId, 1, RANK_ONE, 0.91);
+        return matchId;
+    }
+
+    private String manualDraftJson() {
+        return """
+                {"campusId":"%s","mediaObjectKeys":["ai-input/manual.jpg"],
+                 "text":"手工记录校园动物","locationDescription":"东门",
+                 "draft":%s}
+                """.formatted(CAMPUS_ID, draftJson());
+    }
+
+    private String draftJson() {
+        return """
+                {"species":"CAT","sex":"UNKNOWN","coatColor":"橘白",
+                 "distinctiveFeatures":["尾部环纹"],"estimatedCount":1,
+                 "possibleAbnormality":false,"abnormalFlags":[],
+                 "locationDescription":"东门","confidence":0.8,
+                 "fieldConfidence":{},"warnings":[],"unknownFields":[]}
+                """;
     }
 
     private void insertCandidate(String matchId, int rank, String animalId, double score) {

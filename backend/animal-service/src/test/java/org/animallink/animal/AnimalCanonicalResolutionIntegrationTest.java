@@ -242,10 +242,12 @@ class AnimalCanonicalResolutionIntegrationTest {
 
     @Test
     void phase5GcLifecycleProjectionMigrationIsApplied() {
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE version='12' AND success=1",
+                Integer.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT MAX(CAST(version AS UNSIGNED)) FROM flyway_schema_history",
-                Integer.class)).isEqualTo(13);
+                Integer.class)).isEqualTo(16);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=1",
-                Integer.class)).isEqualTo(13);
+                Integer.class)).isEqualTo(16);
     }
 
     private void clearBusinessTables() {
