@@ -31,6 +31,8 @@ public class InternalWechatSessionController {
         if (!gateway(servletRequest)) return error(HttpStatus.UNAUTHORIZED, "SERVICE_AUTHENTICATION_FAILED");
         try { var session = authenticationService.login(request.code()); return ResponseEntity.ok(new SessionResponse(session.token(), session.userId(), session.displayName(), session.idleExpiresAt(), session.absoluteExpiresAt())); }
         catch (WechatCodeExchangeClient.RejectedCodeException | UnauthorizedException invalid) { return error(HttpStatus.UNAUTHORIZED, "WECHAT_CODE_INVALID"); }
+        catch (WechatCodeExchangeClient.RiskBlockedException blocked) { return error(HttpStatus.FORBIDDEN, "WECHAT_USER_BLOCKED"); }
+        catch (WechatCodeExchangeClient.RateLimitedException limited) { return error(HttpStatus.TOO_MANY_REQUESTS, "WECHAT_RATE_LIMITED"); }
         catch (WechatCodeExchangeClient.UnavailableException unavailable) { return error(HttpStatus.SERVICE_UNAVAILABLE, "WECHAT_EXCHANGE_UNAVAILABLE"); }
         catch (RuntimeException unavailable) { return error(HttpStatus.SERVICE_UNAVAILABLE, "WECHAT_LOGIN_UNAVAILABLE"); }
     }

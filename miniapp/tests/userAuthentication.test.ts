@@ -13,7 +13,7 @@ const installWx = (mock: Record<string, unknown>) => {
 }
 
 test('ordinary user login uses wx.login and only sends the opaque session to current-user and logout endpoints', async () => {
-  const requests: Array<{ url: string; method: string; header: Record<string, string> }> = []
+  const requests: Array<{ url: string; method: string; header: Record<string, string>; timeout: number }> = []
   const storage = new Map<string, string>()
   const previousMode = runtimeConfig.userAuthenticationMode
   const previousBaseUrl = runtimeConfig.gatewayBaseUrl
@@ -22,8 +22,8 @@ test('ordinary user login uses wx.login and only sends the opaque session to cur
     getStorageSync: (key: string) => storage.get(key),
     setStorageSync: (key: string, value: string) => storage.set(key, value),
     removeStorageSync: (key: string) => storage.delete(key),
-    request: (options: { url: string; method: string; header: Record<string, string>; success: (response: { statusCode: number; data: unknown }) => void }) => {
-      requests.push({ url: options.url, method: options.method, header: options.header })
+    request: (options: { url: string; method: string; header: Record<string, string>; timeout: number; success: (response: { statusCode: number; data: unknown }) => void }) => {
+      requests.push({ url: options.url, method: options.method, header: options.header, timeout: options.timeout })
       if (options.url.endsWith('/auth/wechat/login')) {
         options.success({ statusCode: 200, data: { token: TOKEN, userId: 'user-1', displayName: '微信用户', systemRole: 'USER', idleExpiresAt: '2026-11-01T00:00:00Z', absoluteExpiresAt: '2026-11-30T00:00:00Z' } })
       } else if (options.url.endsWith('/auth/wechat/me')) {
@@ -41,6 +41,7 @@ test('ordinary user login uses wx.login and only sends the opaque session to cur
     assert.equal((await currentMiniappUser())?.userId, 'user-1')
     await logoutMiniappUser()
     assert.equal(storedMiniappSession(), undefined)
+    assert.deepEqual(requests.map(({ timeout }) => timeout), [12000, 8000, 8000])
     assert.deepEqual(requests.map(({ url, method, header }) => ({ path: new URL(url).pathname, method, session: header['X-Miniapp-Session'] })), [
       { path: '/auth/wechat/login', method: 'POST', session: undefined },
       { path: '/auth/wechat/me', method: 'GET', session: TOKEN },
@@ -48,6 +49,36 @@ test('ordinary user login uses wx.login and only sends the opaque session to cur
     ])
   } finally {
     clearMiniappSession()
+    runtimeConfig.userAuthenticationMode = previousMode
+    runtimeConfig.gatewayBaseUrl = previousBaseUrl
+    restoreWx()
+  }
+})
+
+test('retry after failed login obtains a fresh WeChat code', async () => {
+  const codes: string[] = []
+  let loginCount = 0
+  const storage = new Map<string, string>()
+  const previousMode = runtimeConfig.userAuthenticationMode
+  const previousBaseUrl = runtimeConfig.gatewayBaseUrl
+  const restoreWx = installWx({
+    login: ({ success }: { success: (value: { code: string }) => void }) => success({ code: `fresh-code-${++loginCount}` }),
+    getStorageSync: (key: string) => storage.get(key),
+    setStorageSync: (key: string, value: string) => storage.set(key, value),
+    removeStorageSync: (key: string) => storage.delete(key),
+    request: (options: { data: { code: string }; success: (response: { statusCode: number; data: unknown }) => void }) => {
+      codes.push(options.data.code)
+      if (codes.length === 1) options.success({ statusCode: 503, data: {} })
+      else options.success({ statusCode: 200, data: { token: TOKEN, userId: 'user-1', displayName: '用户', systemRole: 'USER' } })
+    },
+  })
+  try {
+    runtimeConfig.userAuthenticationMode = 'api'
+    runtimeConfig.gatewayBaseUrl = 'https://localhost:8443/'
+    await assert.rejects(loginWithWechat())
+    await loginWithWechat()
+    assert.deepEqual(codes, ['fresh-code-1', 'fresh-code-2'])
+  } finally {
     runtimeConfig.userAuthenticationMode = previousMode
     runtimeConfig.gatewayBaseUrl = previousBaseUrl
     restoreWx()

@@ -26,6 +26,8 @@ public class WechatAuthenticationController {
     @PostMapping("/login") public Mono<ResponseEntity<?>> login(@Valid @RequestBody LoginRequest request) {
         return sessions.login(request.code()).<ResponseEntity<?>>map(s -> ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(s))
                 .onErrorResume(WechatSessionClient.Invalid.class, e -> Mono.just(error(HttpStatus.UNAUTHORIZED,"WECHAT_CODE_INVALID")))
+                .onErrorResume(WechatSessionClient.RiskBlocked.class, e -> Mono.just(error(HttpStatus.FORBIDDEN,"WECHAT_USER_BLOCKED")))
+                .onErrorResume(WechatSessionClient.RateLimited.class, e -> Mono.just(error(HttpStatus.TOO_MANY_REQUESTS,"WECHAT_RATE_LIMITED")))
                 .onErrorResume(WechatSessionClient.Unavailable.class, e -> Mono.just(error(HttpStatus.SERVICE_UNAVAILABLE,"WECHAT_LOGIN_UNAVAILABLE")));
     }
     @GetMapping("/me") public Mono<ResponseEntity<?>> me(@RequestHeader(SESSION_HEADER) String token) {
