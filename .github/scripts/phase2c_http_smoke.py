@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Real Java processes and HTTP; Identity is an external test server."""
 import base64
+import hashlib
+import hmac
 import json
 import os
 import subprocess
@@ -71,6 +73,55 @@ def sql(conn, statement, *params):
     with conn.cursor() as cursor:
         cursor.execute(statement, params)
         return cursor.fetchall()
+
+
+def signed_late_finalize(key, task, record, attempt, version, animal, draft):
+    path = "/internal/v1/observation-finalizations"
+    payload = {"userId": USER, "campusId": CAMPUS, "sourceAiTaskId": task,
+               "sourceMatchingRecordId": record, "attemptId": attempt, "fencingVersion": version,
+               "decisionType": "SELECT_EXISTING", "selectedAnimalId": animal,
+               "postText": "Smoke test observation", "mediaObjectKeys": ["ai-input/smoke.jpg"],
+               "confirmedDraft": draft}
+    body = json.dumps(payload).encode()
+    def b64(value):
+        return base64.urlsafe_b64encode(value).rstrip(b"=")
+    now = int(time.time())
+    header = {"alg": "HS256", "typ": "JWT", "kid": "observation-v1"}
+    claims = {"iss": "intelligence-service", "sub": "intelligence-service", "aud": ["animal-service"],
+              "scope": ["observation:finalize"], "method": "POST", "path": path,
+              "actor": USER, "task": task, "campus": CAMPUS, "record": record, "attempt": attempt,
+              "version": version, "decision": "SELECT_EXISTING", "animal": animal,
+              "body_sha256": hashlib.sha256(body).hexdigest(), "iat": now, "exp": now + 20,
+              "jti": str(uuid.uuid4())}
+    signing = b64(json.dumps(header, separators=(",", ":")).encode()) + b"." + b64(json.dumps(claims, separators=(",", ":")).encode())
+    token = (signing + b"." + b64(hmac.new(key, signing, hashlib.sha256).digest())).decode()
+    return request(ANIMAL + path, payload, {"X-Internal-Service": "intelligence-service", "Authorization": "Bearer " + token})
+
+
+def seed_candidate(conn, animal):
+    task, result, record = (str(uuid.uuid4()) for _ in range(3))
+    draft = {"species": "CAT", "sex": "UNKNOWN", "coatColor": "orange", "distinctiveFeatures": [],
+             "estimatedCount": 1, "possibleAbnormality": False, "abnormalFlags": [],
+             "locationDescription": "campus", "confidence": 0.8, "fieldConfidence": {},
+             "warnings": [], "unknownFields": []}
+    data = json.dumps(draft)
+    sql(conn, "USE animallink_intelligence")
+    sql(conn, """INSERT INTO ai_task (id,user_id,campus_id,task_type,status,model_provider,model_name,
+        prompt_version,input_summary,created_at,confirmed_at,confirmed_by,version)
+        VALUES (%s,%s,%s,'ANIMAL_OBSERVATION_PARSE','SUCCEEDED','test','test','v1','{}',NOW(6),NOW(6),%s,2)""", task, USER, CAMPUS, USER)
+    sql(conn, "INSERT INTO ai_task_media (task_id,sort_order,object_key) VALUES (%s,0,'ai-input/smoke.jpg')", task)
+    sql(conn, """INSERT INTO ai_result (id,task_id,result_type,raw_response,structured_json,schema_version,created_at)
+        VALUES (%s,%s,'ANIMAL_OBSERVATION_DRAFT',%s,%s,'1.0',NOW(6))""", result, task, data, data)
+    sql(conn, """INSERT INTO ai_confirmation (id,task_id,result_id,confirmed_structured_json,was_modified,confirmed_by,confirmed_at)
+        VALUES (%s,%s,%s,%s,false,%s,NOW(6))""", str(uuid.uuid4()), task, result, data, USER)
+    sql(conn, """INSERT INTO matching_record (id,user_id,ai_task_id,campus_id,algorithm_version,weight_version,
+        experiment_code,weights_json,top_k,candidate_count,low_confidence,created_at)
+        VALUES (%s,%s,%s,%s,'smoke','smoke','D','{}',3,1,false,NOW(6))""", record, USER, task, CAMPUS)
+    sql(conn, """INSERT INTO matching_candidate (id,matching_record_id,rank_number,animal_id,display_name,
+        species,final_score,reasons_json,missing_dimensions_json,created_at)
+        VALUES (%s,%s,1,%s,'smoke candidate','CAT',0.9,JSON_ARRAY(),JSON_ARRAY(),NOW(6))""",
+        str(uuid.uuid4()), record, animal)
+    return task, record, draft
 
 
 def main():
@@ -164,6 +215,59 @@ def main():
         assert sql(connection, "SELECT COUNT(*) FROM post")[0][0] == 1
         assert sql(connection, "SELECT COUNT(*) FROM observation_finalization")[0][0] == 1
         print("SMOKE PASS: distinct processes, signed HTTP, persisted facts, unsigned rejection, retry", flush=True)
+
+        active = str(uuid.uuid4())
+        sql(connection, "INSERT INTO animal (id,campus_id,display_name,species) VALUES (%s,%s,'active candidate','CAT')", active, CAMPUS)
+        active_task, active_record, _ = seed_candidate(connection, active)
+        active_url = INTELLIGENCE + f"/api/v1/ai/matches/{active_record}/finalize"
+        selected = {"decisionType": "SELECT_EXISTING", "selectedAnimalId": active, "postText": "Smoke test observation"}
+        status, body = request(active_url, selected, {"X-User-Id": USER})
+        print("SELECT_EXISTING HTTP", status, flush=True)
+        assert status == 200, body
+        selected_post = json.loads(body)["createdPost"]["id"]
+        sql(connection, "USE animallink_animal")
+        selected_rows = sql(connection, """SELECT p.id,p.animal_id,f.selected_animal_id,g.status
+            FROM post p JOIN observation_finalization f ON f.post_id=p.id
+            JOIN observation_attempt_gate g ON g.source_ai_task_id=f.source_ai_task_id
+            WHERE f.source_ai_task_id=%s""", active_task)
+        assert selected_rows == ((selected_post, active, active, "FINALIZED"),), selected_rows
+        status, body = request(active_url, selected, {"X-User-Id": USER})
+        print("SELECT_EXISTING retry HTTP", status, flush=True)
+        assert status == 200 and json.loads(body)["createdPost"]["id"] == selected_post
+        assert sql(connection, "SELECT COUNT(*) FROM observation_finalization WHERE source_ai_task_id=%s", active_task)[0][0] == 1
+        assert sql(connection, "SELECT COUNT(*) FROM post WHERE source_ai_task_id=%s", active_task)[0][0] == 1
+        print("DB assertion: active Animal associated; one post and finalization after retry", flush=True)
+
+        expired = str(uuid.uuid4())
+        sql(connection, "INSERT INTO animal (id,campus_id,display_name,species) VALUES (%s,%s,'stale candidate','CAT')", expired, CAMPUS)
+        stale_task, stale_record, stale_draft = seed_candidate(connection, expired)
+        sql(connection, "USE animallink_animal")
+        sql(connection, "UPDATE animal SET identity_status='ARCHIVED' WHERE id=%s", expired)
+        stale_url = INTELLIGENCE + f"/api/v1/ai/matches/{stale_record}/finalize"
+        stale_selection = {"decisionType": "SELECT_EXISTING", "selectedAnimalId": expired, "postText": "Smoke test observation"}
+        status, body = request(stale_url, stale_selection, {"X-User-Id": USER})
+        print("Expired SELECT_EXISTING HTTP", status, body.decode(), flush=True)
+        assert status == 409 and json.loads(body)["code"] == "SELECTED_ANIMAL_ARCHIVED", body
+        old = sql(connection, "SELECT attempt_id,fencing_version,status FROM observation_attempt_gate WHERE source_ai_task_id=%s", stale_task)
+        assert len(old) == 1 and old[0][1:] == (1, "RETIRED"), old
+        old_attempt, old_version, _ = old[0]
+        assert sql(connection, "SELECT COUNT(*) FROM post WHERE source_ai_task_id=%s", stale_task)[0][0] == 0
+        sql(connection, "USE animallink_intelligence")
+        assert sql(connection, "SELECT COUNT(*) FROM matching_decision_intent_history WHERE source_ai_task_id=%s AND deterministic_failure_code='SELECTED_ANIMAL_ARCHIVED'", stale_task)[0][0] == 1
+        key = base64.b64decode(env["ANIMALLINK_AUTHENTICATION_OBSERVATION_ASSERTION_KEY"])
+        status, body = signed_late_finalize(key, stale_task, stale_record, old_attempt, old_version, expired, stale_draft)
+        print("Signed late old-attempt finalize HTTP", status, body.decode(), flush=True)
+        assert status == 409 and json.loads(body)["code"] == "OBSERVATION_ATTEMPT_CONFLICT", body
+        status, body = request(stale_url, payload, {"X-User-Id": USER})
+        print("Safe NO_MATCH redecision HTTP", status, body.decode(), flush=True)
+        assert status == 200 and json.loads(body)["decision"]["decisionType"] == "NO_MATCH", body
+        new_post = json.loads(body)["createdPost"]["id"]
+        sql(connection, "USE animallink_animal")
+        assert sql(connection, "SELECT fencing_version,status FROM observation_attempt_gate WHERE source_ai_task_id=%s", stale_task) == ((2, "FINALIZED"),)
+        assert sql(connection, "SELECT fencing_version,status FROM observation_attempt_history WHERE source_ai_task_id=%s ORDER BY fencing_version", stale_task) == ((1, "RETIRED"), (2, "FINALIZED"))
+        assert sql(connection, "SELECT id,animal_id FROM post WHERE source_ai_task_id=%s", stale_task) == ((new_post, None),)
+        assert sql(connection, "SELECT COUNT(*) FROM observation_finalization WHERE source_ai_task_id=%s", stale_task)[0][0] == 1
+        print("DB assertion: old attempt RETIRED, signed late write rejected, new version FINALIZED with one unbound post", flush=True)
     except Exception:
         for log in logs:
             log.flush()
