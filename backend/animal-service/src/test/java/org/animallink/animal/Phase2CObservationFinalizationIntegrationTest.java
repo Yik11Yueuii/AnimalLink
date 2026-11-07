@@ -8,6 +8,7 @@ import org.animallink.animal.infrastructure.ObservationServiceAssertionVerifier;
 import org.animallink.animal.infrastructure.JdbcObservationAttemptGate;
 import org.animallink.animal.infrastructure.JdbcObservationAssertionReplayStore;
 import org.animallink.animal.infrastructure.JdbcObservationFinalizationRepository;
+import org.animallink.animal.infrastructure.JdbcAnimalRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -70,6 +71,7 @@ class Phase2CObservationFinalizationIntegrationTest {
     @Autowired JdbcObservationAttemptGate attemptGate;
     @Autowired JdbcObservationAssertionReplayStore replayStore;
     @SpyBean JdbcObservationFinalizationRepository finalizationRepository;
+    @SpyBean JdbcAnimalRepository animalRepository;
     @Autowired org.springframework.transaction.support.TransactionTemplate transactions;
     @MockBean IdentityGateway identityGateway;
     @MockBean PermanentPostMediaGateway mediaGateway;
@@ -261,6 +263,88 @@ class Phase2CObservationFinalizationIntegrationTest {
         } finally {
             releaseCopy.countDown();
             pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void archivedAfterPrecheckIsRejectedAndAttemptCanRetire() throws Exception {
+        String match = UUID.randomUUID().toString();
+        String task = UUID.randomUUID().toString();
+        CountDownLatch copying = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        when(mediaGateway.copyObservationMedia(anyList(), anyString())).thenAnswer(invocation -> {
+            copying.countDown();
+            if (!release.await(10, TimeUnit.SECONDS)) throw new AssertionError("copy timeout");
+            return List.of(new PermanentPostMediaGateway.PermanentMedia(
+                    "posts/test/01.jpg", "image/jpeg", org.animallink.animal.domain.MediaType.IMAGE, 128, 0));
+        });
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            Future<Integer> result = pool.submit(() -> internalFinalize(match, task,
+                    "SELECT_EXISTING", ACTIVE_ANIMAL_ID).andReturn().getResponse().getStatus());
+            assertThat(copying.await(10, TimeUnit.SECONDS)).isTrue();
+            transactions.executeWithoutResult(status -> jdbc.update(
+                    "UPDATE animal SET identity_status = 'ARCHIVED' WHERE id = ?", ACTIVE_ANIMAL_ID));
+            release.countDown();
+            assertThat(result.get(10, TimeUnit.SECONDS)).isEqualTo(409);
+            assertThat(count("post")).isZero();
+            assertThat(count("observation_finalization")).isZero();
+            assertThat(jdbc.queryForObject("SELECT status FROM observation_attempt_gate WHERE source_ai_task_id = ?",
+                    String.class, task)).isEqualTo("ACTIVE");
+            finalizationService.retireAttempt(MEMBER_ID, task, match, match, 1, CAMPUS_ID,
+                    "SELECT_EXISTING", ACTIVE_ANIMAL_ID, "SELECTED_ANIMAL_ARCHIVED");
+            assertThat(jdbc.queryForObject("SELECT status FROM observation_attempt_gate WHERE source_ai_task_id = ?",
+                    String.class, task)).isEqualTo("RETIRED");
+        } finally {
+            release.countDown();
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void formalizationAnimalLockBlocksConcurrentArchiveUntilCommit() throws Exception {
+        String match = UUID.randomUUID().toString();
+        String task = UUID.randomUUID().toString();
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicLong ownerConnection = new java.util.concurrent.atomic.AtomicLong();
+        doAnswer(invocation -> {
+            Object result = invocation.callRealMethod();
+            ownerConnection.set(jdbc.queryForObject("SELECT CONNECTION_ID()", Long.class));
+            locked.countDown();
+            if (!release.await(10, TimeUnit.SECONDS)) throw new AssertionError("lock timeout");
+            return result;
+        }).when(animalRepository).findByIdForUpdate(ACTIVE_ANIMAL_ID);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<Integer> formal = pool.submit(() -> internalFinalize(match, task,
+                    "SELECT_EXISTING", ACTIVE_ANIMAL_ID).andReturn().getResponse().getStatus());
+            assertThat(locked.await(10, TimeUnit.SECONDS)).isTrue();
+            Future<Long> blocked = pool.submit(() -> {
+                java.util.concurrent.atomic.AtomicLong otherConnection = new java.util.concurrent.atomic.AtomicLong();
+                assertThatThrownBy(() -> transactions.executeWithoutResult(status -> {
+                    otherConnection.set(jdbc.queryForObject("SELECT CONNECTION_ID()", Long.class));
+                    jdbc.execute("SET SESSION innodb_lock_wait_timeout = 1");
+                    try {
+                        jdbc.update("UPDATE animal SET identity_status = 'ARCHIVED' WHERE id = ?", ACTIVE_ANIMAL_ID);
+                    } finally {
+                        jdbc.execute("SET SESSION innodb_lock_wait_timeout = 50");
+                    }
+                })).isInstanceOf(org.springframework.dao.CannotAcquireLockException.class);
+                return otherConnection.get();
+            });
+            assertThat(blocked.get(8, TimeUnit.SECONDS)).isNotEqualTo(ownerConnection.get());
+            assertThat(count("post")).isZero();
+            release.countDown();
+            assertThat(formal.get(10, TimeUnit.SECONDS)).isEqualTo(200);
+            assertThat(jdbc.update("UPDATE animal SET identity_status = 'ARCHIVED' WHERE id = ?",
+                    ACTIVE_ANIMAL_ID)).isEqualTo(1);
+            assertThat(count("post")).isEqualTo(1);
+            assertThat(count("observation_finalization")).isEqualTo(1);
+        } finally {
+            release.countDown();
+            pool.shutdownNow();
+            reset(animalRepository);
         }
     }
 

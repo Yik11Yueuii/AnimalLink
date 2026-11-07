@@ -153,6 +153,12 @@ public class ObservationFinalizationService {
                             .orElseThrow(() -> new ObservationAttemptConflictException(
                                     "屏障与正式记录不一致")), decisionHash);
                 }
+                if ("SELECT_EXISTING".equals(command.decisionType())) {
+                    // Lock after the gate and recheck before writing. Merge locks Animal rows
+                    // but never the attempt gate, so it cannot form a reverse lock order.
+                    validateSelectedAnimal(command, animalRepository.findByIdForUpdate(command.selectedAnimalId())
+                            .orElseThrow(() -> new SelectedAnimalNotFoundException("selected Animal 不存在")));
+                }
                 repository.insertAggregate(finalization, post, media, proposal);
                 attemptGate.finalizeAttempt(gate, finalization.id());
                 return result(finalization);
@@ -171,6 +177,10 @@ public class ObservationFinalizationService {
         }
         Animal animal = animalRepository.findById(command.selectedAnimalId())
                 .orElseThrow(() -> new SelectedAnimalNotFoundException("selected Animal 不存在"));
+        return validateSelectedAnimal(command, animal);
+    }
+
+    private Animal validateSelectedAnimal(ObservationFinalizationCommand command, Animal animal) {
         if (animal.identityStatus() != IdentityStatus.ACTIVE) {
             throw new SelectedAnimalArchivedException("selected Animal 已归档或不可用");
         }
