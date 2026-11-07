@@ -20,21 +20,28 @@ public class WechatSessionClient {
     private static final String LOGIN = "/internal/v1/wechat/sessions/login";
     private static final String VALIDATE = "/internal/v1/wechat/sessions/validate";
     private static final String REVOKE = "/internal/v1/wechat/sessions/revoke";
-    private final WebClient client; private final ServiceAssertionSigner signer; private final Duration timeout;
+    private final WebClient client; private final WebClient loginClient;
+    private final ServiceAssertionSigner signer; private final Duration timeout; private final Duration loginTimeout;
     public WechatSessionClient(@Qualifier("identitySessionWebClientBuilder") WebClient.Builder builder,
                                ServiceAssertionSigner signer,
                                @Value("${animallink.authentication.identity-session.base-url:http://identity-service}") String baseUrl,
                                @Value("${animallink.authentication.identity-session.connect-timeout:PT2S}") Duration connectTimeout,
-                               @Value("${animallink.authentication.identity-session.response-timeout:PT3S}") Duration timeout) {
+                               @Value("${animallink.authentication.identity-session.response-timeout:PT3S}") Duration timeout,
+                               @Value("${animallink.authentication.identity-session.wechat-login-timeout:PT10S}") Duration loginTimeout) {
         this.client = builder.clone().baseUrl(baseUrl).clientConnector(new ReactorClientHttpConnector(HttpClient.create()
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, Math.toIntExact(connectTimeout.toMillis())).responseTimeout(timeout))).build();
-        this.signer=signer; this.timeout=timeout;
+        this.loginClient = builder.clone().baseUrl(baseUrl).clientConnector(new ReactorClientHttpConnector(HttpClient.create()
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, Math.toIntExact(connectTimeout.toMillis())).responseTimeout(loginTimeout))).build();
+        this.signer=signer; this.timeout=timeout; this.loginTimeout=loginTimeout;
     }
     public Mono<IssuedSession> login(String code) { return call(LOGIN, new Code(code), IssuedSession.class).flatMap(v -> validIssued(v) ? Mono.just(v) : Mono.error(new Unavailable())); }
     public Mono<CurrentUser> current(String token) { return call(VALIDATE, new Token(token), CurrentUser.class); }
     public Mono<Boolean> revoke(String token) { return call(REVOKE, new Token(token), Revocation.class).map(Revocation::revoked); }
     private <T> Mono<T> call(String path, Object body, Class<T> type) {
-        return Mono.fromCallable(signer::sign).flatMap(assertion -> client.post().uri(path)
+        boolean login = LOGIN.equals(path);
+        WebClient selected = login ? loginClient : client;
+        Duration budget = login ? loginTimeout : timeout;
+        return Mono.fromCallable(signer::sign).flatMap(assertion -> selected.post().uri(path)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + assertion).contentType(MediaType.APPLICATION_JSON).bodyValue(body)
                 .exchangeToMono(response -> {
                     if (response.statusCode().is2xxSuccessful()) return response.bodyToMono(type);
@@ -47,7 +54,7 @@ public class WechatSessionClient {
                     if (response.statusCode().equals(HttpStatus.BAD_REQUEST) && !LOGIN.equals(path))
                         return response.releaseBody().then(Mono.error(new Invalid()));
                     return response.releaseBody().then(Mono.error(new Unavailable()));
-                })).timeout(timeout.plusMillis(250)).onErrorMap(error -> !(error instanceof Invalid)
+                })).timeout(budget.plusMillis(250)).onErrorMap(error -> !(error instanceof Invalid)
                         && !(error instanceof RiskBlocked) && !(error instanceof RateLimited)
                         && !(error instanceof Unavailable), error -> new Unavailable());
     }

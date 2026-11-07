@@ -90,7 +90,7 @@ public class WechatOfficialCodeExchangeClient implements WechatCodeExchangeClien
             if (response.errCode != null) {
                 switch (response.errCode) {
                     case 0 -> { }
-                    case 40029 -> throw new RejectedCodeException();
+                    case 40029, 40163 -> throw new RejectedCodeException();
                     case 40226 -> throw new RiskBlockedException();
                     case 45011 -> throw new RateLimitedException();
                     default -> throw new UnavailableException();

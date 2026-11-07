@@ -294,6 +294,8 @@ Invoke-RestMethod "http://localhost:8080/intelligence/api/v1/ai/matches/$($match
 
 ## 本地环境准备
 
+微信登录默认使用独立的超时预算：Gateway 等待 Identity 登录响应 10 秒（环境变量 `WECHAT_LOGIN_IDENTITY_TIMEOUT`），普通会话验证和退出仍使用 `IDENTITY_SESSION_RESPONSE_TIMEOUT`，默认 3 秒。Identity 的微信连接和读取超时分别为 `WECHAT_CODE_EXCHANGE_CONNECT_TIMEOUT`（默认 2 秒）和 `WECHAT_CODE_EXCHANGE_READ_TIMEOUT`（默认 5 秒）；调整时应为 Gateway 留出本地处理余量，并确保小程序登录请求超时（12 秒）更长。登录超时后客户端应重新调用 `wx.login` 获取新 code；网络断开时服务端是否已经消费旧 code 或创建会话仍可能未知。
+
 安装 JDK 21 和 Docker Desktop（需支持 Docker Compose）。设置 `JAVA_HOME` 指向 JDK 21。Maven Wrapper 会自动下载 Maven 3.9.9，无需另行安装 Maven。
 
 将 `infra/.env.example` 复制为 `infra/.env`，并为每项示例凭据设置不同的本地值。五个数据库密码只能使用英文字母、数字、下划线和连字符，以符合本地初始化脚本的校验规则。不要提交 `infra/.env`、真实凭据、个人材料或本地数据。

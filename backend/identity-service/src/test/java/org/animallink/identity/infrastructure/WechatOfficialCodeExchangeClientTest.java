@@ -124,10 +124,11 @@ class WechatOfficialCodeExchangeClientTest {
         assertError("{\"errcode\":-1,\"errmsg\":\"" + APP_SECRET + "\"}",
                 WechatCodeExchangeClient.UnavailableException.class);
         assertError("{\"errcode\":40029}", WechatCodeExchangeClient.RejectedCodeException.class);
+        assertError("{\"errcode\":40163}", WechatCodeExchangeClient.RejectedCodeException.class);
         assertError("{\"errcode\":40226}", WechatCodeExchangeClient.RiskBlockedException.class);
         assertError("{\"errcode\":45011}", WechatCodeExchangeClient.RateLimitedException.class);
         assertError("{\"errcode\":123456}", WechatCodeExchangeClient.UnavailableException.class);
-        assertThat(calls.get()).isEqualTo(5);
+        assertThat(calls.get()).isEqualTo(6);
     }
 
     @Test
@@ -229,6 +230,49 @@ class WechatOfficialCodeExchangeClientTest {
                 .isInstanceOf(WechatCodeExchangeClient.UnavailableException.class)
                 .hasMessageNotContaining(CODE);
         assertThat(calls.get()).isOne();
+    }
+
+    @Test
+    void delayedWechatResponsePastThreeSecondsStillSucceedsWithinReadBudget(CapturedOutput output) {
+        reply.set(new Reply(200, "{\"openid\":\"openid-valid123\",\"session_key\":\"" + SESSION_KEY + "\"}", Duration.ofMillis(3200)));
+        assertThat(client(APP_ID, APP_SECRET, Duration.ofSeconds(5)).exchange(CODE).openId())
+                .isEqualTo("openid-valid123");
+        assertThat(calls.get()).isOne();
+        assertThat(output.getAll()).doesNotContain(APP_SECRET, CODE, SESSION_KEY);
+    }
+
+    @Test
+    void delayedWechatTimeoutDoesNotCreateUserOrRetry(CapturedOutput output) {
+        reply.set(new Reply(200, "{\"openid\":\"openid-valid123\"}", Duration.ofMillis(800)));
+        var repository = mock(WechatAuthenticationRepository.class);
+        var service = new WechatAuthenticationService(client(APP_ID, APP_SECRET, Duration.ofMillis(200)),
+                repository, new SecureOpaqueSessionTokenCodec(), () -> Instant.parse("2026-10-31T00:00:00Z"),
+                APP_ID, Duration.ofDays(7), Duration.ofDays(30));
+        assertThatThrownBy(() -> service.login("valid-code-123"))
+                .isInstanceOf(WechatCodeExchangeClient.UnavailableException.class);
+        verifyNoInteractions(repository);
+        assertThat(calls.get()).isOne();
+        assertThat(output.getAll()).doesNotContain(APP_SECRET, "valid-code-123", SESSION_KEY);
+    }
+
+    @Test
+    void consumedWechatCodeMapsToInternal401WithoutCreatingUser(CapturedOutput output) {
+        reply.set(new Reply(200, "{\"errcode\":40163,\"errmsg\":\"code been used\"}", Duration.ZERO));
+        var repository = mock(WechatAuthenticationRepository.class);
+        var service = new WechatAuthenticationService(client(APP_ID, APP_SECRET, Duration.ofSeconds(1)),
+                repository, new SecureOpaqueSessionTokenCodec(), () -> Instant.parse("2026-10-31T00:00:00Z"),
+                APP_ID, Duration.ofDays(7), Duration.ofDays(30));
+        var request = new org.springframework.mock.web.MockHttpServletRequest();
+        request.setAttribute(InternalSessionServiceAuthenticationFilter.PRINCIPAL_ATTRIBUTE,
+                new ServiceAssertionVerifier.AuthenticatedService("api-gateway", "api-gateway",
+                        "identity-service", "assertion-id", null));
+        var response = new org.animallink.identity.api.InternalWechatSessionController(service).login(
+                new org.animallink.identity.api.InternalWechatSessionController.LoginRequest("valid-code-123"), request);
+        assertThat(response.getStatusCode().value()).isEqualTo(401);
+        assertThat(response.getBody()).isEqualTo(new org.animallink.identity.api.InternalWechatSessionController.ErrorResponse("WECHAT_CODE_INVALID"));
+        assertThat(calls.get()).isOne();
+        verifyNoInteractions(repository);
+        assertThat(output.getAll()).doesNotContain(APP_SECRET, "valid-code-123", SESSION_KEY);
     }
 
     private void assertError(String body, Class<? extends RuntimeException> type) {

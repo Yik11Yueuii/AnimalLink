@@ -92,6 +92,7 @@ animallink:
       base-url: ${IDENTITY_INTERNAL_BASE_URL:http://identity-service}
       connect-timeout: ${IDENTITY_SESSION_CONNECT_TIMEOUT:PT2S}
       response-timeout: ${IDENTITY_SESSION_RESPONSE_TIMEOUT:PT3S}
+      wechat-login-timeout: ${WECHAT_LOGIN_IDENTITY_TIMEOUT:PT10S}
       cookie-name: ${ADMIN_SESSION_COOKIE_NAME:ANIMALLINK_ADMIN_SESSION}
     trusted-source:
       trusted-proxies: ${TRUSTED_ENTRY_PROXIES:}
