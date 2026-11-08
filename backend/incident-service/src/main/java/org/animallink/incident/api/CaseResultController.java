@@ -29,7 +29,11 @@ public class CaseResultController {
 
   @PostMapping("/result") @Transactional
   public ResultResponse submit(@PathVariable("caseId") String caseId,@Valid @RequestBody ResultRequest body) {
-    String caller=currentUser.requireActive().id(); Map<String,Object> c=oneForUpdate(caseId); active(c);
+    return submitForActor(caseId,body,currentUser.requireActive().id(),null);
+  }
+  @Transactional public ResultResponse submitForMiniapp(String caseId,ResultRequest body,String caller,String campus){return submitForActor(caseId,body,caller,campus);}
+  private ResultResponse submitForActor(String caseId,ResultRequest body,String caller,String campus){
+    Map<String,Object> c=oneForUpdate(caseId); checkCampus(c,campus); active(c);
     if(!caller.equals(s(c,"owner_user_id"))&&!activeParticipant(caseId,caller)) throw new EventController.Forbidden("CASE_RESULT_ACCESS_REQUIRED");
     volunteer(caller,s(c,"campus_id")); Instant now=Instant.now(); String next=statusFor(body.outcome());
     String actionId=UUID.randomUUID().toString();
@@ -44,7 +48,11 @@ public class CaseResultController {
 
   @PostMapping("/close") @Transactional
   public CloseResponse close(@PathVariable("caseId") String caseId) {
-    String caller=currentUser.requireActive().id(); Map<String,Object> c=oneForUpdate(caseId);
+    return closeForActor(caseId,currentUser.requireActive().id(),null);
+  }
+  @Transactional public CloseResponse closeForMiniapp(String caseId,String caller,String campus){return closeForActor(caseId,caller,campus);}
+  private CloseResponse closeForActor(String caseId,String caller,String campus){
+    Map<String,Object> c=oneForUpdate(caseId); checkCampus(c,campus);
     if(!caller.equals(s(c,"owner_user_id"))) throw new EventController.Forbidden("CASE_CLOSE_OWNER_REQUIRED");
     volunteer(caller,s(c,"campus_id"));
     if(!"RESOLVED".equals(s(c,"status"))||!"CLAIMED".equals(s(c,"claim_status"))) throw new EventController.Conflict("CASE_NOT_RESOLVED");
@@ -54,6 +62,7 @@ public class CaseResultController {
     return close(one(caseId));
   }
 
+  private void checkCampus(Map<String,Object> c,String campus){if(campus!=null&&!campus.equals(s(c,"campus_id")))throw new EventController.Forbidden("CAMPUS_MISMATCH");}
   private void active(Map<String,Object> c){if(!"ACTIVE".equals(s(c,"status"))||!"CLAIMED".equals(s(c,"claim_status")))throw new EventController.Conflict("CASE_RESULT_STATE_CONFLICT");}
   private boolean activeParticipant(String caseId,String user){Integer count=jdbc.queryForObject("SELECT COUNT(*) FROM case_participant WHERE case_id=? AND user_id=? AND status='ACTIVE'",Integer.class,caseId,user);return count!=null&&count>0;}
   private void volunteer(String user,String campus){try{Map<?,?> f=identity.get().uri("/internal/v1/users/{u}/campuses/{c}/volunteer-membership",user,campus).header("X-Internal-Service","incident-service").retrieve().body(Map.class);if(f==null||!Boolean.TRUE.equals(f.get("exists"))||!Boolean.TRUE.equals(f.get("active"))||!"ACTIVE".equals(f.get("status")))throw new EventController.Forbidden("ACTIVE_VOLUNTEER_REQUIRED");}catch(EventController.Forbidden e){throw e;}catch(Exception e){throw new EventController.Dependency("IDENTITY_SERVICE_UNAVAILABLE");}}

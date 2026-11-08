@@ -139,7 +139,7 @@ export const claimRescue = async (campusId: string, eventId: string): Promise<Cl
 }
 
 export interface CaseAction { id: string; caseId: string; actorUserId: string; description: string; occurredAt: string; createdAt: string; resultCode: string | null }
-export interface CaseActionPage { caseId: string; eventId: string; campusId: string; status: string; items: CaseAction[]; page: number; size: number; total: number }
+export interface CaseActionPage { caseId: string; eventId: string; campusId: string; status: string; isOwner: boolean; items: CaseAction[]; page: number; size: number; total: number }
 const caseActionRequest = async <T>(path: string, method: 'GET' | 'POST', data?: Record<string, string>): Promise<T> => {
   const token = storedMiniappSession()
   if (!token) throw new ApiRequestError('请先完成微信登录。', 401)
@@ -151,3 +151,6 @@ export const createCaseAction = (caseId: string, campusId: string, description: 
 
 export interface AccessibleCase { id: string; eventId: string; campusId: string; status: string }
 export const accessibleCaseByEvent = (eventId: string, campusId: string) => caseActionRequest<AccessibleCase>(`/auth/wechat/rescues/${encodeURIComponent(eventId)}/case?campusId=${encodeURIComponent(campusId)}`, 'GET')
+
+export const submitCaseResult = (caseId: string, campusId: string, outcome: string, summary: string) => caseActionRequest(`/auth/wechat/cases/${encodeURIComponent(caseId)}/result`, 'POST', { campusId, outcome, summary })
+export const closeCase = (caseId: string, campusId: string) => caseActionRequest(`/auth/wechat/cases/${encodeURIComponent(caseId)}/close`, 'POST', { campusId })

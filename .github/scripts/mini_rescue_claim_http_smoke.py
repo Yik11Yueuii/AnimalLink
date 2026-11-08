@@ -130,6 +130,18 @@ def main():
         public = expect('public rescue detail', 200, request(GATEWAY+'/incident/api/v1/public/rescues/'+EVENT+'?campusId='+CAMPUS))
         assert 'Provided food' not in json.dumps(public) and 'private location' not in json.dumps(public) and USERS[0] not in json.dumps(public)
         sql(db, "UPDATE animal_case SET status='ACTIVE' WHERE id=%s",case_id)
+        transition = lambda token, op, value: request(GATEWAY+'/auth/wechat/cases/'+case_id+'/'+op, value, {'X-Miniapp-Session': token})
+        expect('result no session', 401, request(GATEWAY+'/auth/wechat/cases/'+case_id+'/result', {'campusId':CAMPUS,'outcome':'RESOLVED','summary':'done'}))
+        expect('result removed participant', 403, transition(TOKENS[1], 'result', {'campusId':CAMPUS,'outcome':'RESOLVED','summary':'done'}))
+        expect('result wrong campus', 403, transition(TOKENS[0], 'result', {'campusId':OTHER_CAMPUS,'outcome':'RESOLVED','summary':'done'}))
+        observed = expect('continue observation', 200, transition(TOKENS[0], 'result', {'campusId':CAMPUS,'outcome':'CONTINUE_OBSERVATION','summary':'monitor'}))
+        assert observed['caseStatus'] == 'ACTIVE'
+        resolved = expect('resolved result', 200, transition(TOKENS[0], 'result', {'campusId':CAMPUS,'outcome':'RESOLVED','summary':'treated'}))
+        assert resolved['caseStatus'] == 'RESOLVED'
+        expect('participant cannot close', 403, transition(TOKENS[1], 'close', {'campusId':CAMPUS}))
+        closed = expect('owner close', 200, transition(TOKENS[0], 'close', {'campusId':CAMPUS}))
+        assert closed['caseStatus'] == 'CLOSED'
+        assert expect('closed history', 200, read_action(TOKENS[0]))['status'] == 'CLOSED'
         internal = '/api/v1/internal/miniapp/rescues/' + EVENT + '/claim'
         bad = signed(internal, USERS[0], os.urandom(32))
         expect('bad signature', 401, request(INCIDENT+internal,body,{'Authorization':'Bearer '+bad}))
