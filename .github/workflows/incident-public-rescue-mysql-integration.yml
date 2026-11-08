@@ -70,4 +70,4 @@ jobs:
           java-version: '21'
           cache: maven
       - name: Run CaseAction MySQL concurrency tests
-        run: ./mvnw -pl backend/incident-service -Dtest=CaseActionIntegrationTest test
+        run: ./mvnw -pl backend/incident-service -Dtest=CaseActionIntegrationTest,CaseParticipantTransitionConcurrencyIntegrationTest,CaseResultConcurrencyIntegrationTest,CaseOwnerTransferConcurrencyIntegrationTest test
