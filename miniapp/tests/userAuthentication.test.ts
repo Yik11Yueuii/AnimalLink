@@ -683,6 +683,9 @@ test('rescue claim sends only the session and campus, preserves status and clear
     assert.deepEqual(requests[0].data, { campusId: 'campus' })
     assert.equal(requests[0].header['X-Miniapp-Session'], TOKEN)
     assert.equal(requests[0].header['X-User-Id'], undefined)
+    assert.equal(requests[0].header['X-Internal-Service'], undefined)
+    assert.equal(requests[0].header['X-User-Role'], undefined)
+    assert.equal(requests[0].header['X-System-Role'], undefined)
     for (const code of [403, 409, 503]) {
       status = code; await assert.rejects(() => claimRescue('campus', 'event'), (e: { statusCode: number }) => e.statusCode === code)
       assert.equal(storedMiniappSession(), TOKEN)
