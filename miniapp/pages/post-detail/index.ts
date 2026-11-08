@@ -16,6 +16,8 @@ const comments = new CommentThread(source, 3)
 Page({
   detailRequestVersion: 0,
   privateVersion: 0,
+  likeVersion: 0,
+  likeSession: '', likeCampus: '',
   data: {
     offline: isCommunityOfflineDemo(),
     likeState: null as CommunityLikeState | null, likeBusy:false, commentText:'', commentBusy:false, commentUncertain:false, actionMessage:'',
@@ -36,17 +38,17 @@ Page({
     this.setData({ postId })
     void this.loadAll()
   },
-  onShow() { if(this.data.post) void this.loadLike() },
-  onHide() { this.privateVersion++; this.setData({likeState:null,likeBusy:false,commentText:'',commentBusy:false,commentUncertain:false,actionMessage:''}) },
+  onShow() { if(this.data.post) void this.loadLike(); else if(this.data.postId && !this.data.loading) void this.loadAll() },
+  onHide() { this.detailRequestVersion++; this.privateVersion++; this.likeVersion++; this.likeSession='';this.likeCampus='';this.setData({loading:false,likeState:null,likeBusy:false,commentText:'',commentBusy:false,commentUncertain:false,actionMessage:''}) },
   commentChanged(e:WechatMiniprogram.Input) { this.setData({commentText:e.detail.value}) },
   async loadLike() {
-    const token=storedMiniappSession(),campus=getSelectedCampus()?.id,version=++this.privateVersion,postId=this.data.postId
+    const token=storedMiniappSession(),campus=getSelectedCampus()?.id,version=this.privateVersion,likeVersion=++this.likeVersion,postId=this.data.postId
     this.setData({likeState:null});if(this.data.offline||!communityWriteAvailable()||!campus||!this.data.post||this.data.post.campusId!==campus)return
-    try {const state=await communityRequest<CommunityLikeState>('/posts/'+encodeURIComponent(postId)+'/like?campusId='+encodeURIComponent(campus),'GET');if(version===this.privateVersion&&token===storedMiniappSession()&&campus===getSelectedCampus()?.id)this.setData({likeState:state})}catch(e){if(version===this.privateVersion)this.setData({likeState:null})}
+    try {const state=await communityRequest<CommunityLikeState>('/posts/'+encodeURIComponent(postId)+'/like?campusId='+encodeURIComponent(campus),'GET');if(version===this.privateVersion&&likeVersion===this.likeVersion&&token===storedMiniappSession()&&campus===getSelectedCampus()?.id){this.likeSession=token||'';this.likeCampus=campus;this.setData({likeState:state})}}catch(e){if(version===this.privateVersion&&likeVersion===this.likeVersion)this.setData({likeState:null})}
   },
   async toggleLike() {
-    if(this.data.likeBusy||!this.data.likeState)return;const token=storedMiniappSession(),campus=getSelectedCampus()?.id,version=this.privateVersion,postId=this.data.postId,active=this.data.likeState.active
-    if(this.data.offline||!campus||!communityWriteAvailable())return;this.setData({likeBusy:true,actionMessage:''})
+    if(this.data.likeBusy||!this.data.likeState)return;if(this.likeSession!==storedMiniappSession()||this.likeCampus!==getSelectedCampus()?.id){this.setData({likeState:null});return}const token=storedMiniappSession(),campus=getSelectedCampus()?.id,version=this.privateVersion,postId=this.data.postId,active=this.data.likeState.active
+    if(this.data.offline||!campus||!communityWriteAvailable())return;this.likeVersion++;this.setData({likeBusy:true,actionMessage:''})
     try{const state=await communityRequest<CommunityLikeState>('/posts/'+encodeURIComponent(postId)+'/like?campusId='+encodeURIComponent(campus),active?'DELETE':'POST');if(version===this.privateVersion&&token===storedMiniappSession()&&campus===getSelectedCampus()?.id)this.setData({likeState:state})}
     catch(e){if(version===this.privateVersion&&token===storedMiniappSession()&&campus===getSelectedCampus()?.id){this.setData({likeState:null,likeBusy:false,actionMessage:'操作结果未确定，正在重新查询点赞状态。'});await this.loadLike()}}
     finally{if(version===this.privateVersion&&token===storedMiniappSession()&&campus===getSelectedCampus()?.id)this.setData({likeBusy:false})}
@@ -61,7 +63,7 @@ Page({
   onRetry() {
     void this.loadAll()
   },
-  onUnload() { this.detailRequestVersion += 1; this.privateVersion += 1 },
+  onUnload() { this.detailRequestVersion += 1; this.privateVersion += 1; this.likeVersion += 1 },
   loadMoreComments() {
     void this.loadNextComments()
   },
