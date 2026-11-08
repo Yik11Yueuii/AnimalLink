@@ -9,6 +9,8 @@ class IntelligenceMiniappRequestPolicyTest {
   assertEquals("intelligence.observation.read",IntelligenceMiniappRequestPolicy.requiredScope("GET",root+"/"+id).orElseThrow());
   assertEquals("intelligence.observation.write",IntelligenceMiniappRequestPolicy.requiredScope("POST",root+"/"+id+"/confirm").orElseThrow());
   assertTrue(IntelligenceMiniappRequestPolicy.requiredScope("GET",root+"/"+id+"/confirm").isEmpty());
-  assertTrue(IntelligenceMiniappRequestPolicy.requiredScope("POST",root+"/"+id+"/match-candidates").isEmpty());
+  assertEquals("intelligence.match.write",IntelligenceMiniappRequestPolicy.requiredScope("POST",root+"/"+id+"/match-candidates").orElseThrow());
+  assertEquals("intelligence.match.read",IntelligenceMiniappRequestPolicy.requiredScope("GET",root+"/"+id+"/decision").orElseThrow());
+  assertTrue(IntelligenceMiniappRequestPolicy.requiredScope("POST",root+"/"+id+"/finalize").isEmpty());
  }
 }

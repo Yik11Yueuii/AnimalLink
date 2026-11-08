@@ -2,7 +2,7 @@
 """Independent Gateway, Identity and Intelligence JVMs with MySQL/MinIO; seeded sessions, mock provider."""
 import base64, hashlib, hmac, json, os, secrets, subprocess, time, urllib.error, urllib.request, uuid
 import boto3, pymysql
-GATEWAY='http://127.0.0.1:18080'; IDENTITY='http://127.0.0.1:18081'; AI='http://127.0.0.1:18085'
+GATEWAY='http://127.0.0.1:18080'; IDENTITY='http://127.0.0.1:18081'; ANIMAL='http://127.0.0.1:18082'; AI='http://127.0.0.1:18085'
 CAMPUS='22000000-0000-4000-8000-000000000001'; USERS=[str(uuid.uuid4()) for _ in range(2)]; TOKENS=[base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip('=') for _ in USERS]
 assertion_key=os.urandom(32);keys='test='+base64.b64encode(assertion_key).decode(); access=secrets.token_hex(12); secret=secrets.token_hex(24); processes=[]; logs=[]
 def req(url,body=None,headers=None,method=None):
@@ -28,7 +28,7 @@ def ready(url,process):
 def main():
  db=pymysql.connect(host='127.0.0.1',user='root',password='',autocommit=True)
  try:
-  for name in ('animallink_identity','animallink_intelligence'):sql(db,'CREATE DATABASE '+name+' CHARACTER SET utf8mb4')
+  for name in ('animallink_identity','animallink_intelligence','animallink_animal'):sql(db,'CREATE DATABASE '+name+' CHARACTER SET utf8mb4')
   subprocess.run(['docker','run','-d','--name','mini-ai-minio','-p','9000:9000','-e','MINIO_ROOT_USER='+access,'-e','MINIO_ROOT_PASSWORD='+secret,'animallink-ai-smoke','server','/data'],check=True,stdout=subprocess.DEVNULL)
   storage=boto3.client('s3',endpoint_url='http://127.0.0.1:9000',aws_access_key_id=access,aws_secret_access_key=secret,region_name='us-east-1')
   for i in range(60):
@@ -36,11 +36,12 @@ def main():
    except Exception:
     if i==59:raise
     time.sleep(1)
-  env=os.environ.copy();env.update({'IDENTITY_DB_USER':'root','IDENTITY_DB_PASSWORD':'','INTELLIGENCE_DB_USER':'root','INTELLIGENCE_DB_PASSWORD':'','AUTH_SERVICE_ASSERTION_CURRENT_KEY_ID':'test','AUTH_SERVICE_ASSERTION_KEYS':keys,'IDENTITY_INTERNAL_BASE_URL':'http://identity-service','IDENTITY_SERVICE_URL':IDENTITY,'MINIO_ACCESS_KEY':access,'MINIO_SECRET_KEY':secret,'CREDENTIAL_PRECHECK_DISPATCHER_ENABLED':'false','AI_PROVIDER':'mock'})
-  common=['--spring.cloud.nacos.discovery.enabled=false','--spring.cloud.nacos.config.enabled=false','--spring.cloud.discovery.client.simple.instances.identity-service[0].uri='+IDENTITY,'--spring.cloud.discovery.client.simple.instances.intelligence-service[0].uri='+AI,'--management.endpoint.health.probes.enabled=true','--animallink.authentication.intelligence-miniapp-assertion.keys='+keys,'--animallink.authentication.intelligence-miniapp-assertion.current-key-id=test']
-  for name,port in [('identity-service',18081),('intelligence-service',18085),('api-gateway',18080)]:
+  storage.create_bucket(Bucket='animallink-animal')
+  env=os.environ.copy();env.update({'ANIMAL_DB_USER':'root','ANIMAL_DB_PASSWORD':'','ANIMAL_SERVICE_URL':ANIMAL,'IDENTITY_SERVICE_BASE_URL':IDENTITY,'ANIMALLINK_MESSAGING_ENABLED':'false','ANIMALLINK_AUTHENTICATION_OBSERVATION_ASSERTION_KEY':base64.b64encode(os.urandom(32)).decode(),'IDENTITY_DB_USER':'root','IDENTITY_DB_PASSWORD':'','INTELLIGENCE_DB_USER':'root','INTELLIGENCE_DB_PASSWORD':'','AUTH_SERVICE_ASSERTION_CURRENT_KEY_ID':'test','AUTH_SERVICE_ASSERTION_KEYS':keys,'IDENTITY_INTERNAL_BASE_URL':'http://identity-service','IDENTITY_SERVICE_URL':IDENTITY,'MINIO_ACCESS_KEY':access,'MINIO_SECRET_KEY':secret,'CREDENTIAL_PRECHECK_DISPATCHER_ENABLED':'false','AI_PROVIDER':'mock'})
+  common=['--spring.cloud.nacos.discovery.enabled=false','--spring.cloud.nacos.config.enabled=false','--spring.cloud.discovery.client.simple.instances.identity-service[0].uri='+IDENTITY,'--spring.cloud.discovery.client.simple.instances.intelligence-service[0].uri='+AI,'--management.endpoint.health.probes.enabled=true','--management.health.rabbit.enabled=false','--animallink.authentication.intelligence-miniapp-assertion.keys='+keys,'--animallink.authentication.intelligence-miniapp-assertion.current-key-id=test']
+  for name,port in [('identity-service',18081),('animal-service',18082),('intelligence-service',18085),('api-gateway',18080)]:
    log=open(name+'-ai-smoke.log','w+',encoding='utf8');logs.append(log);args=['java','-jar','backend/'+name+'/target/'+name+'-0.1.0-SNAPSHOT.jar','--server.port='+str(port),*common];print('START',name,port,flush=True);processes.append(subprocess.Popen(args,env=env,stdout=log,stderr=subprocess.STDOUT))
-  for url,p in zip((IDENTITY,AI,GATEWAY),processes):ready(url,p)
+  for url,p in zip((IDENTITY,ANIMAL,AI,GATEWAY),processes):ready(url,p)
   sql(db,'USE animallink_identity')
   for i,user in enumerate(USERS):
    sql(db,"INSERT INTO `user` (id,display_name,account_status,system_role) VALUES (%s,'Smoke','ACTIVE','USER')",user)
@@ -72,7 +73,38 @@ def main():
   manual=check('manual draft',200,req(root+'manual',dict(body,draft=draft),h(0)));assert manual['modelProvider']=='MANUAL' and manual['confirmedAt'] is None
   check('manual confirm',200,req(root+manual['taskId']+'/confirm',{'draft':draft},h(0)))
   sql(db,'USE animallink_intelligence');assert sql(db,'SELECT COUNT(*) FROM ai_confirmation')[0][0]==2
-  print('DB confirms two human decisions; no Animal identity or Post created',flush=True)
+  matches=GATEWAY+'/auth/wechat/matches/'
+  query=lambda tid: req(root+tid+'/decision?campusId='+CAMPUS,headers=h(0))
+  match=lambda tid: req(root+tid+'/match-candidates',{'campusId':CAMPUS},h(0))
+  check('cross-campus match',403,req(root+task+'/match-candidates',{'campusId':str(uuid.uuid4())},h(0)))
+  check('other task match',404,req(root+task+'/match-candidates',{'campusId':CAMPUS},h(1)))
+  empty=check('no candidate match',200,match(task));assert not empty['candidates'] and empty['lowConfidence']
+  animal=str(uuid.uuid4());sql(db,'USE animallink_animal');sql(db,"INSERT INTO animal(id,campus_id,display_name,species) VALUES (%s,%s,'smoke candidate','CAT')",animal,CAMPUS)
+  found=check('candidate match',200,match(task));assert any(x['animalId']==animal for x in found['candidates'])
+  mid=found['matchingRecordId']; select={'campusId':CAMPUS,'decisionType':'SELECT_EXISTING','selectedAnimalId':animal,'postText':'Observed today'}
+  outcome=check('select existing',200,req(matches+mid+'/finalize',select,h(0)));assert outcome['createdPost']['id'] and outcome['proposalId'] is None
+  assert check('repeat same decision',200,req(matches+mid+'/finalize',select,h(0)))['createdPost']['id']==outcome['createdPost']['id']
+  check('different decision rejected',409,req(matches+mid+'/finalize',{'campusId':CAMPUS,'decisionType':'NO_MATCH','postText':'Other'},h(0)))
+  saved=check('query finalized decision',200,query(task));assert saved['state']=='FINALIZED' and saved['result']['createdPost']['id']==outcome['createdPost']['id']
+  assert sql(db,'SELECT COUNT(*) FROM post WHERE source_ai_task_id=%s',task)[0][0]==1
+  mid2=check('manual match',200,match(manual['taskId']))['matchingRecordId']; no=check('no match',200,req(matches+mid2+'/finalize',{'campusId':CAMPUS,'decisionType':'NO_MATCH','postText':'New sighting'},h(0)));assert no['createdPost']['id'] and no['proposalId']
+  uncertain=check('uncertain manual',200,req(root+'manual',dict(body,draft=draft),h(0)));check('uncertain confirm',200,req(root+uncertain['taskId']+'/confirm',{'draft':draft},h(0)))
+  uncertain_id=check('uncertain match',200,match(uncertain['taskId']))['matchingRecordId']
+  import socket
+  pending={'campusId':CAMPUS,'decisionType':'NO_MATCH','postText':'Recover same decision'};encoded=json.dumps(pending).encode();url='/auth/wechat/matches/'+uncertain_id+'/finalize'
+  raw=(f'POST {url} HTTP/1.1\r\nHost: 127.0.0.1:18080\r\nContent-Type: application/json\r\nX-Miniapp-Session: {TOKENS[0]}\r\nContent-Length: {len(encoded)}\r\nConnection: close\r\n\r\n').encode()+encoded
+  with socket.create_connection(('127.0.0.1',18080),timeout=10) as connection:connection.sendall(raw)
+  state=check('query after disconnected request',200,query(uncertain['taskId']))
+  if state['state']!='FINALIZED':check('retry original after query',200,req(matches+uncertain_id+'/finalize',pending,h(0)))
+  state=check('recovered decision',200,query(uncertain['taskId']));assert state['state']=='FINALIZED'
+  assert sql(db,'SELECT COUNT(*) FROM post WHERE source_ai_task_id=%s',uncertain['taskId'])[0][0]==1
+  check('recovered cannot change',409,req(matches+uncertain_id+'/finalize',{'campusId':CAMPUS,'decisionType':'UNSURE'},h(0)))
+  third=check('unsure manual',200,req(root+'manual',dict(body,draft=draft),h(0)));check('unsure confirm',200,req(root+third['taskId']+'/confirm',{'draft':draft},h(0)))
+  processes[1].terminate();processes[1].wait(timeout=20)
+  fallback=check('manual fallback',200,match(third['taskId']));assert fallback['matchingMode']=='MANUAL_FALLBACK' and not fallback['candidates']
+  unsure=check('unsure decision',200,req(matches+fallback['matchingRecordId']+'/finalize',{'campusId':CAMPUS,'decisionType':'UNSURE'},h(0)));assert unsure['decision']['decisionType']=='UNSURE' and unsure['createdPost'] is None and unsure['proposalId'] is None
+  assert sql(db,'SELECT COUNT(*) FROM post WHERE source_ai_task_id=%s',third['taskId'])[0][0]==0
+  print('DB: select/no-match persisted and unsure created no Post',flush=True)
  finally:
   for p in processes:
    if p.poll() is None:p.terminate()
