@@ -38,11 +38,11 @@ public class WechatRescueDraftClient {
             return request.exchangeToMono(response -> result(response,type));
         }));
     }
-    private <T> Mono<T> result(org.springframework.web.reactive.function.client.ClientResponse response,Class<T> type) {
+    static <T> Mono<T> result(org.springframework.web.reactive.function.client.ClientResponse response,Class<T> type) {
         if(response.statusCode().is2xxSuccessful())return response.bodyToMono(type);
         if(response.statusCode().equals(HttpStatus.BAD_REQUEST))return response.releaseBody().then(Mono.error(new BadRequest()));
-        if(response.statusCode().equals(HttpStatus.UNAUTHORIZED))return response.releaseBody().then(Mono.error(new WechatSessionClient.Invalid()));
-        if(response.statusCode().equals(HttpStatus.FORBIDDEN))return response.releaseBody().then(Mono.error(new Forbidden()));
+        if(response.statusCode().equals(HttpStatus.UNAUTHORIZED))return response.releaseBody().then(Mono.error(new Unavailable()));
+        if(response.statusCode().equals(HttpStatus.FORBIDDEN))return response.bodyToMono(java.util.Map.class).defaultIfEmpty(java.util.Map.of()).flatMap(body -> Mono.error("MINIAPP_USER_REQUIRED".equals(body.get("code")) ? new Unavailable() : new Forbidden()));
         if(response.statusCode().equals(HttpStatus.NOT_FOUND))return response.releaseBody().then(Mono.error(new NotFound()));
         if(response.statusCode().equals(HttpStatus.CONFLICT))return response.releaseBody().then(Mono.error(new Conflict()));
         return response.releaseBody().then(Mono.error(new Unavailable()));
