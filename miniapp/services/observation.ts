@@ -20,3 +20,9 @@ export const uploadObservationImage = async (campusId: string, path: string) => 
   await new Promise<void>((resolve,reject)=>wx.request({url:intent.uploadUrl,method:'PUT',data:bytes,header:{'Content-Type':type},success:r=>r.statusCode>=200&&r.statusCode<300?resolve():reject(new Error('图片上传失败。')),fail:reject}))
   return intent.objectKey
 }
+
+export interface MatchCandidate { rank: number; animalId: string; displayName: string; species: string; finalScore: number; reasons: string[]; scoreText?: string; reasonText?: string }
+export interface MatchRecord { matchingRecordId: string; aiTaskId: string; campusId: string; matchingMode: string; lowConfidence: boolean; candidates: MatchCandidate[] }
+export interface MatchDecisionInput { decisionType: 'SELECT_EXISTING' | 'NO_MATCH' | 'UNSURE'; selectedAnimalId?: string; postText?: string }
+export interface Finalization { decision: { decisionType: string; selectedAnimalId: string | null }; createdPost: { id: string } | null; proposalId: string | null }
+export interface DecisionState { state: 'NONE' | 'PENDING' | 'FINALIZED'; matchingRecordId: string | null; result: Finalization | null; intent: MatchDecisionInput | null }
