@@ -23,10 +23,17 @@ public class HttpIdentityGateway implements IdentityGateway {
     @Override
     public CurrentUser requireCurrentUser() {
         try {
+            Object principal = request.getAttribute(IntelligenceMiniappAssertionFilter.PRINCIPAL);
+            if (principal instanceof IntelligenceMiniappAssertionVerifier.AuthenticatedMiniappUser user) {
+                var values = client.post().uri("/internal/v1/users/summaries")
+                        .header("X-Trace-Id", traceId()).body(java.util.Map.of("userIds", java.util.List.of(user.userId())))
+                        .retrieve().body(new org.springframework.core.ParameterizedTypeReference<java.util.List<UserPayload>>() {});
+                if (values == null || values.size() != 1 || !user.userId().equals(values.getFirst().id())) throw new Unauthorized("无法确认当前用户");
+                var value=values.getFirst(); return new CurrentUser(value.id(), value.displayName(), value.accountStatus(), "USER");
+            }
             RestClient.RequestHeadersSpec<?> spec = client.get().uri("/api/v1/users/me")
                     .header("X-Trace-Id", traceId());
-            Object principal = request.getAttribute(IntelligenceMiniappAssertionFilter.PRINCIPAL);
-            String userId = principal instanceof IntelligenceMiniappAssertionVerifier.AuthenticatedMiniappUser user ? user.userId() : request.getHeader(USER_ID_HEADER);
+            String userId = request.getHeader(USER_ID_HEADER);
             if (userId != null && !userId.isBlank()) spec = spec.header(USER_ID_HEADER, userId);
             UserPayload value = spec.retrieve().body(UserPayload.class);
             if (value == null) throw new Unauthorized("无法确认当前用户");
