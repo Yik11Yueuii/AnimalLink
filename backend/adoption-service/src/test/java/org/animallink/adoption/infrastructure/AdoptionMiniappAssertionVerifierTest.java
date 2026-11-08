@@ -3,6 +3,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.nimbusds.jose.*;import com.nimbusds.jose.crypto.MACSigner;import com.nimbusds.jwt.*;
 import java.time.*;import java.util.*;import org.junit.jupiter.api.Test;
 class AdoptionMiniappAssertionVerifierTest {
+ @Test void handoverScopeIsReadOnly() {
+  assertEquals("adoption.handover.read",AdoptionMiniappRequestPolicy.requiredScope("GET","/internal/v1/miniapp/adoption/handovers").orElseThrow());
+  assertTrue(AdoptionMiniappRequestPolicy.requiredScope("POST","/internal/v1/miniapp/adoption/handovers").isEmpty());
+ }
  @Test void verifiesActorPathScopeAndReplay() throws Exception {
   byte[] key=new byte[32];new java.security.SecureRandom().nextBytes(key);String keys="test="+Base64.getEncoder().encodeToString(key),actor="00000000-0000-4000-8000-000000000001",path="/internal/v1/miniapp/adoption/listings/00000000-0000-4000-8000-000000000001/applications";Instant now=Instant.now();
   var v=new AdoptionMiniappAssertionVerifier("api-gateway","api-gateway","adoption-service",Duration.ofSeconds(30),Duration.ofSeconds(5),100,keys,Clock.systemUTC());
