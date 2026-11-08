@@ -60,11 +60,13 @@ public class JdbcMatchingRepository implements MatchingRepository {
     public void save(MatchingRecord record) {
         jdbc.update("""
                 INSERT INTO matching_record (id, user_id, ai_task_id, campus_id, algorithm_version,
-                    weight_version, experiment_code, weights_json, top_k, candidate_count,
-                    low_confidence, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    weight_version, experiment_code, matching_mode, fallback_reason, weights_json, top_k,
+                    candidate_count, low_confidence, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, record.id(), record.userId(), record.aiTaskId(), record.campusId(),
                 record.algorithmVersion(), record.weightVersion(), record.experiment().name(),
-                json(record.weights()), record.topK(), record.candidateCount(), record.lowConfidence(),
+                record.matchingMode().name(), record.fallbackReason(), json(record.weights()),
+                record.topK(), record.candidateCount(), record.lowConfidence(),
                 Timestamp.from(record.createdAt()));
         for (MatchingCandidate candidate : record.candidates()) {
             jdbc.update("""
@@ -99,6 +101,8 @@ public class JdbcMatchingRepository implements MatchingRepository {
                         rs.getString("ai_task_id"), rs.getString("campus_id"),
                         rs.getString("algorithm_version"), rs.getString("weight_version"),
                         MatchingExperiment.valueOf(rs.getString("experiment_code")),
+                        MatchingMode.valueOf(rs.getString("matching_mode")),
+                        rs.getString("fallback_reason"),
                         readMap(rs.getString("weights_json")), rs.getInt("top_k"),
                         rs.getInt("candidate_count"), rs.getBoolean("low_confidence"),
                         instant(rs, "created_at"), List.of()),
@@ -109,28 +113,107 @@ public class JdbcMatchingRepository implements MatchingRepository {
                 SELECT * FROM matching_candidate WHERE matching_record_id = ? ORDER BY rank_number
                 """, this::mapCandidate, recordId);
         return Optional.of(new MatchingRecord(base.id(), base.userId(), base.aiTaskId(), base.campusId(),
-                base.algorithmVersion(), base.weightVersion(), base.experiment(), base.weights(),
-                base.topK(), base.candidateCount(), base.lowConfidence(), base.createdAt(), candidates));
+                base.algorithmVersion(), base.weightVersion(), base.experiment(), base.matchingMode(),
+                base.fallbackReason(), base.weights(), base.topK(), base.candidateCount(),
+                base.lowConfidence(), base.createdAt(), candidates));
     }
 
     @Override
     public Optional<MatchingDecision> findDecisionByRecordId(String recordId) {
         return jdbc.query("""
-                SELECT id, matching_record_id, user_id, decision_type, selected_animal_id,
+                SELECT id, matching_record_id, source_ai_task_id, user_id, decision_type, selected_animal_id,
                        selected_rank, selected_score, post_id, proposal_id, decided_at
                 FROM matching_decision WHERE matching_record_id = ?
                 """, this::mapDecision, recordId).stream().findFirst();
     }
 
     @Override
+    public Optional<MatchingDecision> findDecisionByAiTaskId(String taskId) {
+        return jdbc.query("""
+                SELECT id, matching_record_id, source_ai_task_id, user_id, decision_type, selected_animal_id,
+                       selected_rank, selected_score, post_id, proposal_id, decided_at
+                FROM matching_decision WHERE source_ai_task_id = ?
+                """, this::mapDecision, taskId).stream().findFirst();
+    }
+
+    @Override
+    public Optional<MatchingDecisionIntent> findIntentByAiTaskId(String taskId) {
+        return jdbc.query("""
+                SELECT id, matching_record_id, source_ai_task_id, user_id, decision_type,
+                       selected_animal_id, selected_rank, selected_score, post_text, created_at,
+                       fencing_version, deterministic_failure_code
+                FROM matching_decision_intent WHERE source_ai_task_id = ?
+                """, (rs, row) -> {
+            int rank = rs.getInt("selected_rank");
+            Integer selectedRank = rs.wasNull() ? null : rank;
+            return new MatchingDecisionIntent(rs.getString("id"),
+                    rs.getString("matching_record_id"), rs.getString("source_ai_task_id"),
+                    rs.getString("user_id"), MatchingDecisionType.valueOf(rs.getString("decision_type")),
+                    rs.getString("selected_animal_id"), selectedRank,
+                    nullableDouble(rs, "selected_score"), rs.getString("post_text"),
+                    instant(rs, "created_at"), nullableLong(rs, "fencing_version"),
+                    rs.getString("deterministic_failure_code"));
+        }, taskId).stream().findFirst();
+    }
+
+    @Override
+    public void saveIntent(MatchingDecisionIntent intent) {
+        jdbc.update("""
+                INSERT INTO matching_decision_intent
+                    (id, matching_record_id, source_ai_task_id, user_id, decision_type,
+                     selected_animal_id, selected_rank, selected_score, post_text, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, intent.id(), intent.matchingRecordId(), intent.sourceAiTaskId(),
+                intent.userId(), intent.decisionType().name(), intent.selectedAnimalId(),
+                intent.selectedRank(), intent.selectedScore(), intent.postText(),
+                Timestamp.from(intent.createdAt()));
+    }
+
+    @Override
+    public void setIntentVersion(String intentId, long version) {
+        int changed = jdbc.update("""
+                UPDATE matching_decision_intent SET fencing_version = ?
+                WHERE id = ? AND (fencing_version IS NULL OR fencing_version = ?)
+                """, version, intentId, version);
+        if (changed != 1) throw new IllegalStateException("决策尝试版本不一致");
+    }
+
+    @Override
+    public void setIntentFailure(String intentId, String failureCode) {
+        int changed = jdbc.update("""
+                UPDATE matching_decision_intent SET deterministic_failure_code = ?
+                WHERE id = ? AND (deterministic_failure_code IS NULL OR deterministic_failure_code = ?)
+                """, failureCode, intentId, failureCode);
+        if (changed != 1) throw new IllegalStateException("决策尝试失败记录不一致");
+    }
+
+    @Override
+    public void retireIntent(MatchingDecisionIntent intent) {
+        int saved = jdbc.update("""
+                INSERT INTO matching_decision_intent_history
+                (id, matching_record_id, source_ai_task_id, user_id, decision_type,
+                 selected_animal_id, selected_rank, selected_score, post_text,
+                 fencing_version, deterministic_failure_code, created_at, retired_at)
+                SELECT id, matching_record_id, source_ai_task_id, user_id, decision_type,
+                       selected_animal_id, selected_rank, selected_score, post_text,
+                       fencing_version, deterministic_failure_code, created_at, CURRENT_TIMESTAMP(6)
+                FROM matching_decision_intent
+                WHERE id = ? AND fencing_version = ? AND deterministic_failure_code = ?
+                """, intent.id(), intent.fencingVersion(), intent.deterministicFailureCode());
+        if (saved != 1) throw new IllegalStateException("决策意图无法归档");
+        int deleted = jdbc.update("DELETE FROM matching_decision_intent WHERE id = ?", intent.id());
+        if (deleted != 1) throw new IllegalStateException("决策意图并发变化");
+    }
+
+    @Override
     public void saveDecision(MatchingDecision decision) {
         jdbc.update("""
                 INSERT INTO matching_decision
-                    (id, matching_record_id, user_id, decision_type, selected_animal_id,
+                    (id, matching_record_id, source_ai_task_id, user_id, decision_type, selected_animal_id,
                      selected_rank, selected_score, post_id, proposal_id, decided_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, decision.id(), decision.matchingRecordId(), decision.userId(),
-                decision.decisionType().name(), decision.selectedAnimalId(),
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, decision.id(), decision.matchingRecordId(), decision.sourceAiTaskId(),
+                decision.userId(), decision.decisionType().name(), decision.selectedAnimalId(),
                 decision.selectedRank(), decision.selectedScore(), decision.postId(),
                 decision.proposalId(), Timestamp.from(decision.decidedAt()));
     }
@@ -141,6 +224,11 @@ public class JdbcMatchingRepository implements MatchingRepository {
                 rs.getString("model_provider"), rs.getString("model_name"),
                 rs.getString("model_version"), readList(rs.getString("vector_json")),
                 instant(rs, "created_at"), instant(rs, "updated_at"));
+    }
+
+    private Long nullableLong(ResultSet rs, String column) throws SQLException {
+        long value = rs.getLong(column);
+        return rs.wasNull() ? null : value;
     }
 
     private MatchingCandidate mapCandidate(ResultSet rs, int rowNum) throws SQLException {
@@ -157,6 +245,7 @@ public class JdbcMatchingRepository implements MatchingRepository {
         int rank = rs.getInt("selected_rank");
         Integer selectedRank = rs.wasNull() ? null : rank;
         return new MatchingDecision(rs.getString("id"), rs.getString("matching_record_id"),
+                rs.getString("source_ai_task_id"),
                 rs.getString("user_id"),
                 MatchingDecisionType.valueOf(rs.getString("decision_type")),
                 rs.getString("selected_animal_id"), selectedRank,

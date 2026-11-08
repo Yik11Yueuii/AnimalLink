@@ -7,6 +7,7 @@ import java.util.Map;
 public record MatchingRecord(
         String id, String userId, String aiTaskId, String campusId,
         String algorithmVersion, String weightVersion, MatchingExperiment experiment,
+        MatchingMode matchingMode, String fallbackReason,
         Map<String, Double> weights, int topK, int candidateCount,
         boolean lowConfidence, Instant createdAt, List<MatchingCandidate> candidates) {
 }

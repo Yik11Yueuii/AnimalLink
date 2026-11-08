@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/identity-wechat-mysql-integration.yml'
+      - '.github/scripts/phase2c_http_smoke.py'
       - 'backend/pom.xml'
       - 'backend/identity-service/**'
       - 'backend/api-gateway/**'

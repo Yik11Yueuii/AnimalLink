@@ -33,6 +33,17 @@ public class JdbcObservationFinalizationRepository
     }
 
     @Override
+    public Optional<ObservationFinalization> findFinalizationByAiTaskId(String aiTaskId) {
+        return jdbc.query("""
+                SELECT id, source_matching_record_id, source_ai_task_id, user_id, campus_id,
+                       decision_type, selected_animal_id, post_id, proposal_id,
+                       decision_hash, created_at
+                FROM observation_finalization
+                WHERE source_ai_task_id = ?
+                """, this::mapFinalization, aiTaskId).stream().findFirst();
+    }
+
+    @Override
     public void insertAggregate(ObservationFinalization finalization, Post post,
                                 List<PostMedia> media, AnimalIdentityProposal proposal) {
         jdbc.update("""
