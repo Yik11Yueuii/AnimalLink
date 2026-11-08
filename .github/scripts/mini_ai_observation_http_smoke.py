@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Independent Gateway, Identity and Intelligence JVMs with MySQL/MinIO; seeded sessions, mock provider."""
-import base64, hashlib, json, os, secrets, subprocess, time, urllib.error, urllib.request, uuid
+import base64, hashlib, hmac, json, os, secrets, subprocess, time, urllib.error, urllib.request, uuid
 import boto3, pymysql
 GATEWAY='http://127.0.0.1:18080'; IDENTITY='http://127.0.0.1:18081'; AI='http://127.0.0.1:18085'
 CAMPUS='22000000-0000-4000-8000-000000000001'; USERS=[str(uuid.uuid4()) for _ in range(2)]; TOKENS=[base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip('=') for _ in USERS]
-keys='test='+base64.b64encode(os.urandom(32)).decode(); access=secrets.token_hex(12); secret=secrets.token_hex(24); processes=[]; logs=[]
+assertion_key=os.urandom(32);keys='test='+base64.b64encode(assertion_key).decode(); access=secrets.token_hex(12); secret=secrets.token_hex(24); processes=[]; logs=[]
 def req(url,body=None,headers=None,method=None):
  data=None if body is None else json.dumps(body).encode(); q=urllib.request.Request(url,data=data,headers={'Content-Type':'application/json',**(headers or {})},method=method)
  try:
@@ -49,6 +49,11 @@ def main():
   sql(db,"INSERT INTO campus_membership(id,user_id,campus_id,membership_type,status,approved_at,last_verification_id) VALUES (%s,%s,%s,'STUDENT','ACTIVE',NOW(6),%s)",str(uuid.uuid4()),USERS[0],CAMPUS,verification)
   root=GATEWAY+'/auth/wechat/observations/';h=lambda i:{'X-Miniapp-Session':TOKENS[i]}
   check('no session',401,req(root+'upload-url',{'campusId':CAMPUS}))
+  check('session validation',200,req(GATEWAY+'/auth/wechat/me',headers=h(1)))
+  path='/internal/v1/miniapp/observations/upload-url'; now=int(time.time()); encode=lambda b:base64.urlsafe_b64encode(b).rstrip(b'=')
+  header={'alg':'HS256','typ':'JWT','kid':'test'}; claims={'iss':'api-gateway','sub':'api-gateway','aud':['intelligence-service'],'target':'intelligence-service','actor_id':USERS[1],'system_role':'USER','scope':['intelligence.observation.write'],'request_method':'POST','request_path':path,'iat':now,'exp':now+15,'jti':str(uuid.uuid4())}
+  signing=encode(json.dumps(header,separators=(',',':')).encode())+b'.'+encode(json.dumps(claims,separators=(',',':')).encode()); assertion=(signing+b'.'+encode(hmac.new(assertion_key,signing,hashlib.sha256).digest())).decode()
+  check('direct signed nonmember',403,req(AI+path,{'campusId':CAMPUS},{'Authorization':'Bearer '+assertion}))
   check('nonmember',403,req(root+'upload-url',{'campusId':CAMPUS},h(1)))
   upload=check('upload intent',200,req(root+'upload-url',{'campusId':CAMPUS},h(0)))
   import struct, zlib
