@@ -44,13 +44,13 @@ Page({
   async loadLike() {
     const token=storedMiniappSession(),campus=getSelectedCampus()?.id,version=this.privateVersion,likeVersion=++this.likeVersion,postId=this.data.postId
     this.setData({likeState:null});if(this.data.offline||!communityWriteAvailable()||!campus||!this.data.post||this.data.post.campusId!==campus)return
-    try {const state=await communityRequest<CommunityLikeState>('/posts/'+encodeURIComponent(postId)+'/like?campusId='+encodeURIComponent(campus),'GET');if(version===this.privateVersion&&likeVersion===this.likeVersion&&token===storedMiniappSession()&&campus===getSelectedCampus()?.id){this.likeSession=token||'';this.likeCampus=campus;this.setData({likeState:state})}}catch(e){if(version===this.privateVersion&&likeVersion===this.likeVersion)this.setData({likeState:null})}
+    try {const state=await communityRequest<CommunityLikeState>('/posts/'+encodeURIComponent(postId)+'/like?campusId='+encodeURIComponent(campus),'GET');if(version===this.privateVersion&&likeVersion===this.likeVersion&&token===storedMiniappSession()&&campus===getSelectedCampus()?.id){this.likeSession=token||'';this.likeCampus=campus;this.setData({likeState:state})}}catch(e){if(version===this.privateVersion&&likeVersion===this.likeVersion){if(e instanceof ApiRequestError&&e.statusCode===401&&!storedMiniappSession()){this.likeSession='';this.likeCampus='';this.setData({likeState:null,likeBusy:false,commentText:'',actionMessage:'登录已失效，请重新登录。'})}else this.setData({likeState:null})}}
   },
   async toggleLike() {
     if(this.data.likeBusy||!this.data.likeState)return;if(this.likeSession!==storedMiniappSession()||this.likeCampus!==getSelectedCampus()?.id){this.setData({likeState:null});return}const token=storedMiniappSession(),campus=getSelectedCampus()?.id,version=this.privateVersion,postId=this.data.postId,active=this.data.likeState.active
     if(this.data.offline||!campus||!communityWriteAvailable())return;this.likeVersion++;this.setData({likeBusy:true,actionMessage:''})
     try{const state=await communityRequest<CommunityLikeState>('/posts/'+encodeURIComponent(postId)+'/like?campusId='+encodeURIComponent(campus),active?'DELETE':'POST');if(version===this.privateVersion&&token===storedMiniappSession()&&campus===getSelectedCampus()?.id)this.setData({likeState:state})}
-    catch(e){if(version===this.privateVersion&&token===storedMiniappSession()&&campus===getSelectedCampus()?.id){this.setData({likeState:null,likeBusy:false,actionMessage:'操作结果未确定，正在重新查询点赞状态。'});await this.loadLike()}}
+    catch(e){if(version===this.privateVersion&&campus===getSelectedCampus()?.id){if(e instanceof ApiRequestError&&e.statusCode===401&&!storedMiniappSession()){this.likeSession='';this.likeCampus='';this.setData({likeState:null,likeBusy:false,commentText:'',actionMessage:'登录已失效，请重新登录。'})}else if(token===storedMiniappSession()){this.setData({likeState:null,likeBusy:false,actionMessage:'操作结果未确定，正在重新查询点赞状态。'});await this.loadLike()}}}
     finally{if(version===this.privateVersion&&token===storedMiniappSession()&&campus===getSelectedCampus()?.id)this.setData({likeBusy:false})}
   },
   async submitComment(){
