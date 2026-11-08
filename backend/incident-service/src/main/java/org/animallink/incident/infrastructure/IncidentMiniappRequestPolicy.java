@@ -10,12 +10,14 @@ final class IncidentMiniappRequestPolicy {
     private static final Pattern COLLECTION = Pattern.compile("^/api/v1/internal/miniapp/rescue-drafts$");
     private static final Pattern ITEM = Pattern.compile("^/api/v1/internal/miniapp/rescue-drafts/" + UUID + "$");
     private static final Pattern SUBMIT = Pattern.compile("^/api/v1/internal/miniapp/rescue-drafts/" + UUID + "/submit$");
+    private static final Pattern CLAIM = Pattern.compile("^/api/v1/internal/miniapp/rescues/" + UUID + "/claim$");
     private IncidentMiniappRequestPolicy() { }
     static Optional<String> requiredScope(String method, String path) {
         if (path == null) return Optional.empty();
+        if ("POST".equals(method) && CLAIM.matcher(path).matches()) return Optional.of("incident.case.claim");
         boolean allowed = ("POST".equals(method) && (COLLECTION.matcher(path).matches() || SUBMIT.matcher(path).matches()))
                 || (("GET".equals(method) || "PATCH".equals(method)) && ITEM.matcher(path).matches());
         return allowed ? Optional.of(SCOPE) : Optional.empty();
     }
-    static boolean isProtected(String path) { return path != null && (COLLECTION.matcher(path).matches() || ITEM.matcher(path).matches() || SUBMIT.matcher(path).matches()); }
+    static boolean isProtected(String path) { return path != null && (COLLECTION.matcher(path).matches() || ITEM.matcher(path).matches() || SUBMIT.matcher(path).matches() || CLAIM.matcher(path).matches()); }
 }

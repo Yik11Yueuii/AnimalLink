@@ -6,6 +6,14 @@ import org.junit.jupiter.api.Test;
 
 class IncidentMiniappGatewayPolicyTest {
     private static final String ID = "23000000-0000-4000-8000-000000000001";
+    @Test void claimUsesItsOwnScopeAndExactPostPath() {
+        String path = "/auth/wechat/rescues/" + ID + "/claim";
+        assertTrue(IncidentMiniappGatewayPolicy.allowed("POST", path));
+        assertFalse(IncidentMiniappGatewayPolicy.allowed("GET", path));
+        assertFalse(IncidentMiniappGatewayPolicy.allowed("POST", path + "/"));
+        org.junit.jupiter.api.Assertions.assertEquals("incident.case.claim", IncidentMiniappGatewayPolicy.scope(path));
+        org.junit.jupiter.api.Assertions.assertEquals("/api/v1/internal/miniapp/rescues/" + ID + "/claim", IncidentMiniappGatewayPolicy.downstreamPath(path));
+    }
     @Test void grantsOnlyTheFourExactMiniappDraftOperations() {
         assertTrue(IncidentMiniappGatewayPolicy.allowed("POST", "/auth/wechat/rescue-drafts"));
         assertTrue(IncidentMiniappGatewayPolicy.allowed("GET", "/auth/wechat/rescue-drafts/" + ID));

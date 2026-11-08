@@ -45,6 +45,7 @@ class CaseClaimErrorIntegrationTest {
   @DynamicPropertySource static void properties(DynamicPropertyRegistry r) {
     r.add("spring.datasource.url", MYSQL::getJdbcUrl); r.add("spring.datasource.username", MYSQL::getUsername); r.add("spring.datasource.password", MYSQL::getPassword);
     r.add("spring.cloud.nacos.discovery.enabled", () -> false); r.add("spring.cloud.nacos.config.enabled", () -> false);
+    r.add("animallink.authentication.incident-miniapp-assertion.keys", () -> "test=MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=");
     r.add("animallink.identity.base-url", STUB::url); r.add("animallink.animal.base-url", STUB::url); r.add("animallink.intelligence.base-url", STUB::url);
     r.add("animallink.minio.endpoint", () -> "http://localhost:9000"); r.add("animallink.minio.access-key", () -> "minioadmin"); r.add("animallink.minio.secret-key", () -> "minioadmin"); r.add("animallink.minio.bucket", () -> "animallink-incident");
   }
@@ -88,8 +89,29 @@ class CaseClaimErrorIntegrationTest {
     seed("event-without-case", "VERIFIED"); mvc.perform(get("/api/v1/events/{eventId}/case", "event-without-case")).andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("CASE_NOT_FOUND"));
   }
 
+  @Test void signedMiniappClaimIsCampusScopedIdempotentAndPrivate() throws Exception {
+    String event = "21000000-0000-4000-8000-000000000001", path = "/api/v1/internal/miniapp/rescues/" + event + "/claim";
+    String other = "00000000-0000-0000-0000-000000000202";
+    STUB.memberships.put(VOLUNTEER, "ACTIVE"); STUB.memberships.put(other, "ACTIVE"); seed(event, "VERIFIED");
+    String good = "{\"campusId\":\"" + CAMPUS + "\"}", wrong = "{\"campusId\":\"other-campus\"}";
+    mvc.perform(post(path).contentType("application/json").content(good).header("X-User-Id", VOLUNTEER)).andExpect(status().isUnauthorized());
+    STUB.memberships.remove(VOLUNTEER);
+    mvc.perform(post(path).contentType("application/json").content(good).header("Authorization", miniappAssertion(VOLUNTEER, path))).andExpect(status().isForbidden());
+    STUB.memberships.put(VOLUNTEER, "ACTIVE");
+    mvc.perform(post(path).contentType("application/json").content(wrong).header("Authorization", miniappAssertion(VOLUNTEER, path))).andExpect(status().isForbidden());
+    Assertions.assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM animal_case WHERE event_id=?", Integer.class, event));
+    mvc.perform(post(path).contentType("application/json").content(good).header("Authorization", miniappAssertion(VOLUNTEER, path))).andExpect(status().isOk()).andExpect(jsonPath("$.eventId").value(event)).andExpect(jsonPath("$.ownerUserId").doesNotExist()).andExpect(jsonPath("$.resultSummary").doesNotExist());
+    mvc.perform(post(path).contentType("application/json").content(good).header("Authorization", miniappAssertion(VOLUNTEER, path))).andExpect(status().isOk());
+    mvc.perform(post(path).contentType("application/json").content(good).header("Authorization", miniappAssertion(other, path))).andExpect(status().isConflict());
+    Assertions.assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM animal_case WHERE event_id=?", Integer.class, event));
+  }
+  private static String miniappAssertion(String actor, String path) throws Exception {
+    Instant now = Instant.now(); var claims = new com.nimbusds.jwt.JWTClaimsSet.Builder().issuer("api-gateway").subject("api-gateway").audience("incident-service").claim("target", "incident-service").claim("actor_id", actor).claim("system_role", "USER").claim("scope", List.of("incident.case.claim")).claim("request_method", "POST").claim("request_path", path).issueTime(java.util.Date.from(now)).expirationTime(java.util.Date.from(now.plusSeconds(15))).jwtID(java.util.UUID.randomUUID().toString()).build();
+    var jwt = new com.nimbusds.jwt.SignedJWT(new com.nimbusds.jose.JWSHeader.Builder(com.nimbusds.jose.JWSAlgorithm.HS256).type(com.nimbusds.jose.JOSEObjectType.JWT).keyID("test").build(), claims);
+    jwt.sign(new com.nimbusds.jose.crypto.MACSigner("01234567890123456789012345678901".getBytes(StandardCharsets.UTF_8))); return "Bearer " + jwt.serialize();
+  }
   private org.springframework.test.web.servlet.ResultActions claim(String eventId) throws Exception { return mvc.perform(post("/api/v1/events/{eventId}/case/claim", eventId).header("X-User-Id", VOLUNTEER)); }
-  private void seed(String eventId, String eventStatus) { Timestamp time = Timestamp.from(Instant.parse("2026-10-01T00:00:00Z")); jdbc.update("INSERT INTO event_draft (id,user_id,campus_id,description,occurred_at,public_location_description,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)", "draft-" + eventId, REPORTER, CAMPUS, "draft", time, "public", time, time); jdbc.update("INSERT INTO event (id,source_draft_id,reporter_user_id,campus_id,description,occurred_at,reported_at,public_location_description,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)", eventId, "draft-" + eventId, REPORTER, CAMPUS, "event", time, time, "public", eventStatus, time, time); }
+  private void seed(String eventId, String eventStatus) { Timestamp time = Timestamp.from(Instant.parse("2026-10-01T00:00:00Z")); jdbc.update("INSERT INTO event_draft (id,user_id,campus_id,description,occurred_at,public_location_description,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)", (eventId.length()>30 ? "draft-mini" : "draft-" + eventId), REPORTER, CAMPUS, "draft", time, "public", time, time); jdbc.update("INSERT INTO event (id,source_draft_id,reporter_user_id,campus_id,description,occurred_at,reported_at,public_location_description,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)", eventId, (eventId.length()>30 ? "draft-mini" : "draft-" + eventId), REPORTER, CAMPUS, "event", time, time, "public", eventStatus, time, time); }
 
   static class Stub {
     final HttpServer server; final Map<String, String> memberships = new ConcurrentHashMap<>(); final Map<String, String> accounts = new ConcurrentHashMap<>(); volatile boolean unavailable;

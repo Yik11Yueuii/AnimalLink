@@ -6,6 +6,8 @@ on:
       - '.github/workflows/incident-public-rescue-mysql-integration.yml'
       - 'backend/pom.xml'
       - 'backend/incident-service/**'
+      - 'backend/api-gateway/**'
+      - 'miniapp/**'
 
 permissions:
   contents: read
@@ -73,3 +75,28 @@ jobs:
         run: >-
           ./mvnw -pl backend/incident-service
           -Dtest=CaseActionIntegrationTest,CaseClaimConcurrencyIntegrationTest,CaseClaimErrorIntegrationTest,CaseParticipantTransitionConcurrencyIntegrationTest,CaseResultConcurrencyIntegrationTest,CaseOwnerTransferConcurrencyIntegrationTest test
+
+  miniapp-claim-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: miniapp/package-lock.json
+      - run: npm ci
+        working-directory: miniapp
+      - run: npm run check
+        working-directory: miniapp
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Verify gateway and incident assertion policies
+        run: >-
+          ./mvnw -pl backend/api-gateway,backend/incident-service -am
+          -Dtest=IncidentMiniappGatewayPolicyTest,IncidentMiniappAssertionSignerTest,IncidentMiniappRequestPolicyTest
+          -Dsurefire.failIfNoSpecifiedTests=false test

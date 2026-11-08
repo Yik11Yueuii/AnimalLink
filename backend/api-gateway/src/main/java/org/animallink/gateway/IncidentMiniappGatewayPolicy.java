@@ -9,7 +9,9 @@ final class IncidentMiniappGatewayPolicy {
     private static final Pattern COLLECTION = Pattern.compile("^/auth/wechat/rescue-drafts$");
     private static final Pattern ITEM = Pattern.compile("^/auth/wechat/rescue-drafts/" + UUID + "$");
     private static final Pattern SUBMIT = Pattern.compile("^/auth/wechat/rescue-drafts/" + UUID + "/submit$");
+    private static final Pattern CLAIM = Pattern.compile("^/auth/wechat/rescues/" + UUID + "/claim$");
     private IncidentMiniappGatewayPolicy() { }
-    static boolean allowed(String method, String path) { return (HttpMethod.POST.name().equals(method) && (COLLECTION.matcher(path).matches() || SUBMIT.matcher(path).matches())) || ((HttpMethod.GET.name().equals(method) || HttpMethod.PATCH.name().equals(method)) && ITEM.matcher(path).matches()); }
-    static String downstreamPath(String path) { if (!path.startsWith("/auth/wechat/rescue-drafts")) throw new IllegalArgumentException(); return "/api/v1/internal/miniapp/rescue-drafts" + path.substring("/auth/wechat/rescue-drafts".length()); }
+    static boolean allowed(String method, String path) { return (HttpMethod.POST.name().equals(method) && (COLLECTION.matcher(path).matches() || SUBMIT.matcher(path).matches() || CLAIM.matcher(path).matches())) || ((HttpMethod.GET.name().equals(method) || HttpMethod.PATCH.name().equals(method)) && ITEM.matcher(path).matches()); }
+    static String scope(String path) { return CLAIM.matcher(path).matches() ? "incident.case.claim" : SCOPE; }
+    static String downstreamPath(String path) { if (CLAIM.matcher(path).matches()) return "/api/v1/internal/miniapp/rescues" + path.substring("/auth/wechat/rescues".length()); if (!path.startsWith("/auth/wechat/rescue-drafts")) throw new IllegalArgumentException(); return "/api/v1/internal/miniapp/rescue-drafts" + path.substring("/auth/wechat/rescue-drafts".length()); }
 }
