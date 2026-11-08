@@ -68,6 +68,26 @@ def main():
   withdrawn=check('owner withdraw',200,req(root+'/applications/'+app_id+'/withdraw',{},h(0)));assert withdrawn['status']=='WITHDRAWN';check('repeat withdraw',409,req(root+'/applications/'+app_id+'/withdraw',{},h(0)))
   assert sql(db,'SELECT status FROM adoption_application WHERE id=%s',app_id)[0][0]=='WITHDRAWN';assert sql(db,'SELECT COUNT(*) FROM adoption_application WHERE listing_id=%s',listing)[0][0]==1
   print('DB: one application, withdrawn',flush=True)
+  handovers=root+'/handovers';check('handover no session',401,req(handovers));assert check('handover empty',200,req(handovers,headers=h(0)))==[]
+  hp='/internal/v1/miniapp/adoption/handovers';check('handover unsigned',401,req(ADOPTION+hp));check('handover invalid',401,req(ADOPTION+hp,headers={'Authorization':'Bearer invalid'}))
+  now=int(time.time());claims.update({'scope':['adoption.handover.read'],'request_path':hp,'iat':now,'exp':now+15,'jti':str(uuid.uuid4())});signing=encode(json.dumps(header,separators=(',',':')).encode())+b'.'+encode(json.dumps(claims,separators=(',',':')).encode());hsigned={'Authorization':'Bearer '+(signing+b'.'+encode(hmac.new(assertion_key,signing,hashlib.sha256).digest())).decode()}
+  check('handover signed',200,req(ADOPTION+hp,headers=hsigned));check('handover replay',401,req(ADOPTION+hp,headers=hsigned))
+  seeded={}
+  for status,owner in [('PENDING',USERS[0]),('COMPLETED',USERS[0]),('CANCELLED',USERS[0]),('PENDING',USERS[2])]:
+   lid,aid,sid,hid=[str(uuid.uuid4()) for _ in range(4)];seeded[hid]=(status,owner)
+   sql(db,"INSERT INTO adoption_listing(id,animal_id,status,title,description,publisher_user_id,created_at,updated_at,published_at,closed_at) VALUES (%s,%s,'CLOSED','Fixture','Fixture',%s,NOW(6),NOW(6),NOW(6),NOW(6))",lid,str(uuid.uuid4()),USERS[2])
+   sql(db,"INSERT INTO adoption_application(id,listing_id,applicant_user_id,status,message,created_at,updated_at,reviewer_user_id,reviewed_at) VALUES (%s,%s,%s,'APPROVED','Fixture',NOW(6),NOW(6),%s,NOW(6))",aid,lid,owner,USERS[2])
+   if status=='CANCELLED':sql(db,"INSERT INTO adoption_selection(id,listing_id,application_id,status,selected_by_user_id,selected_at,cancelled_by_user_id,cancelled_at,cancel_reason) VALUES (%s,%s,%s,'CANCELLED',%s,NOW(6),%s,NOW(6),'fixture')",sid,lid,aid,USERS[2],USERS[2])
+   else:sql(db,"INSERT INTO adoption_selection(id,listing_id,application_id,status,selected_by_user_id,selected_at) VALUES (%s,%s,%s,'ACTIVE',%s,NOW(6))",sid,lid,aid,USERS[2])
+   if status=='COMPLETED':sql(db,"INSERT INTO adoption_handover(id,selection_id,status,scheduled_at,initiated_by_user_id,initiated_at,completed_by_user_id,completed_at,created_at,updated_at) VALUES (%s,%s,'COMPLETED',NOW(6),%s,NOW(6),%s,NOW(6),NOW(6),NOW(6))",hid,sid,USERS[2],USERS[2])
+   elif status=='CANCELLED':sql(db,"INSERT INTO adoption_handover(id,selection_id,status,scheduled_at,initiated_by_user_id,initiated_at,cancelled_by_user_id,cancelled_at,cancel_reason,created_at,updated_at) VALUES (%s,%s,'CANCELLED',NOW(6),%s,NOW(6),%s,NOW(6),'fixture',NOW(6),NOW(6))",hid,sid,USERS[2],USERS[2])
+   else:sql(db,"INSERT INTO adoption_handover(id,selection_id,status,scheduled_at,initiated_by_user_id,initiated_at,created_at,updated_at) VALUES (%s,%s,'PENDING',NOW(6),%s,NOW(6),NOW(6),NOW(6))",hid,sid,USERS[2])
+  owner_rows=check('own handovers',200,req(handovers,headers=h(0)));other_rows=check('other handovers',200,req(handovers,headers=h(2)))
+  assert {r['status'] for r in owner_rows}=={'PENDING','COMPLETED','CANCELLED'} and len(owner_rows)==3 and len(other_rows)==1
+  assert all(seeded[r['handoverId']][1]==USERS[0] and not ({'applicantUserId','initiatedByUserId','note','cancelReason'} & r.keys()) for r in owner_rows)
+  assert all(seeded[r['handoverId']][1]==USERS[2] for r in other_rows)
+  now=int(time.time());claims.update({'iat':now,'exp':now+15,'jti':str(uuid.uuid4())});signing=encode(json.dumps(header,separators=(',',':')).encode())+b'.'+encode(json.dumps(claims,separators=(',',':')).encode());spoof={'Authorization':'Bearer '+(signing+b'.'+encode(hmac.new(assertion_key,signing,hashlib.sha256).digest())).decode(),'X-User-Id':USERS[2]};spoofed=check('spoofed user header ignored',200,req(ADOPTION+hp,headers=spoof));assert len(spoofed)==3 and all(seeded[r['handoverId']][1]==USERS[0] for r in spoofed)
+  print('DB fixtures: handover PENDING/COMPLETED/CANCELLED; ownership verified',flush=True)
  finally:
   for p in processes:
    if p.poll() is None:p.terminate()

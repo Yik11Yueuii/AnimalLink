@@ -1,0 +1,9 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { runtimeConfig } from '../config/runtime'
+type Definition={data:Record<string,unknown>;[key:string]:unknown}
+test('handover failure is unavailable and an old account response is ignored',async()=>{
+ const g=globalThis as unknown as {wx?:Record<string,unknown>;Page?:(v:Definition)=>void},oldWx=g.wx,oldPage=g.Page,mode=runtimeConfig.publicDataMode,auth=runtimeConfig.userAuthenticationMode,base=runtimeConfig.gatewayBaseUrl;let definition:Definition|undefined,token='a'.repeat(43),reply:((v:{statusCode:number;data:unknown})=>void)|undefined,fail:((v:{errMsg:string})=>void)|undefined
+ g.Page=v=>{definition=v};g.wx={getStorageSync:()=>token,request:(o:{success:typeof reply;fail:typeof fail})=>{reply=o.success;fail=o.fail}};runtimeConfig.publicDataMode='api';runtimeConfig.userAuthenticationMode='api';runtimeConfig.gatewayBaseUrl='https://example.test'
+ try{await import('../pages/my-applications/index');assert.ok(definition);const app={applicationId:'a',status:'APPROVED',selected:true};const page=Object.assign({},definition,{generation:0,session:token,data:{...definition.data,items:[app]},setData(value:Record<string,unknown>){Object.assign(this.data,value)}}) as unknown as Definition&{loadHandovers:(token:string,version:number)=>Promise<void>;onHide:()=>void};const first=page.loadHandovers(token,0);assert.ok(fail);fail({errMsg:'offline'});await first;assert.match((page.data.items as Array<{handoverText:string}>)[0].handoverText,/暂不可用/);const old=page.loadHandovers(token,0);assert.ok(reply);token='b'.repeat(43);page.onHide();reply({statusCode:200,data:[{applicationId:'a',status:'PENDING'}]});await old;assert.deepEqual(page.data.items,[]);assert.equal(page.data.handovers,null)}finally{g.wx=oldWx;g.Page=oldPage;runtimeConfig.publicDataMode=mode;runtimeConfig.userAuthenticationMode=auth;runtimeConfig.gatewayBaseUrl=base}
+})
