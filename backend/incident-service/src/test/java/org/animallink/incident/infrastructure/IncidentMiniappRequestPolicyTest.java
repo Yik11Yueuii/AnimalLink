@@ -6,6 +6,12 @@ import org.junit.jupiter.api.Test;
 
 class IncidentMiniappRequestPolicyTest {
     private static final String ID = "23000000-0000-4000-8000-000000000001";
+    @Test void claimRequiresSeparateScopeAndExactPostPath() {
+        String path = "/api/v1/internal/miniapp/rescues/" + ID + "/claim";
+        org.junit.jupiter.api.Assertions.assertEquals("incident.case.claim", IncidentMiniappRequestPolicy.requiredScope("POST", path).orElseThrow());
+        assertFalse(IncidentMiniappRequestPolicy.requiredScope("GET", path).isPresent());
+        assertTrue(IncidentMiniappRequestPolicy.isProtected(path));
+    }
     @Test void protectsOnlyTheGatewayInternalDraftContract() {
         assertTrue(IncidentMiniappRequestPolicy.requiredScope("POST", "/api/v1/internal/miniapp/rescue-drafts").isPresent());
         assertTrue(IncidentMiniappRequestPolicy.requiredScope("GET", "/api/v1/internal/miniapp/rescue-drafts/" + ID).isPresent());

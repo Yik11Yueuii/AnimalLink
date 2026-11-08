@@ -25,6 +25,13 @@ class IncidentMiniappAssertionSignerTest {
                 () -> signer.sign(ACTOR, null, "POST", PATH));
     }
 
+    @Test void claimIsSignedForTheExactDownstreamPathAndScope() throws Exception {
+        String path = "/auth/wechat/rescues/" + ACTOR + "/claim";
+        var claims = SignedJWT.parse(signer().sign(ACTOR, "USER", "POST", path)).getJWTClaimsSet();
+        assertEquals(java.util.List.of("incident.case.claim"), claims.getStringListClaim("scope"));
+        assertEquals("/api/v1/internal/miniapp/rescues/" + ACTOR + "/claim", claims.getStringClaim("request_path"));
+        assertThrows(IncidentMiniappAssertionSigner.Unavailable.class, () -> signer().sign(ACTOR, "USER", "GET", path));
+    }
     private static IncidentMiniappAssertionSigner signer() {
         String key = Base64.getEncoder().encodeToString("01234567890123456789012345678901".getBytes(StandardCharsets.UTF_8));
         return new IncidentMiniappAssertionSigner(

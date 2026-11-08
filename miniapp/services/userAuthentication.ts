@@ -128,3 +128,12 @@ export const submitCampusIdentity = async (input: CampusIdentityApplicationInput
   try { return await request<CampusVerificationApplication>('/auth/wechat/campus-identities/applications', 'POST', data, token) }
   catch (error) { if (error instanceof ApiRequestError && error.statusCode === 401 && storedMiniappSession() === token) clearMiniappSession(); throw error }
 }
+
+export interface ClaimedRescueCase { id: string; eventId: string; campusId: string; status: string; claimStatus: string; claimedAt: string | null }
+
+export const claimRescue = async (campusId: string, eventId: string): Promise<ClaimedRescueCase> => {
+  const token = storedMiniappSession()
+  if (!token) throw new ApiRequestError('请先登录后认领。', 401)
+  try { return await request<ClaimedRescueCase>(`/auth/wechat/rescues/${encodeURIComponent(eventId)}/claim`, 'POST', { campusId }, token) }
+  catch (error) { if (error instanceof ApiRequestError && error.statusCode === 401 && storedMiniappSession() === token) clearMiniappSession(); throw error }
+}

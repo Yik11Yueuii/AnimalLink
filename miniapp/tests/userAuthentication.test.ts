@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { runtimeConfig } from '../config/runtime'
 import { createJsonRequester } from '../services/apiClient'
-import { clearMiniappSession, currentCampusIdentity, currentMiniappUser, listIdentityCampuses, loginWithWechat, logoutMiniappUser, storedMiniappSession, submitCampusIdentity } from '../services/userAuthentication'
+import { claimRescue, clearMiniappSession, currentCampusIdentity, currentMiniappUser, listIdentityCampuses, loginWithWechat, logoutMiniappUser, storedMiniappSession, submitCampusIdentity } from '../services/userAuthentication'
 
 const TOKEN = 'a'.repeat(43)
 const installWx = (mock: Record<string, unknown>) => {
@@ -664,4 +664,32 @@ test('a read-back exception after partial storage write cleans only the issued t
     assert.equal(h.storage.has('animallink.miniapp.user-session'), false)
     assert.equal(h.pending.length, 0)
   } finally { h.restore() }
+})
+
+test('rescue claim sends only the session and campus, preserves status and clears only an expired session', async () => {
+  const previousMode = runtimeConfig.userAuthenticationMode, previousBaseUrl = runtimeConfig.gatewayBaseUrl
+  const storage = new Map<string, string>(); let status = 200; const requests: Array<{ url: string; header: Record<string, string>; data: unknown }> = []
+  const restoreWx = installWx({
+    getStorageSync: (key: string) => storage.get(key), removeStorageSync: (key: string) => storage.delete(key),
+    request: (options: { url: string; header: Record<string, string>; data: unknown; success: (response: { statusCode: number; data: unknown }) => void }) => {
+      requests.push(options); options.success({ statusCode: status, data: { id: 'case', eventId: 'event', campusId: 'campus', status: 'ACTIVE', claimStatus: 'CLAIMED' } })
+    },
+  })
+  try {
+    runtimeConfig.userAuthenticationMode = 'api'; runtimeConfig.gatewayBaseUrl = 'https://example.test'
+    await assert.rejects(() => claimRescue('campus', 'event'), (e: { statusCode: number }) => e.statusCode === 401)
+    storage.set('animallink.miniapp.user-session', TOKEN)
+    assert.equal((await claimRescue('campus', 'event')).id, 'case')
+    assert.deepEqual(requests[0].data, { campusId: 'campus' })
+    assert.equal(requests[0].header['X-Miniapp-Session'], TOKEN)
+    assert.equal(requests[0].header['X-User-Id'], undefined)
+    assert.equal(requests[0].header['X-Internal-Service'], undefined)
+    assert.equal(requests[0].header['X-User-Role'], undefined)
+    assert.equal(requests[0].header['X-System-Role'], undefined)
+    for (const code of [403, 409, 503]) {
+      status = code; await assert.rejects(() => claimRescue('campus', 'event'), (e: { statusCode: number }) => e.statusCode === code)
+      assert.equal(storedMiniappSession(), TOKEN)
+    }
+    status = 401; await assert.rejects(() => claimRescue('campus', 'event')); assert.equal(storedMiniappSession(), undefined)
+  } finally { runtimeConfig.userAuthenticationMode = previousMode; runtimeConfig.gatewayBaseUrl = previousBaseUrl; restoreWx() }
 })
