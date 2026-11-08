@@ -6,6 +6,9 @@ on:
       - '.github/workflows/identity-wechat-mysql-integration.yml'
       - 'backend/pom.xml'
       - 'backend/identity-service/**'
+      - 'backend/api-gateway/**'
+      - 'miniapp/services/userAuthentication.ts'
+      - 'miniapp/tests/userAuthentication.test.ts'
 
 permissions:
   contents: read
@@ -29,9 +32,24 @@ jobs:
 
       - name: Run Identity WeChat MySQL integration test
         run: >-
-          ./mvnw -pl backend/identity-service -am
-          -Dtest=WechatAuthenticationMySqlIntegrationTest,InternalWechatCampusIdentityHttpIntegrationTest
-          -Dsurefire.failIfNoSpecifiedTests=false test
+          ./mvnw -pl backend/identity-service
+          -Dtest=WechatAuthenticationMySqlIntegrationTest,InternalWechatCampusIdentityHttpIntegrationTest,WechatOfficialCodeExchangeClientTest,InternalWechatSessionControllerTest
+          test
+
+      - name: Run Gateway WeChat HTTP tests
+        run: ./mvnw -pl backend/api-gateway -Dtest=WechatSessionClientHttpTest test
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: miniapp/package-lock.json
+      - name: Run Mini Program authentication tests
+        working-directory: miniapp
+        run: |
+          npm ci
+          npm run test:build
+          node --test .test-dist/tests/userAuthentication.test.js
 
       - name: Print Surefire failure summary
         if: failure()

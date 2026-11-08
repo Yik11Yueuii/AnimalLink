@@ -26,7 +26,7 @@ const apiAvailable = () => runtimeConfig.userAuthenticationMode === 'api'
   && isSafeAuthenticationGatewayUrl(runtimeConfig.gatewayBaseUrl)
 const request = <T>(path: string, method: 'GET' | 'POST', data?: Record<string, string>, token?: string) => new Promise<T>((resolve, reject) => {
   if (!apiAvailable()) { reject(new ApiRequestError('当前为离线演示模式，未启用真实微信登录。', null)); return }
-  wx.request({ url: buildGatewayUrl(runtimeConfig.gatewayBaseUrl, path), method, data, timeout: 8000,
+  wx.request({ url: buildGatewayUrl(runtimeConfig.gatewayBaseUrl, path), method, data, timeout: path === '/auth/wechat/login' ? 12000 : 8000,
     header: { Accept: 'application/json', 'Content-Type': 'application/json', ...(token ? { [SESSION_HEADER]: token } : {}) },
     success(response) {
       if (response.statusCode >= 200 && response.statusCode < 300) { resolve(response.data as T); return }
