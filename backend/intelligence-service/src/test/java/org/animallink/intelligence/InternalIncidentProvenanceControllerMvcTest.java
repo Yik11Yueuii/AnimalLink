@@ -21,6 +21,7 @@ class InternalIncidentProvenanceControllerMvcTest {
     @Autowired MockMvc mvc;
     @MockBean AiTaskRepository tasks;
     @MockBean MatchingRepository matches;
+    @MockBean org.animallink.intelligence.infrastructure.IntelligenceMiniappAssertionVerifier miniappVerifier;
 
     @Test void aiTaskFactBindsExplicitPathVariable() throws Exception {
         when(tasks.findBundle("task-1")).thenReturn(Optional.empty());
