@@ -76,7 +76,7 @@ jobs:
       - name: Run CaseAction and lifecycle MySQL integration tests
         run: >-
           ./mvnw -pl backend/incident-service
-          -Dtest=CaseActionIntegrationTest,CaseClaimConcurrencyIntegrationTest,CaseClaimErrorIntegrationTest,CaseParticipantTransitionConcurrencyIntegrationTest,CaseResultConcurrencyIntegrationTest,CaseOwnerTransferConcurrencyIntegrationTest test
+          -Dtest=CaseActionIntegrationTest,CaseClaimConcurrencyIntegrationTest,CaseClaimErrorIntegrationTest,CaseParticipantTransitionConcurrencyIntegrationTest,CaseResultConcurrencyIntegrationTest,CaseResultIntegrationTest,CaseOwnerTransferConcurrencyIntegrationTest test
 
   miniapp-claim-contract:
     runs-on: ubuntu-latest

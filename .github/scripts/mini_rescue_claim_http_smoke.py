@@ -141,7 +141,8 @@ def main():
         expect('participant cannot close', 403, transition(TOKENS[1], 'close', {'campusId':CAMPUS}))
         closed = expect('owner close', 200, transition(TOKENS[0], 'close', {'campusId':CAMPUS}))
         assert closed['caseStatus'] == 'CLOSED'
-        assert expect('closed history', 200, read_action(TOKENS[0]))['status'] == 'CLOSED'
+        history = expect('closed history', 200, read_action(TOKENS[0]))
+        assert history['status'] == 'CLOSED' and history['isOwner'] and history['resultCode'] == 'RESOLVED' and history['resultSummary'] == 'treated'
         internal = '/api/v1/internal/miniapp/rescues/' + EVENT + '/claim'
         bad = signed(internal, USERS[0], os.urandom(32))
         expect('bad signature', 401, request(INCIDENT+internal,body,{'Authorization':'Bearer '+bad}))
