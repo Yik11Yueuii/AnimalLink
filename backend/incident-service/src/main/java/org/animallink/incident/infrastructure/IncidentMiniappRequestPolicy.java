@@ -13,9 +13,13 @@ final class IncidentMiniappRequestPolicy {
     private static final Pattern CLAIM = Pattern.compile("^/api/v1/internal/miniapp/rescues/" + UUID + "/claim$");
     private static final Pattern ACTIONS = Pattern.compile("^/api/v1/internal/miniapp/cases/" + UUID + "/actions$");
     private static final Pattern CASE_BY_EVENT = Pattern.compile("^/api/v1/internal/miniapp/rescues/" + UUID + "/case$");
+    private static final Pattern RESULT = Pattern.compile("^/api/v1/internal/miniapp/cases/" + UUID + "/result$");
+    private static final Pattern CLOSE = Pattern.compile("^/api/v1/internal/miniapp/cases/" + UUID + "/close$");
     private IncidentMiniappRequestPolicy() { }
     static Optional<String> requiredScope(String method, String path) {
         if (path == null) return Optional.empty();
+        if ("POST".equals(method) && RESULT.matcher(path).matches()) return Optional.of("incident.case-result.write");
+        if ("POST".equals(method) && CLOSE.matcher(path).matches()) return Optional.of("incident.case-close.write");
         if (CASE_BY_EVENT.matcher(path).matches() && "GET".equals(method)) return Optional.of("incident.case-action.read");
         if (ACTIONS.matcher(path).matches() && "GET".equals(method)) return Optional.of("incident.case-action.read");
         if (ACTIONS.matcher(path).matches() && "POST".equals(method)) return Optional.of("incident.case-action.write");
@@ -24,5 +28,5 @@ final class IncidentMiniappRequestPolicy {
                 || (("GET".equals(method) || "PATCH".equals(method)) && ITEM.matcher(path).matches());
         return allowed ? Optional.of(SCOPE) : Optional.empty();
     }
-    static boolean isProtected(String path) { return path != null && (COLLECTION.matcher(path).matches() || ITEM.matcher(path).matches() || SUBMIT.matcher(path).matches() || CLAIM.matcher(path).matches() || ACTIONS.matcher(path).matches() || CASE_BY_EVENT.matcher(path).matches()); }
+    static boolean isProtected(String path) { return path != null && (COLLECTION.matcher(path).matches() || ITEM.matcher(path).matches() || SUBMIT.matcher(path).matches() || CLAIM.matcher(path).matches() || ACTIONS.matcher(path).matches() || CASE_BY_EVENT.matcher(path).matches() || RESULT.matcher(path).matches() || CLOSE.matcher(path).matches()); }
 }

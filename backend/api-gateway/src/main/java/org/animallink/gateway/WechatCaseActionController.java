@@ -24,6 +24,10 @@ public class WechatCaseActionController {
         if (campus.isBlank()) return Mono.just(WechatRescueClaimController.failure(new WechatRescueDraftClient.BadRequest()));
         return response(client.caseByEvent(token,event,campus));
     }
+    @PostMapping("/auth/wechat/cases/{caseId}/{operation:result|close}") public Mono<ResponseEntity<?>> transition(@RequestHeader(value=WechatAuthenticationController.SESSION_HEADER,required=false) String token,@PathVariable("caseId") String id,@PathVariable("operation") String operation,@RequestBody java.util.Map<String,Object> body) {
+        if (token == null || token.isBlank()) return Mono.just(WechatRescueClaimController.failure(new WechatSessionClient.Invalid()));
+        return response(client.caseTransition(token,id,operation,body));
+    }
     private Mono<ResponseEntity<?>> response(Mono<Object> value) { return value.<ResponseEntity<?>>map(v -> ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(v)).onErrorResume(e -> Mono.just(WechatRescueClaimController.failure(e))); }
     record Input(String campusId, String description, Instant occurredAt) {}
 }
