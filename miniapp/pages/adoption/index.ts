@@ -2,6 +2,7 @@ import { adoptionRequest, apiEnabled, findApplication, statusLabel } from '../..
 import type { Listing, Application, Page } from '../../services/adoption'
 import { storedMiniappSession } from '../../services/userAuthentication'
 import { ApiRequestError } from '../../services/apiClient'
+import { getSelectedCampus } from '../../state/campus'
 Page({
  generation:0,
  data:{offline:!apiEnabled(),items:[] as Listing[],page:0,total:0,loading:false,error:'',selected:null as Listing|null,animalName:'',animalAvailable:false,message:'',input:'',submitBusy:false,uncertain:false,existing:null as Application|null,existingText:''},
@@ -10,7 +11,7 @@ Page({
  onUnload(){this.generation++},
  async load(reset:boolean){if(this.data.loading||!apiEnabled()){if(!apiEnabled())this.setData({error:'当前为离线演示，未连接真实领养信息。'});return}const version=this.generation,page=reset?0:this.data.page+1;this.setData({loading:true,error:''});try{const r=await adoptionRequest<Page<Listing>>('/adoption/api/v1/public/listings?page='+page+'&size=20');if(version!==this.generation)return;this.setData({items:reset?r.items:[...this.data.items,...r.items],page:r.page,total:r.total})}catch(e){if(version===this.generation)this.setData({error:'领养信息加载失败，请重试。'})}finally{if(version===this.generation)this.setData({loading:false})}},
  refresh(){void this.load(true)},more(){void this.load(false)},
- async open(e:WechatMiniprogram.TouchEvent){const id=String(e.currentTarget.dataset.id||''),selected=this.data.items.find(x=>x.listingId===id);if(!selected)return;const version=++this.generation;this.setData({selected,animalName:'',animalAvailable:false,message:'',input:'',uncertain:false,existing:null,existingText:''});try{const animal=await adoptionRequest<{displayName:string}>('/animal/api/v1/public/animals/'+encodeURIComponent(selected.animalId));if(version===this.generation)this.setData({animalName:animal.displayName,animalAvailable:true})}catch(e){if(version===this.generation)this.setData({animalName:'公开动物档案暂不可用'})}},
+ async open(e:WechatMiniprogram.TouchEvent){const id=String(e.currentTarget.dataset.id||''),selected=this.data.items.find(x=>x.listingId===id);if(!selected)return;const version=++this.generation;this.setData({selected,animalName:'',animalAvailable:false,message:'',input:'',uncertain:false,existing:null,existingText:''});try{const animal=await adoptionRequest<{displayName:string;campusId:string}>('/animal/api/v1/public/animals/'+encodeURIComponent(selected.animalId));if(version===this.generation)this.setData({animalName:animal.displayName,animalAvailable:animal.campusId===getSelectedCampus()?.id})}catch(e){if(version===this.generation)this.setData({animalName:'公开动物档案暂不可用'})}},
  back(){this.generation++;this.setData({selected:null,input:'',existing:null,existingText:'',uncertain:false,message:'',submitBusy:false})},
  animal(){if(this.data.animalAvailable&&this.data.selected)wx.navigateTo({url:'/pages/animal-detail/index?animalId='+encodeURIComponent(this.data.selected.animalId)})},
  inputChanged(e:WechatMiniprogram.Input){this.setData({input:e.detail.value})},
