@@ -38,7 +38,7 @@ def main():
     time.sleep(1)
   storage.create_bucket(Bucket='animallink-animal')
   env=os.environ.copy();env.update({'ANIMAL_DB_USER':'root','ANIMAL_DB_PASSWORD':'','ANIMAL_SERVICE_URL':ANIMAL,'IDENTITY_SERVICE_BASE_URL':IDENTITY,'ANIMALLINK_MESSAGING_ENABLED':'false','ANIMALLINK_AUTHENTICATION_OBSERVATION_ASSERTION_KEY':base64.b64encode(os.urandom(32)).decode(),'IDENTITY_DB_USER':'root','IDENTITY_DB_PASSWORD':'','INTELLIGENCE_DB_USER':'root','INTELLIGENCE_DB_PASSWORD':'','AUTH_SERVICE_ASSERTION_CURRENT_KEY_ID':'test','AUTH_SERVICE_ASSERTION_KEYS':keys,'IDENTITY_INTERNAL_BASE_URL':'http://identity-service','IDENTITY_SERVICE_URL':IDENTITY,'MINIO_ACCESS_KEY':access,'MINIO_SECRET_KEY':secret,'CREDENTIAL_PRECHECK_DISPATCHER_ENABLED':'false','AI_PROVIDER':'mock'})
-  common=['--spring.cloud.nacos.discovery.enabled=false','--spring.cloud.nacos.config.enabled=false','--spring.cloud.discovery.client.simple.instances.identity-service[0].uri='+IDENTITY,'--spring.cloud.discovery.client.simple.instances.intelligence-service[0].uri='+AI,'--management.endpoint.health.probes.enabled=true','--management.health.rabbit.enabled=false','--animallink.authentication.intelligence-miniapp-assertion.keys='+keys,'--animallink.authentication.intelligence-miniapp-assertion.current-key-id=test']
+  common=['--spring.cloud.nacos.discovery.enabled=false','--spring.cloud.nacos.config.enabled=false','--spring.flyway.locations=classpath:db/migration','--spring.cloud.discovery.client.simple.instances.identity-service[0].uri='+IDENTITY,'--spring.cloud.discovery.client.simple.instances.intelligence-service[0].uri='+AI,'--management.endpoint.health.probes.enabled=true','--management.health.rabbit.enabled=false','--animallink.authentication.intelligence-miniapp-assertion.keys='+keys,'--animallink.authentication.intelligence-miniapp-assertion.current-key-id=test']
   for name,port in [('identity-service',18081),('animal-service',18082),('intelligence-service',18085),('api-gateway',18080)]:
    log=open(name+'-ai-smoke.log','w+',encoding='utf8');logs.append(log);args=['java','-jar','backend/'+name+'/target/'+name+'-0.1.0-SNAPSHOT.jar','--server.port='+str(port),*common];print('START',name,port,flush=True);processes.append(subprocess.Popen(args,env=env,stdout=log,stderr=subprocess.STDOUT))
   for url,p in zip((IDENTITY,ANIMAL,AI,GATEWAY),processes):ready(url,p)
@@ -78,7 +78,7 @@ def main():
   match=lambda tid: req(root+tid+'/match-candidates',{'campusId':CAMPUS},h(0))
   check('cross-campus match',403,req(root+task+'/match-candidates',{'campusId':str(uuid.uuid4())},h(0)))
   check('other task match',404,req(root+task+'/match-candidates',{'campusId':CAMPUS},h(1)))
-  empty=check('no candidate match',200,match(task));assert not empty['candidates'] and empty['lowConfidence']
+  empty=check('no candidate match',200,match(task));print('empty match mode',empty['matchingMode'],'count',len(empty['candidates']),'low confidence',empty['lowConfidence'],flush=True);assert empty['matchingMode']=='AUTOMATED' and not empty['candidates'] and empty['lowConfidence']
   animal=str(uuid.uuid4());sql(db,'USE animallink_animal');sql(db,"INSERT INTO animal(id,campus_id,display_name,species) VALUES (%s,%s,'smoke candidate','CAT')",animal,CAMPUS)
   found=check('candidate match',200,match(task));assert any(x['animalId']==animal for x in found['candidates'])
   mid=found['matchingRecordId']; select={'campusId':CAMPUS,'decisionType':'SELECT_EXISTING','selectedAnimalId':animal,'postText':'Observed today'}
