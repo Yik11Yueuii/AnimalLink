@@ -17,7 +17,7 @@ Page({
   onDate(e: WechatMiniprogram.PickerChange) { this.setData({ date: e.detail.value as string }) },
   onTime(e: WechatMiniprogram.PickerChange) { this.setData({ time: e.detail.value as string }) },
   onRetry() { void this.load(this.data.page < 0 ? 0 : this.data.page + 1) },
-  onMore() { if (!this.data.loading && this.data.items.length < this.data.total) void this.load(this.data.page + 1) },
+  onMore() { if (!this.data.loading && !this.data.submitting && this.data.items.length < this.data.total) void this.load(this.data.page + 1) },
   async load(page: number) {
     if (this.data.loading || !this.caseId || !this.session) return
     const version = this.generation, token = this.session
@@ -37,7 +37,7 @@ Page({
     } finally { if (version === this.generation) this.setData({ loading: false }) }
   },
   async onSubmit() {
-    if (this.data.submitting || this.data.status !== 'ACTIVE') return
+    if (this.data.submitting || this.data.loading || this.data.status !== 'ACTIVE') return
     const version = this.generation, token = this.session, description = this.data.description.trim()
     if (!this.current(version, token)) { this.invalidate(); this.setData({ error: '账号或高校已切换，请重新进入。' }); return }
     const date = new Date(`${this.data.date}T${this.data.time}:00`)
@@ -52,6 +52,7 @@ Page({
       if (!this.current(version, token)) { if (version === this.generation) { this.invalidate(); if (!storedMiniappSession()) this.setData({ error: '登录已失效，请重新登录。' }) }; return }
       const status = error instanceof ApiRequestError ? error.statusCode : null
       this.setData({ message: status === 401 ? '登录已失效，请重新登录。' : status === 403 ? '当前账号无权添加记录。' : status === 409 ? '案件已结束，不能继续添加。' : status === 400 ? '请检查处理描述和时间。' : '提交结果未确认，请先刷新记录后再重试。' })
+      if (status === 409) await this.load(0)
     } finally { if (version === this.generation) this.setData({ submitting: false }) }
   },
 })

@@ -127,6 +127,8 @@ def main():
         access = expect('terminal case access', 200, request(GATEWAY+'/auth/wechat/rescues/'+EVENT+'/case?campusId='+CAMPUS,headers={'X-Miniapp-Session':TOKENS[0]}))
         assert access['id'] == case_id
         assert sql(db,'SELECT COUNT(*) FROM case_action WHERE case_id=%s',case_id)[0][0] == 2
+        public = expect('public rescue detail', 200, request(GATEWAY+'/incident/api/v1/public/rescues/'+EVENT+'?campusId='+CAMPUS))
+        assert 'Provided food' not in json.dumps(public) and 'private location' not in json.dumps(public) and USERS[0] not in json.dumps(public)
         sql(db, "UPDATE animal_case SET status='ACTIVE' WHERE id=%s",case_id)
         internal = '/api/v1/internal/miniapp/rescues/' + EVENT + '/claim'
         bad = signed(internal, USERS[0], os.urandom(32))
@@ -137,8 +139,10 @@ def main():
         assert sql(db, 'SELECT COUNT(*) FROM animal_case WHERE event_id=%s', EVENT)[0][0] == 1
         processes[1].terminate(); processes[1].wait(timeout=20)
         expect('incident unavailable', 503, claim(TOKENS[0]))
+        expect('action incident unavailable', 503, post_action(TOKENS[0]))
         processes[0].terminate(); processes[0].wait(timeout=20)
         expect('identity unavailable', 503, claim(TOKENS[0]))
+        expect('action identity unavailable', 503, post_action(TOKENS[0]))
         print('DB: exactly one Case; claim response has no owner, location or internal fields', flush=True)
         print('NOTE: direct MySQL-seeded sessions; real WeChat login was not tested', flush=True)
     finally:
