@@ -66,18 +66,20 @@ def main():
         env = os.environ.copy()
         env.update({'IDENTITY_DB_USER': 'root', 'IDENTITY_DB_PASSWORD': 'smoke-password', 'INCIDENT_DB_USER': 'root', 'INCIDENT_DB_PASSWORD': 'smoke-password',
                     'AUTH_SERVICE_ASSERTION_CURRENT_KEY_ID': 'test', 'AUTH_SERVICE_ASSERTION_KEYS': KEYS,
-                    'IDENTITY_INTERNAL_BASE_URL': IDENTITY, 'IDENTITY_SERVICE_URL': IDENTITY,
+                    'IDENTITY_INTERNAL_BASE_URL': 'http://identity-service', 'IDENTITY_SERVICE_URL': IDENTITY,
                     'ANIMALLINK_MESSAGING_ENABLED': 'false', 'CREDENTIAL_PRECHECK_DISPATCHER_ENABLED': 'false',
                     'MINIO_ACCESS_KEY': 'smoke-access', 'MINIO_SECRET_KEY': 'smoke-secret-123'})
         common = ['--spring.cloud.nacos.discovery.enabled=false', '--spring.cloud.nacos.config.enabled=false',
-                  '--spring.cloud.discovery.enabled=false', '--management.health.rabbit.enabled=false',
+                  '--spring.cloud.discovery.client.simple.instances.identity-service[0].uri=' + IDENTITY,
+                  '--spring.cloud.discovery.client.simple.instances.incident-service[0].uri=' + INCIDENT,
+                  '--management.health.rabbit.enabled=false',
                   '--spring.flyway.locations=classpath:db/migration', '--management.endpoint.health.probes.enabled=true',
                   '--animallink.authentication.incident-miniapp-assertion.keys=' + KEYS]
         for name, port in [('identity-service', 18081), ('incident-service', 18083), ('api-gateway', 18080)]:
             log = open(name + '-claim-smoke.log', 'w+', encoding='utf8'); logs.append(log)
             args = ['java', '-jar', 'backend/' + name + '/target/' + name + '-0.1.0-SNAPSHOT.jar', '--server.port=' + str(port), *common,
                     '--animallink.authentication.incident-miniapp-assertion.current-key-id=test',
-                    '--animallink.authentication.incident-miniapp.base-url=' + INCIDENT]
+                    '--animallink.authentication.incident-miniapp.base-url=http://incident-service']
             print('START', name, 'port', port, flush=True)
             processes.append(subprocess.Popen(args, env=env, stdout=log, stderr=subprocess.STDOUT))
         for url, proc in zip((IDENTITY, INCIDENT, GATEWAY), processes): ready(url, proc)
