@@ -1,4 +1,5 @@
 <view class="page-shell">
+  <button bindtap="openAdoptionApplications">我的领养申请</button>
   <view class="profile surface">
     <view class="avatar">AL</view>
     <text class="page-title">My</text>

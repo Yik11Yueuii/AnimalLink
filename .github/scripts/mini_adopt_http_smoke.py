@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""Independent Gateway, Identity, Adoption and Animal JVMs with MySQL/MinIO; seeded sessions, mock provider."""
+import base64, hashlib, hmac, json, os, secrets, subprocess, time, urllib.error, urllib.request, uuid
+import boto3, pymysql
+GATEWAY='http://127.0.0.1:18080'; IDENTITY='http://127.0.0.1:18081'; ANIMAL='http://127.0.0.1:18082'; ADOPTION='http://127.0.0.1:18084'
+CAMPUS='22000000-0000-4000-8000-000000000001'; USERS=[str(uuid.uuid4()) for _ in range(3)]; TOKENS=[base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip('=') for _ in USERS]
+assertion_key=os.urandom(32);keys='test='+base64.b64encode(assertion_key).decode(); access=secrets.token_hex(12); secret=secrets.token_hex(24); processes=[]; logs=[]
+def req(url,body=None,headers=None,method=None):
+ data=None if body is None else json.dumps(body).encode(); q=urllib.request.Request(url,data=data,headers={'Content-Type':'application/json',**(headers or {})},method=method)
+ try:
+  with urllib.request.urlopen(q,timeout=45) as r:return r.status,r.read()
+ except urllib.error.HTTPError as e:return e.code,e.read()
+def check(label,status,result):
+ code,data=result;print(label,code,flush=True)
+ if code!=status:raise AssertionError(label+' '+str(code)+' '+data.decode(errors='replace')[:500])
+ return json.loads(data) if data else {}
+def sql(db,query,*args):
+ with db.cursor() as c:c.execute(query,args);return c.fetchall()
+def ready(url,process):
+ for _ in range(150):
+  if process.poll() is not None:raise RuntimeError('process exited '+url)
+  try:
+   code,body=req(url+'/actuator/health/readiness')
+   if code==200 and json.loads(body)['status']=='UP':print('READY',url,'pid',process.pid,flush=True);return
+  except (OSError,ValueError,KeyError):pass
+  time.sleep(1)
+ raise RuntimeError('readiness timeout '+url)
+def main():
+ db=pymysql.connect(host='127.0.0.1',user='root',password='',autocommit=True)
+ try:
+  for name in ('animallink_identity','animallink_animal','animallink_adoption'):sql(db,'CREATE DATABASE '+name+' CHARACTER SET utf8mb4')
+  subprocess.run(['docker','run','-d','--name','mini-ai-minio','-p','9000:9000','-e','MINIO_ROOT_USER='+access,'-e','MINIO_ROOT_PASSWORD='+secret,'animallink-ai-smoke','server','/data'],check=True,stdout=subprocess.DEVNULL)
+  storage=boto3.client('s3',endpoint_url='http://127.0.0.1:9000',aws_access_key_id=access,aws_secret_access_key=secret,region_name='us-east-1')
+  for i in range(60):
+   try:storage.create_bucket(Bucket='animallink-intelligence');break
+   except Exception:
+    if i==59:raise
+    time.sleep(1)
+  storage.create_bucket(Bucket='animallink-animal')
+  env=os.environ.copy();env.update({'ANIMAL_DB_USER':'root','ANIMAL_DB_PASSWORD':'','ANIMAL_SERVICE_URL':ANIMAL,'ANIMAL_SERVICE_BASE_URL':ANIMAL,'ADOPTION_DB_USER':'root','ADOPTION_DB_PASSWORD':'','IDENTITY_SERVICE_BASE_URL':IDENTITY,'ANIMALLINK_MESSAGING_ENABLED':'false','ANIMALLINK_AUTHENTICATION_OBSERVATION_ASSERTION_KEY':base64.b64encode(os.urandom(32)).decode(),'IDENTITY_DB_USER':'root','IDENTITY_DB_PASSWORD':'','INTELLIGENCE_DB_USER':'root','INTELLIGENCE_DB_PASSWORD':'','AUTH_SERVICE_ASSERTION_CURRENT_KEY_ID':'test','AUTH_SERVICE_ASSERTION_KEYS':keys,'IDENTITY_INTERNAL_BASE_URL':'http://identity-service','IDENTITY_SERVICE_URL':IDENTITY,'MINIO_ACCESS_KEY':access,'MINIO_SECRET_KEY':secret,'CREDENTIAL_PRECHECK_DISPATCHER_ENABLED':'false','AI_PROVIDER':'mock'})
+  common=['--spring.cloud.nacos.discovery.enabled=false','--spring.cloud.nacos.config.enabled=false','--spring.flyway.locations=classpath:db/migration','--spring.cloud.discovery.client.simple.instances.identity-service[0].uri='+IDENTITY,'--spring.cloud.discovery.client.simple.instances.animal-service[0].uri='+ANIMAL,'--spring.cloud.discovery.client.simple.instances.adoption-service[0].uri='+ADOPTION,'--management.endpoint.health.probes.enabled=true','--management.health.rabbit.enabled=false','--animallink.authentication.adoption-miniapp-assertion.keys='+keys,'--animallink.authentication.adoption-miniapp-assertion.current-key-id=test']
+  for name,port in [('identity-service',18081),('animal-service',18082),('adoption-service',18084),('api-gateway',18080)]:
+   log=open(name+'-ai-smoke.log','w+',encoding='utf8');logs.append(log);args=['java','-jar','backend/'+name+'/target/'+name+'-0.1.0-SNAPSHOT.jar','--server.port='+str(port),*common];print('START',name,port,flush=True);processes.append(subprocess.Popen(args,env=env,stdout=log,stderr=subprocess.STDOUT))
+  for url,p in zip((IDENTITY,ANIMAL,ADOPTION,GATEWAY),processes):ready(url,p)
+  sql(db,'USE animallink_identity')
+  for i,user in enumerate(USERS):
+   sql(db,"INSERT INTO `user` (id,display_name,account_status,system_role) VALUES (%s,'Smoke','ACTIVE','USER')",user)
+   sql(db,"INSERT INTO wechat_user_session(id,user_id,token_hash,created_at,last_seen_at,idle_expires_at,absolute_expires_at) VALUES (%s,%s,%s,NOW(6),NOW(6),DATE_ADD(NOW(6),INTERVAL 1 DAY),DATE_ADD(NOW(6),INTERVAL 2 DAY))",str(uuid.uuid4()),user,hashlib.sha256(TOKENS[i].encode()).digest())
+  verification=str(uuid.uuid4());sql(db,"INSERT INTO campus_verification(id,user_id,campus_id,requested_membership_type,applicant_name,status) VALUES (%s,%s,%s,'STUDENT','Smoke','APPROVED')",verification,USERS[0],CAMPUS)
+  sql(db,"INSERT INTO campus_membership(id,user_id,campus_id,membership_type,status,approved_at,last_verification_id) VALUES (%s,%s,%s,'STUDENT','ACTIVE',NOW(6),%s)",str(uuid.uuid4()),USERS[0],CAMPUS,verification)
+  verification2=str(uuid.uuid4());sql(db,"INSERT INTO campus_verification(id,user_id,campus_id,requested_membership_type,applicant_name,status) VALUES (%s,%s,%s,'STUDENT','Other','APPROVED')",verification2,USERS[2],CAMPUS)
+  sql(db,"INSERT INTO campus_membership(id,user_id,campus_id,membership_type,status,approved_at,last_verification_id) VALUES (%s,%s,%s,'STUDENT','ACTIVE',NOW(6),%s)",str(uuid.uuid4()),USERS[2],CAMPUS,verification2)
+  animal=str(uuid.uuid4());sql(db,'USE animallink_animal');sql(db,"INSERT INTO animal(id,campus_id,display_name,species) VALUES (%s,%s,'adoption smoke','CAT')",animal,CAMPUS)
+  listing=str(uuid.uuid4());draft=str(uuid.uuid4());sql(db,'USE animallink_adoption')
+  sql(db,"INSERT INTO adoption_listing(id,animal_id,status,title,description,publisher_user_id,created_at,updated_at,published_at) VALUES (%s,%s,'PUBLISHED','Available','Description',%s,NOW(6),NOW(6),NOW(6))",listing,animal,USERS[2])
+  sql(db,"INSERT INTO adoption_listing(id,animal_id,status,title,description,publisher_user_id,created_at,updated_at) VALUES (%s,%s,'DRAFT','Private','Private',%s,NOW(6),NOW(6))",draft,str(uuid.uuid4()),USERS[2])
+  public=GATEWAY+'/adoption/api/v1/public/listings';found=check('public listings',200,req(public));assert [x['listingId'] for x in found['items']]==[listing] and 'publisherUserId' not in found['items'][0]
+  check('draft hidden',404,req(public+'/'+draft));check('published detail',200,req(public+'/'+listing))
+  root=GATEWAY+'/auth/wechat/adoption';h=lambda i:{'X-Miniapp-Session':TOKENS[i]};submit=root+'/listings/'+listing+'/applications'
+  check('no session',401,req(submit,{'message':'hello'}));check('nonmember',403,req(submit,{'message':'hello'},h(1)))
+  path='/internal/v1/miniapp/adoption/applications';check('unsigned direct',401,req(ADOPTION+path,headers={'X-User-Id':USERS[0]}));check('invalid signature',401,req(ADOPTION+path,headers={'Authorization':'Bearer invalid'}))
+  now=int(time.time());encode=lambda b:base64.urlsafe_b64encode(b).rstrip(b'=');header={'alg':'HS256','typ':'JWT','kid':'test'};claims={'iss':'api-gateway','sub':'api-gateway','aud':['adoption-service'],'target':'adoption-service','actor_id':USERS[0],'system_role':'USER','scope':['adoption.application.read'],'request_method':'GET','request_path':path,'iat':now,'exp':now+15,'jti':str(uuid.uuid4())};signing=encode(json.dumps(header,separators=(',',':')).encode())+b'.'+encode(json.dumps(claims,separators=(',',':')).encode());assertion=(signing+b'.'+encode(hmac.new(assertion_key,signing,hashlib.sha256).digest())).decode();signed={'Authorization':'Bearer '+assertion}
+  check('valid signed request',200,req(ADOPTION+path,headers=signed));check('assertion replay',401,req(ADOPTION+path,headers=signed))
+  app=check('eligible application',200,req(submit,{'message':'I can care'},h(0)));assert app['status']=='SUBMITTED';app_id=app['applicationId']
+  check('duplicate application',409,req(submit,{'message':'again'},h(0)))
+  mine=check('my applications',200,req(root+'/applications',headers=h(0)));assert [x['applicationId'] for x in mine['items']]==[app_id]
+  check('other user detail',403,req(root+'/applications/'+app_id,headers=h(2)));check('other user withdraw',403,req(root+'/applications/'+app_id+'/withdraw',{},h(2)))
+  withdrawn=check('owner withdraw',200,req(root+'/applications/'+app_id+'/withdraw',{},h(0)));assert withdrawn['status']=='WITHDRAWN';check('repeat withdraw',409,req(root+'/applications/'+app_id+'/withdraw',{},h(0)))
+  assert sql(db,'SELECT status FROM adoption_application WHERE id=%s',app_id)[0][0]=='WITHDRAWN';assert sql(db,'SELECT COUNT(*) FROM adoption_application WHERE listing_id=%s',listing)[0][0]==1
+  print('DB: one application, withdrawn',flush=True)
+ finally:
+  for p in processes:
+   if p.poll() is None:p.terminate()
+  for p in processes:
+   try:p.wait(timeout=15)
+   except subprocess.TimeoutExpired:p.kill();p.wait()
+  for log in logs:
+   log.flush();log.seek(0);print('---',log.name,'last lines ---');print(''.join(log.readlines()[-50:]));log.close()
+  db.close()
+if __name__=='__main__':main()

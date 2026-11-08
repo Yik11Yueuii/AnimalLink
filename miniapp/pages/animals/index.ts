@@ -27,6 +27,7 @@ const toCard = (animal: AnimalSummaryResponse): AnimalCard => ({
 })
 
 Page({
+  openAdoption() { wx.navigateTo({ url: '/pages/adoption/index' }) },
   campusResolutionVersion: 0,
   data: {
     offline: isAnimalOfflineDemo(),

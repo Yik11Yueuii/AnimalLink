@@ -35,6 +35,12 @@ public class AdoptionListingService {
         return listing;
     }
 
+    public AdoptionListing publicDetail(String listingId) {
+        AdoptionListing listing = find(listingId);
+        if (listing.status() != org.animallink.adoption.domain.ListingStatus.PUBLISHED) throw new ListingNotFoundException("领养信息不存在");
+        return listing;
+    }
+
     public PageResult<AdoptionListing> publicListings(int page, int size) {
         int safePage = Math.max(0, page); int safeSize = Math.min(MAX_PAGE_SIZE, Math.max(1, size));
         return new PageResult<>(repository.findPublished(safeSize, safePage * safeSize), safePage, safeSize, repository.countPublished());

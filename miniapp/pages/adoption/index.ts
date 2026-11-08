@@ -1,0 +1,24 @@
+import { adoptionRequest, apiEnabled, findApplication, statusLabel } from '../../services/adoption'
+import type { Listing, Application, Page } from '../../services/adoption'
+import { storedMiniappSession } from '../../services/userAuthentication'
+import { ApiRequestError } from '../../services/apiClient'
+import { getSelectedCampus } from '../../state/campus'
+Page({
+ generation:0,
+ data:{offline:!apiEnabled(),items:[] as Listing[],page:0,total:0,loading:false,error:'',selected:null as Listing|null,animalName:'',animalAvailable:false,message:'',input:'',submitBusy:false,uncertain:false,existing:null as Application|null,existingText:''},
+ onShow(){if(!this.data.items.length)void this.load(true)},
+ onHide(){this.generation++;this.setData({selected:null,animalName:'',animalAvailable:false,message:'',input:'',submitBusy:false,uncertain:false,existing:null,existingText:'',loading:false})},
+ onUnload(){this.generation++},
+ async load(reset:boolean){if(this.data.loading||!apiEnabled()){if(!apiEnabled())this.setData({error:'当前为离线演示，未连接真实领养信息。'});return}const version=this.generation,page=reset?0:this.data.page+1;this.setData({loading:true,error:''});try{const r=await adoptionRequest<Page<Listing>>('/adoption/api/v1/public/listings?page='+page+'&size=20');if(version!==this.generation)return;this.setData({items:reset?r.items:[...this.data.items,...r.items],page:r.page,total:r.total})}catch(e){if(version===this.generation)this.setData({error:'领养信息加载失败，请重试。'})}finally{if(version===this.generation)this.setData({loading:false})}},
+ refresh(){void this.load(true)},more(){void this.load(false)},
+ async open(e:WechatMiniprogram.TouchEvent){const id=String(e.currentTarget.dataset.id||''),selected=this.data.items.find(x=>x.listingId===id);if(!selected)return;const version=++this.generation;this.setData({selected,animalName:'',animalAvailable:false,message:'',input:'',uncertain:false,existing:null,existingText:''});try{const animal=await adoptionRequest<{displayName:string;campusId:string}>('/animal/api/v1/public/animals/'+encodeURIComponent(selected.animalId));if(version===this.generation)this.setData({animalName:animal.displayName,animalAvailable:animal.campusId===getSelectedCampus()?.id})}catch(e){if(version===this.generation)this.setData({animalName:'公开动物档案暂不可用'})}},
+ back(){this.generation++;this.setData({selected:null,input:'',existing:null,existingText:'',uncertain:false,message:'',submitBusy:false})},
+ animal(){if(this.data.animalAvailable&&this.data.selected)wx.navigateTo({url:'/pages/animal-detail/index?animalId='+encodeURIComponent(this.data.selected.animalId)})},
+ inputChanged(e:WechatMiniprogram.Input){this.setData({input:e.detail.value})},
+ async submit(){const listing=this.data.selected,token=storedMiniappSession(),version=this.generation,text=this.data.input.trim();if(!listing||this.data.submitBusy||this.data.uncertain)return;if(!token||!apiEnabled()||!text||text.length>2000){this.setData({message:'请登录并填写 2000 字以内的申请说明。'});return}this.setData({submitBusy:true,message:''});const valid=()=>version===this.generation&&storedMiniappSession()===token
+ try{const previous=await findApplication(listing.listingId,valid);if(!valid())return;if(previous){this.setData({existing:previous,existingText:statusLabel(previous.status),message:'已有申请，请到“我的领养申请”查看。'});return}const confirmed=await new Promise<boolean>(resolve=>wx.showModal({title:'确认提交申请',content:'提交后等待人工审核，不代表领养成功。',success:r=>resolve(r.confirm),fail:()=>resolve(false)}));if(!confirmed||!valid())return;const result=await adoptionRequest<Application>('/auth/wechat/adoption/listings/'+encodeURIComponent(listing.listingId)+'/applications','POST',{message:text},true);if(valid())this.setData({existing:result,existingText:statusLabel(result.status),message:'申请已提交，等待审核。',input:'',uncertain:true})
+ }catch(e){if(!valid()){if(version===this.generation&&!storedMiniappSession())this.setData({input:'',existing:null,message:'登录已失效，请重新登录。'});return}if(e instanceof ApiRequestError&&e.statusCode!==null&&e.statusCode>=400&&e.statusCode<500&&e.statusCode!==409){this.setData({message:'申请被拒绝，请检查成员资格和申请内容。'});return}this.setData({uncertain:true,message:'提交结果未确定，正在查询已有申请，请勿重复提交。'});await this.checkExisting()}
+ finally{if(version===this.generation)this.setData({submitBusy:false})}},
+ async checkExisting(){const selected=this.data.selected,token=storedMiniappSession(),version=this.generation;if(!selected||!token)return;const valid=()=>version===this.generation&&storedMiniappSession()===token;try{const previous=await findApplication(selected.listingId,valid);if(!valid())return;this.setData({existing:previous,existingText:previous?statusLabel(previous.status):'',message:previous?'已找到申请，请在“我的领养申请”查看。':'暂未查到申请，结果仍可能处理中，请稍后查询，不要重复提交。',uncertain:true})}catch(e){if(valid())this.setData({message:'查询失败，请稍后查询，不要重复提交。',uncertain:true})}},
+ myApplications(){wx.navigateTo({url:'/pages/my-applications/index'})}
+})
