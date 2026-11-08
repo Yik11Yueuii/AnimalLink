@@ -12,7 +12,7 @@
       <button wx:if="{{detail.rescue.rescueStatus === 'WAITING_CLAIM' || detail.rescue.rescueStatus === 'IN_PROGRESS'}}" class="primary-button" bindtap="onClaim" loading="{{claiming}}" disabled="{{claiming}}">{{detail.rescue.rescueStatus === 'WAITING_CLAIM' ? '认领救助' : '查看我的认领'}}</button>
       <view wx:if="{{claimMessage}}" class="empty">{{claimMessage}}</view>
       <view wx:if="{{claimedCase}}" class="empty">案件编号：{{claimedCase.id}} · 状态：{{claimedCase.status}}</view>
-      <button wx:if="{{detail.rescue.rescueStatus !== 'WAITING_CLAIM'}}" class="primary-button" bindtap="openCaseActions">查看处理记录</button>
+      <button wx:if="{{claimedCase || detail.rescue.rescueStatus !== 'WAITING_CLAIM'}}" class="primary-button" bindtap="openCaseActions">查看处理记录</button>
     </view>
     <view class="notice">为保护上报人、志愿者和现场安全，本页不展示精确位置、事件描述、证据、处理记录或个人身份。</view>
   </block>
