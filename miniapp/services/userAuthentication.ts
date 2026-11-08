@@ -139,7 +139,7 @@ export const claimRescue = async (campusId: string, eventId: string): Promise<Cl
 }
 
 export interface CaseAction { id: string; caseId: string; actorUserId: string; description: string; occurredAt: string; createdAt: string; resultCode: string | null }
-export interface CaseActionPage { caseId: string; eventId: string; campusId: string; status: string; isOwner: boolean; items: CaseAction[]; page: number; size: number; total: number }
+export interface CaseActionPage { caseId: string; eventId: string; campusId: string; status: string; isOwner: boolean; resultCode: string | null; resultSummary: string | null; items: CaseAction[]; page: number; size: number; total: number }
 const caseActionRequest = async <T>(path: string, method: 'GET' | 'POST', data?: Record<string, string>): Promise<T> => {
   const token = storedMiniappSession()
   if (!token) throw new ApiRequestError('请先完成微信登录。', 401)

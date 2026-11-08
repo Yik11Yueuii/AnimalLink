@@ -5,12 +5,12 @@ import { getSelectedCampus } from '../../state/campus'
 
 Page({
   caseId: '', campusId: '', generation: 0, session: '',
-  data: { displayCaseId: '', isOwner: false, resultSummary: '', outcomeIndex: 0, outcomeLabels: ['继续观察', '处理成功', '未解决结束', '取消处理'], items: [] as CaseAction[], status: '', total: 0, page: -1, loading: false, submitting: false, error: '', message: '', description: '', date: '', time: '' },
+  data: { displayCaseId: '', isOwner: false, latestResult: '', latestSummary: '', resultSummary: '', outcomeIndex: 0, outcomeLabels: ['继续观察', '处理成功', '未解决结束', '取消处理'], items: [] as CaseAction[], status: '', total: 0, page: -1, loading: false, submitting: false, error: '', message: '', description: '', date: '', time: '' },
   onLoad(options: Record<string, string | undefined>) { this.caseId = options.caseId || ''; this.campusId = options.campusId || ''; this.setData({ displayCaseId: this.caseId }) },
   onShow() { this.session = storedMiniappSession() || ''; if (!this.session || getSelectedCampus()?.id !== this.campusId) { this.invalidate(); this.setData({ error: '请登录并切换到案件所属高校。' }); return } void this.load(0) },
   onHide() { this.invalidate() },
   onUnload() { this.invalidate() },
-  invalidate() { this.generation++; this.setData({ items: [], status: '', isOwner: false, resultSummary: '', outcomeIndex: 0, page: -1, total: 0, loading: false, submitting: false, description: '', error: '', message: '' }) },
+  invalidate() { this.generation++; this.setData({ items: [], status: '', isOwner: false, latestResult: '', latestSummary: '', resultSummary: '', outcomeIndex: 0, page: -1, total: 0, loading: false, submitting: false, description: '', error: '', message: '' }) },
   discardStale(version: number) { if (version === this.generation) this.invalidate() },
   current(version: number, token: string) { return version === this.generation && !!token && token === storedMiniappSession() && getSelectedCampus()?.id === this.campusId },
   onResultSummary(e: WechatMiniprogram.Input) { this.setData({ resultSummary: e.detail.value }) },
@@ -53,7 +53,7 @@ Page({
       if (result.caseId !== this.caseId || result.campusId !== this.campusId || result.page !== page) throw new Error('返回的案件信息不匹配')
       const existing = page === 0 ? [] : this.data.items
       const ids = new Set(existing.map(item => item.id))
-      this.setData({ items: [...existing, ...result.items.filter(item => !ids.has(item.id))], page, total: result.total, status: result.status, isOwner: result.isOwner })
+      this.setData({ items: [...existing, ...result.items.filter(item => !ids.has(item.id))], page, total: result.total, status: result.status, isOwner: result.isOwner, latestResult: result.resultCode || '', latestSummary: result.resultSummary || '' })
     } catch (error) {
       if (!this.current(version, token)) { if (version === this.generation) { this.invalidate(); if (!storedMiniappSession()) this.setData({ error: '登录已失效，请重新登录。' }) }; return }
       const status = error instanceof ApiRequestError ? error.statusCode : null
