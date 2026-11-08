@@ -11,8 +11,16 @@ class IncidentMiniappGatewayPolicyTest {
         assertTrue(IncidentMiniappGatewayPolicy.allowed("POST", path));
         assertFalse(IncidentMiniappGatewayPolicy.allowed("GET", path));
         assertFalse(IncidentMiniappGatewayPolicy.allowed("POST", path + "/"));
-        org.junit.jupiter.api.Assertions.assertEquals("incident.case.claim", IncidentMiniappGatewayPolicy.scope(path));
+        org.junit.jupiter.api.Assertions.assertEquals("incident.case.claim", IncidentMiniappGatewayPolicy.scope("POST", path));
         org.junit.jupiter.api.Assertions.assertEquals("/api/v1/internal/miniapp/rescues/" + ID + "/claim", IncidentMiniappGatewayPolicy.downstreamPath(path));
+    }
+    @Test void actionPathsHaveSeparateReadAndWriteScopes() {
+        String path="/auth/wechat/cases/"+ID+"/actions";
+        assertTrue(IncidentMiniappGatewayPolicy.allowed("GET",path)); assertTrue(IncidentMiniappGatewayPolicy.allowed("POST",path));
+        assertFalse(IncidentMiniappGatewayPolicy.allowed("DELETE",path));
+        org.junit.jupiter.api.Assertions.assertEquals("incident.case-action.read",IncidentMiniappGatewayPolicy.scope("GET",path));
+        org.junit.jupiter.api.Assertions.assertEquals("incident.case-action.write",IncidentMiniappGatewayPolicy.scope("POST",path));
+        assertTrue(IncidentMiniappGatewayPolicy.allowed("GET","/auth/wechat/rescues/"+ID+"/case"));
     }
     @Test void grantsOnlyTheFourExactMiniappDraftOperations() {
         assertTrue(IncidentMiniappGatewayPolicy.allowed("POST", "/auth/wechat/rescue-drafts"));

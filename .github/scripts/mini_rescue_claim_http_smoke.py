@@ -104,6 +104,30 @@ def main():
         assert result['eventId'] == EVENT and result['campusId'] == CAMPUS
         assert expect('same volunteer repeat', 200, claim(TOKENS[0]))['id'] == case_id
         expect('other volunteer', 409, claim(TOKENS[1]))
+        action_path = '/auth/wechat/cases/' + case_id + '/actions'
+        action_body = {'campusId': CAMPUS, 'description': 'Provided food', 'occurredAt': '2026-10-03T10:00:00Z'}
+        post_action = lambda token, value=action_body: request(GATEWAY+action_path, value, {'X-Miniapp-Session': token})
+        read_action = lambda token, campus=CAMPUS, page=0: request(GATEWAY+action_path+'?campusId='+campus+'&page='+str(page)+'&size=1', headers={'X-Miniapp-Session': token})
+        expect('action no session', 401, request(GATEWAY+action_path,action_body))
+        expect('action nonparticipant', 403, post_action(TOKENS[1]))
+        expect('action wrong campus', 403, post_action(TOKENS[0], dict(action_body,campusId=OTHER_CAMPUS)))
+        expect('action blank', 400, post_action(TOKENS[0], dict(action_body,description=' ')))
+        expect('action invalid time', 400, post_action(TOKENS[0], dict(action_body,occurredAt='invalid')))
+        expect('owner action', 200, post_action(TOKENS[0]))
+        sql(db, "INSERT INTO case_participant(id,case_id,user_id,status,invited_by_user_id,invited_at,joined_at,created_at,updated_at) VALUES (%s,%s,%s,'ACTIVE',%s,NOW(6),NOW(6),NOW(6),NOW(6))", str(uuid.uuid4()),case_id,USERS[1],USERS[0])
+        expect('participant action', 200, post_action(TOKENS[1]))
+        first = expect('action first page', 200, read_action(TOKENS[0]))
+        second = expect('action second page', 200, read_action(TOKENS[0], page=1))
+        assert first['total'] == 2 and len(first['items']) == len(second['items']) == 1 and first['items'][0]['id'] != second['items'][0]['id']
+        sql(db, "UPDATE case_participant SET status='REMOVED',ended_at=NOW(6) WHERE case_id=%s AND user_id=%s",case_id,USERS[1])
+        expect('removed participant', 403, post_action(TOKENS[1]))
+        sql(db, "UPDATE animal_case SET status='RESOLVED' WHERE id=%s",case_id)
+        expect('terminal action', 409, post_action(TOKENS[0]))
+        assert expect('terminal history', 200, read_action(TOKENS[0]))['status'] == 'RESOLVED'
+        access = expect('terminal case access', 200, request(GATEWAY+'/auth/wechat/rescues/'+EVENT+'/case?campusId='+CAMPUS,headers={'X-Miniapp-Session':TOKENS[0]}))
+        assert access['id'] == case_id
+        assert sql(db,'SELECT COUNT(*) FROM case_action WHERE case_id=%s',case_id)[0][0] == 2
+        sql(db, "UPDATE animal_case SET status='ACTIVE' WHERE id=%s",case_id)
         internal = '/api/v1/internal/miniapp/rescues/' + EVENT + '/claim'
         bad = signed(internal, USERS[0], os.urandom(32))
         expect('bad signature', 401, request(INCIDENT+internal,body,{'Authorization':'Bearer '+bad}))
