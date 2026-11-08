@@ -23,7 +23,7 @@ public class WechatRescueClaimController {
                 ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(value))
                 .onErrorResume(error -> Mono.just(failure(error)));
     }
-    private ResponseEntity<Object> failure(Throwable error) {
+    static ResponseEntity<Object> failure(Throwable error) {
         HttpStatus status = error instanceof WechatSessionClient.Invalid ? HttpStatus.UNAUTHORIZED
                 : error instanceof WechatRescueDraftClient.Forbidden ? HttpStatus.FORBIDDEN
                 : error instanceof WechatRescueDraftClient.Conflict ? HttpStatus.CONFLICT

@@ -90,6 +90,8 @@ jobs:
         working-directory: miniapp
       - run: npm run check
         working-directory: miniapp
+        env:
+          TZ: Asia/Shanghai
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -98,5 +100,5 @@ jobs:
       - name: Verify gateway and incident assertion policies
         run: >-
           ./mvnw -pl backend/api-gateway,backend/incident-service -am
-          -Dtest=IncidentMiniappGatewayPolicyTest,IncidentMiniappAssertionSignerTest,IncidentMiniappRequestPolicyTest
+          -Dtest=IncidentMiniappGatewayPolicyTest,IncidentMiniappAssertionSignerTest,WechatRescueClaimControllerTest,IncidentMiniappRequestPolicyTest
           -Dsurefire.failIfNoSpecifiedTests=false test
