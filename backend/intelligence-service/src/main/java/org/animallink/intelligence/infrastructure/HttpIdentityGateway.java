@@ -25,7 +25,8 @@ public class HttpIdentityGateway implements IdentityGateway {
         try {
             RestClient.RequestHeadersSpec<?> spec = client.get().uri("/api/v1/users/me")
                     .header("X-Trace-Id", traceId());
-            String userId = request.getHeader(USER_ID_HEADER);
+            Object principal = request.getAttribute(IntelligenceMiniappAssertionFilter.PRINCIPAL);
+            String userId = principal instanceof IntelligenceMiniappAssertionVerifier.AuthenticatedMiniappUser user ? user.userId() : request.getHeader(USER_ID_HEADER);
             if (userId != null && !userId.isBlank()) spec = spec.header(USER_ID_HEADER, userId);
             UserPayload value = spec.retrieve().body(UserPayload.class);
             if (value == null) throw new Unauthorized("无法确认当前用户");

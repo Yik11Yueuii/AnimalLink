@@ -21,6 +21,7 @@ Page({
     campusValidationFailed: false,
     errorMessage: '',
   },
+  openObservation() { wx.navigateTo({ url: '/pages/observation/index' }) },
   onShow() {
     const campus = getSelectedCampus()
     if (!campus) {

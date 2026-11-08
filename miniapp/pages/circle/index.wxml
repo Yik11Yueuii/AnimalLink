@@ -8,6 +8,7 @@
     <text>在同一个 Campus 里，持续记录动物的日常、救助和领养后近况。</text>
     <text class="readonly-note">当前仅开放公开阅读，发布、点赞和评论尚未开放。</text>
   </view>
+  <button class="primary-button" bindtap="openObservation">记录动物观察</button>
   <view class="result-meta"><text>{{campus ? campus.name : '当前 Campus'}}</text><text>{{total}} 条公开动态</text></view>
   <view wx:if="{{loading}}" class="state-card surface"><text class="state-icon">⌛</text><text class="state-title">正在读取校园动态</text></view>
   <view wx:elif="{{errorMessage && posts.length === 0}}" class="state-card surface"><text class="state-icon">!</text><text class="state-title">社区加载失败</text><text class="state-copy">{{errorMessage}}</text><button class="primary-button" bindtap="onRetry">重试</button></view>
