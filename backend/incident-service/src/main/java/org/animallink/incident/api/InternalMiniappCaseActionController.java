@@ -17,10 +17,10 @@ public class InternalMiniappCaseActionController {
     private final CaseActionController actions;
     private final HttpServletRequest request;
     public InternalMiniappCaseActionController(CaseActionController actions, HttpServletRequest request) { this.actions = actions; this.request = request; }
-    @GetMapping public CaseActionController.TrustedPage list(@PathVariable String caseId, @RequestParam String campusId, @RequestParam(defaultValue="0") int page, @RequestParam(defaultValue="20") int size) {
+    @GetMapping public CaseActionController.TrustedPage list(@PathVariable("caseId") String caseId, @RequestParam("campusId") String campusId, @RequestParam(name="page",defaultValue="0") int page, @RequestParam(name="size",defaultValue="20") int size) {
         return actions.listForTrustedMiniappUser(caseId, actor("incident.case-action.read"), campusId, page, size);
     }
-    @PostMapping public CaseActionController.Response create(@PathVariable String caseId, @Valid @RequestBody Input body) {
+    @PostMapping public CaseActionController.Response create(@PathVariable("caseId") String caseId, @Valid @RequestBody Input body) {
         return actions.createForTrustedMiniappUser(caseId, new CaseActionController.Request(body.description(), body.occurredAt(), List.of()), actor("incident.case-action.write"), body.campusId());
     }
     private String actor(String scope) {

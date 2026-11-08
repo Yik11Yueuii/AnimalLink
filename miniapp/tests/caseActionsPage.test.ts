@@ -20,5 +20,10 @@ test('case actions reject duplicate submission and discard an old account respon
     const first = page.onSubmit(); await page.onSubmit(); assert.equal(calls, 1)
     storage.set('animallink.miniapp.user-session', 'b'.repeat(43)); assert.ok(reply); reply({ statusCode: 200, data: { id: 'action' } }); await first
     assert.deepEqual(page.data.items, []); assert.equal(page.data.description, ''); assert.equal(page.data.message, '')
+    page.session = 'b'.repeat(43); page.data.status = 'ACTIVE'; page.data.description = 'another'; page.data.date = '2026-10-03'; page.data.time = '10:00'
+    const second = page.onSubmit(); page.generation = Number(page.generation) + 1
+    page.data.description = 'new account draft'; page.data.items = [{ id: 'new-record' }]
+    assert.ok(reply); reply({ statusCode: 200, data: { id: 'old-action' } }); await second
+    assert.deepEqual(page.data.items, [{ id: 'new-record' }]); assert.equal(page.data.description, 'new account draft')
   } finally { global.wx = oldWx; global.Page = oldPage; runtimeConfig.userAuthenticationMode = oldMode; runtimeConfig.gatewayBaseUrl = oldBase }
 })

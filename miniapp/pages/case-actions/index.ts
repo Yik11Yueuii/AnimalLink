@@ -11,6 +11,7 @@ Page({
   onHide() { this.invalidate() },
   onUnload() { this.invalidate() },
   invalidate() { this.generation++; this.setData({ items: [], status: '', page: -1, total: 0, loading: false, submitting: false, description: '', error: '', message: '' }) },
+  discardStale(version: number) { if (version === this.generation) this.invalidate() },
   current(version: number, token: string) { return version === this.generation && !!token && token === storedMiniappSession() && getSelectedCampus()?.id === this.campusId },
   onDescription(e: WechatMiniprogram.Input) { this.setData({ description: e.detail.value }) },
   onDate(e: WechatMiniprogram.PickerChange) { this.setData({ date: e.detail.value as string }) },
@@ -24,13 +25,13 @@ Page({
     this.setData({ loading: true, error: '' })
     try {
       const result = await listCaseActions(this.caseId, this.campusId, page)
-      if (!this.current(version, token)) { this.invalidate(); return }
+      if (!this.current(version, token)) { this.discardStale(version); return }
       if (result.caseId !== this.caseId || result.campusId !== this.campusId || result.page !== page) throw new Error('返回的案件信息不匹配')
       const existing = page === 0 ? [] : this.data.items
       const ids = new Set(existing.map(item => item.id))
       this.setData({ items: [...existing, ...result.items.filter(item => !ids.has(item.id))], page, total: result.total, status: result.status })
     } catch (error) {
-      if (!this.current(version, token)) { this.invalidate(); if (!storedMiniappSession()) this.setData({ error: '登录已失效，请重新登录。' }); return }
+      if (!this.current(version, token)) { if (version === this.generation) { this.invalidate(); if (!storedMiniappSession()) this.setData({ error: '登录已失效，请重新登录。' }) }; return }
       const status = error instanceof ApiRequestError ? error.statusCode : null
       this.setData({ error: status === 401 ? '登录已失效，请重新登录。' : status === 403 ? '无权查看此案件的处理记录。' : '读取失败，请重试。' })
     } finally { if (version === this.generation) this.setData({ loading: false }) }
@@ -44,11 +45,11 @@ Page({
     this.setData({ submitting: true, message: '' })
     try {
       await createCaseAction(this.caseId, this.campusId, description, date.toISOString())
-      if (!this.current(version, token)) { this.invalidate(); return }
+      if (!this.current(version, token)) { this.discardStale(version); return }
       this.setData({ description: '', message: '处理记录已保存。', items: [], page: -1 })
       await this.load(0)
     } catch (error) {
-      if (!this.current(version, token)) { this.invalidate(); if (!storedMiniappSession()) this.setData({ error: '登录已失效，请重新登录。' }); return }
+      if (!this.current(version, token)) { if (version === this.generation) { this.invalidate(); if (!storedMiniappSession()) this.setData({ error: '登录已失效，请重新登录。' }) }; return }
       const status = error instanceof ApiRequestError ? error.statusCode : null
       this.setData({ message: status === 401 ? '登录已失效，请重新登录。' : status === 403 ? '当前账号无权添加记录。' : status === 409 ? '案件已结束，不能继续添加。' : status === 400 ? '请检查处理描述和时间。' : '提交结果未确认，请先刷新记录后再重试。' })
     } finally { if (version === this.generation) this.setData({ submitting: false }) }
