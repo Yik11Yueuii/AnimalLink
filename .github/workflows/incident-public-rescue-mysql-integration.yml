@@ -69,7 +69,7 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
-      - name: Run CaseAction and claim MySQL integration tests
+      - name: Run CaseAction and lifecycle MySQL integration tests
         run: >-
           ./mvnw -pl backend/incident-service
-          -Dtest=CaseActionIntegrationTest,CaseClaimConcurrencyIntegrationTest,CaseClaimErrorIntegrationTest test
+          -Dtest=CaseActionIntegrationTest,CaseClaimConcurrencyIntegrationTest,CaseClaimErrorIntegrationTest,CaseParticipantTransitionConcurrencyIntegrationTest,CaseResultConcurrencyIntegrationTest,CaseOwnerTransferConcurrencyIntegrationTest test
