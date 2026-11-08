@@ -1,0 +1,1 @@
+.card { padding: 28rpx; margin-bottom: 24rpx; } textarea { width: 100%; } input, picker { padding: 16rpx 0; }

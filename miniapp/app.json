@@ -1,6 +1,7 @@
 {
   "pages": [
     "pages/circle/index",
+    "pages/observation/index",
     "pages/animals/index",
     "pages/rescue/index",
     "pages/rescue-report/index",
