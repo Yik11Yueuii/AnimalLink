@@ -57,7 +57,7 @@ def main():
   created=check('post submitted',200,req(root,body,h(0)));post=created['id'];assert created['reviewStatus']=='PENDING'
   sql(db,'USE animallink_animal');assert sql(db,'SELECT review_status FROM post WHERE id=%s',post)[0][0]=='PENDING'
   feed=check('public feed before approval',200,req(ANIMAL+'/api/v1/public/campuses/'+CAMPUS+'/feed'));assert all(x['id']!=post for x in feed['items'])
-  sql(db,"UPDATE post SET review_status='APPROVED' WHERE id=%s",post)
+  sql(db,"UPDATE post SET review_status='APPROVED', reviewed_by_user_id=%s, reviewed_at=NOW(6) WHERE id=%s",USERS[0],post)
   comment=check('comment submitted',200,req(root+'/'+post+'/comments',{'campusId':CAMPUS,'content':'Smoke comment'},h(0)));assert comment['reviewStatus']=='PENDING'
   assert sql(db,'SELECT review_status FROM comment WHERE id=%s',comment['id'])[0][0]=='PENDING'
   comments=check('public comments before approval',200,req(ANIMAL+'/api/v1/public/posts/'+post+'/comments'));assert all(x['id']!=comment['id'] for x in comments['items'])
