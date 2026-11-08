@@ -1,0 +1,5 @@
+package org.animallink.gateway;
+import static org.junit.jupiter.api.Assertions.*;import org.junit.jupiter.api.Test;
+class AnimalMiniappGatewayPolicyTest {
+ @Test void permitsOnlyScopedCommunityRoutes(){String root="/auth/wechat/community/posts",id="00000000-0000-4000-8000-000000000001";assertTrue(AnimalMiniappGatewayPolicy.allowed("POST",root));assertTrue(ExternalIdentityBoundaryFilter.isAuthenticationEndpoint(org.springframework.http.HttpMethod.POST,root));assertFalse(ExternalIdentityBoundaryFilter.isAuthenticationEndpoint(org.springframework.http.HttpMethod.GET,root));assertTrue(AnimalMiniappGatewayPolicy.allowed("POST",root+"/"+id+"/comments"));assertTrue(AnimalMiniappGatewayPolicy.allowed("GET",root+"/"+id+"/like"));assertTrue(AnimalMiniappGatewayPolicy.allowed("DELETE",root+"/"+id+"/like"));assertFalse(AnimalMiniappGatewayPolicy.allowed("GET",root));assertFalse(AnimalMiniappGatewayPolicy.allowed("POST",root+"/"+id+"/reports"));assertEquals("animal.community.read",AnimalMiniappGatewayPolicy.scope("GET",root+"/"+id+"/like"));}
+}

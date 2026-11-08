@@ -1,3 +1,7 @@
+import { ApiRequestError } from '../../services/apiClient'
+import { communityRequest, communityWriteAvailable } from '../../services/communityWrite'
+import type { CommunityReceipt } from '../../services/communityWrite'
+import { storedMiniappSession } from '../../services/userAuthentication'
 import { resolveCurrentCampusContext } from '../../services/campusContext'
 import { getCommunityDataSource, isCommunityOfflineDemo, isPublicDataApiMode } from '../../services/sourceFactory'
 import { CommunityFeed } from '../../state/communityFeed'
@@ -10,8 +14,10 @@ const feed = new CommunityFeed(getCommunityDataSource(), 3)
 
 Page({
   campusResolutionVersion: 0,
+  writeVersion: 0,
   data: {
     offline: isCommunityOfflineDemo(),
+    composing: false, writeText: '', writeBusy: false, writeUncertain: false, writeMessage: '',
     campus: null as CampusResponse | null,
     posts: [] as CommunityPostView[],
     total: 0,
@@ -22,6 +28,17 @@ Page({
     errorMessage: '',
   },
   openObservation() { wx.navigateTo({ url: '/pages/observation/index' }) },
+  showComposer() { if (this.data.offline || !communityWriteAvailable()) { this.setData({writeMessage: '请先登录并启用真实服务。'}); return } this.setData({composing:true,writeMessage:''}) },
+  writeChanged(e: WechatMiniprogram.Input) { this.setData({writeText:e.detail.value}) },
+  async publish() {
+    if (this.data.writeBusy || this.data.writeUncertain) return
+    const text=this.data.writeText.trim(), campus=this.data.campus?.id, token=storedMiniappSession(), version=this.writeVersion
+    if (this.data.offline || !communityWriteAvailable() || !campus || !text || text.length > 2000) { this.setData({writeMessage:'请登录、选择高校并填写 2000 字以内的内容。'}); return }
+    this.setData({writeBusy:true,writeMessage:''})
+    try { await communityRequest<CommunityReceipt>('/posts','POST',{campusId:campus,textContent:text}); if(version===this.writeVersion && token===storedMiniappSession() && campus===getSelectedCampus()?.id) this.setData({writeText:'',composing:false,writeMessage:'已提交，待审核。'}) }
+    catch (error) { if(version===this.writeVersion && campus===getSelectedCampus()?.id) { const current=storedMiniappSession(); if(!current && error instanceof ApiRequestError && error.statusCode===401) this.setData({composing:false,writeText:'',writeMessage:'登录已失效，请重新登录。'}); else if(token===current) { const rejected=error instanceof ApiRequestError && error.statusCode!==null && error.statusCode>=400 && error.statusCode<500; this.setData({writeUncertain:!rejected,writeMessage:rejected?'发布被拒绝，请检查高校成员资格和内容。':'提交结果未确定，请勿重复发布相同内容。'}) } } }
+    finally { if(version===this.writeVersion)this.setData({writeBusy:false}) }
+  },
   onShow() {
     const campus = getSelectedCampus()
     if (!campus) {
@@ -49,8 +66,8 @@ Page({
       this.activateCampus(resolution.campus)
     })
   },
-  onHide() { this.campusResolutionVersion += 1 },
-  onUnload() { this.campusResolutionVersion += 1 },
+  onHide() { this.campusResolutionVersion += 1; this.writeVersion += 1; this.setData({composing:false,writeText:'',writeBusy:false,writeUncertain:false,writeMessage:''}) },
+  onUnload() { this.campusResolutionVersion += 1; this.writeVersion += 1 },
   onPullDownRefresh() {
     void this.refresh().finally(() => wx.stopPullDownRefresh())
   },

@@ -62,6 +62,18 @@ public class HttpIdentityGateway implements IdentityGateway {
     @Override
     public CurrentUser requireCurrentUser() {
         try {
+            Object principal = request.getAttribute(AnimalMiniappAssertionFilter.PRINCIPAL);
+            if (principal instanceof AnimalMiniappAssertionVerifier.AuthenticatedMiniappUser actor) {
+                UserSummaryPayload[] users = restClient.post().uri("/internal/v1/users/summaries")
+                        .header("X-Trace-Id", traceId())
+                        .body(new UserSummariesPayload(Set.of(actor.userId())))
+                        .retrieve().body(UserSummaryPayload[].class);
+                if (users == null || users.length != 1 || !actor.userId().equals(users[0].id())) {
+                    throw new UnauthorizedException("无法确认当前用户");
+                }
+                UserSummaryPayload user = users[0];
+                return new CurrentUser(user.id(), user.displayName(), user.accountStatus(), "USER");
+            }
             RestClient.RequestHeadersSpec<?> requestSpec = restClient.get()
                     .uri("/api/v1/users/me")
                     .header("X-Trace-Id", traceId());
@@ -95,6 +107,10 @@ public class HttpIdentityGateway implements IdentityGateway {
 
     @Override
     public Optional<CurrentUser> currentUserIfPresent() {
+        if (request.getAttribute(AnimalMiniappAssertionFilter.PRINCIPAL)
+                instanceof AnimalMiniappAssertionVerifier.AuthenticatedMiniappUser) {
+            return Optional.of(requireCurrentUser());
+        }
         String userId = request.getHeader(USER_ID_HEADER);
         if (userId == null || userId.isBlank()) {
             return Optional.empty();
@@ -163,6 +179,6 @@ public class HttpIdentityGateway implements IdentityGateway {
     private record UserSummariesPayload(Set<String> userIds) {
     }
 
-    private record UserSummaryPayload(String id, String displayName) {
+    private record UserSummaryPayload(String id, String displayName, String accountStatus) {
     }
 }

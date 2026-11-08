@@ -38,6 +38,8 @@ management:
       show-components: always
 animallink:
   authentication:
+    animal-miniapp-assertion:
+      keys: ${AUTH_ANIMAL_MINIAPP_ASSERTION_KEYS:}
     animal-admin-assertion:
       expected-issuer: ${AUTH_ANIMAL_ASSERTION_ISSUER:api-gateway}
       expected-subject: ${AUTH_ANIMAL_ASSERTION_SUBJECT:api-gateway}

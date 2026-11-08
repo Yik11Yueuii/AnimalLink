@@ -6,8 +6,11 @@
   </view>
   <view class="circle-intro surface">
     <text>在同一个 Campus 里，持续记录动物的日常、救助和领养后近况。</text>
-    <text class="readonly-note">当前仅开放公开阅读，发布、点赞和评论尚未开放。</text>
+    <text class="readonly-note">新动态提交后需要审核，通过后才会公开。</text>
   </view>
+  <button bindtap="showComposer">发布动态</button>
+  <view wx:if="{{composing}}" class="surface"><textarea maxlength="2000" value="{{writeText}}" bindinput="writeChanged" placeholder="分享校园动态" /><button bindtap="publish" loading="{{writeBusy}}" disabled="{{writeBusy || writeUncertain}}">提交审核</button></view>
+  <text wx:if="{{writeMessage}}">{{writeMessage}}</text>
   <button class="primary-button" bindtap="openObservation">记录动物观察</button>
   <view class="result-meta"><text>{{campus ? campus.name : '当前 Campus'}}</text><text>{{total}} 条公开动态</text></view>
   <view wx:if="{{loading}}" class="state-card surface"><text class="state-icon">⌛</text><text class="state-title">正在读取校园动态</text></view>
