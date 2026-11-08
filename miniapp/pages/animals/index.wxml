@@ -7,6 +7,7 @@
       <text class="campus-label-name">{{campus ? (campus.shortName || campus.name) : '尚未选择'}}</text>
     </view>
   </view>
+  <button bindtap="openAdoption">浏览全站领养信息</button>
   <view class="search-panel surface">
     <view class="search-row"><input value="{{q}}" placeholder="名称或毛色" confirm-type="search" bindinput="onKeywordInput" bindconfirm="onSearch" /><button class="search-button" bindtap="onSearch">搜索</button></view>
     <picker mode="selector" range="{{speciesLabels}}" value="{{speciesIndex}}" bindchange="onSpeciesChange"><view class="species-picker">物种 · {{speciesLabels[speciesIndex]}}⌄</view></picker>

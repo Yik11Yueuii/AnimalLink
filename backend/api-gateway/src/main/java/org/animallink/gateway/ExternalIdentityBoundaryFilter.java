@@ -37,6 +37,8 @@ public class ExternalIdentityBoundaryFilter implements WebFilter, Ordered {
             Pattern.compile("^/animal/api/v1/public/campuses/" + UUID_SEGMENT + "/feed$"),
             Pattern.compile("^/animal/api/v1/public/posts/" + UUID_SEGMENT + "$"),
             Pattern.compile("^/animal/api/v1/public/posts/" + UUID_SEGMENT + "/comments$"),
+            Pattern.compile("^/adoption/api/v1/public/listings$"),
+            Pattern.compile("^/adoption/api/v1/public/listings/" + UUID_SEGMENT + "$") ,
             Pattern.compile("^/incident/api/v1/public/rescues$"),
             Pattern.compile("^/incident/api/v1/public/rescues/" + UUID_SEGMENT + "$"),
             Pattern.compile("^/incident/api/v1/cases/" + UUID_SEGMENT + "/support/expenses$"),
@@ -111,7 +113,8 @@ public class ExternalIdentityBoundaryFilter implements WebFilter, Ordered {
                 || (HttpMethod.POST.equals(method) && WechatCampusIdentityController.APPLICATIONS_PATH.equals(path))
                 || IncidentMiniappGatewayPolicy.allowed(method == null ? null : method.name(), path)
                 || IntelligenceMiniappGatewayPolicy.allowed(method == null ? null : method.name(), path)
-                || AnimalMiniappGatewayPolicy.allowed(method == null ? null : method.name(), path);
+                || AnimalMiniappGatewayPolicy.allowed(method == null ? null : method.name(), path)
+                || AdoptionMiniappGatewayPolicy.allowed(method == null ? null : method.name(), path);
     }
 
     private static boolean isWechatSessionEndpoint(HttpMethod method, String path) {
@@ -121,7 +124,8 @@ public class ExternalIdentityBoundaryFilter implements WebFilter, Ordered {
                 || (HttpMethod.POST.equals(method) && WechatCampusIdentityController.APPLICATIONS_PATH.equals(path))
                 || IncidentMiniappGatewayPolicy.allowed(method == null ? null : method.name(), path)
                 || IntelligenceMiniappGatewayPolicy.allowed(method == null ? null : method.name(), path)
-                || AnimalMiniappGatewayPolicy.allowed(method == null ? null : method.name(), path);
+                || AnimalMiniappGatewayPolicy.allowed(method == null ? null : method.name(), path)
+                || AdoptionMiniappGatewayPolicy.allowed(method == null ? null : method.name(), path);
     }
 
     private static boolean isUuid(String value) {

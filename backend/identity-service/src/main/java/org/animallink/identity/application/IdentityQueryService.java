@@ -56,6 +56,12 @@ public class IdentityQueryService {
         return membershipRepository.findMembershipsByUserId(currentUser().id());
     }
 
+    public boolean hasActiveMembership(String userId) {
+        IdRules.requireUuid(userId, "userId");
+        return membershipRepository.findMembershipsByUserId(userId).stream()
+                .anyMatch(view -> view.membership().status() == org.animallink.identity.domain.MembershipStatus.ACTIVE);
+    }
+
     public Optional<CampusMembership> membershipFact(String userId, String campusId) {
         IdRules.requireUuid(userId, "userId");
         IdRules.requireUuid(campusId, "campusId");

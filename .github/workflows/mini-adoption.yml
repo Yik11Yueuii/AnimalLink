@@ -1,0 +1,60 @@
+name: Mini Adoption
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/mini-adoption.yml'
+      - '.github/scripts/mini_adopt_http_smoke.py'
+      - 'backend/api-gateway/**'
+      - 'backend/adoption-service/**'
+      - 'backend/animal-service/**'
+      - 'backend/identity-service/**'
+      - 'miniapp/**'
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.0.41
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Run scoped boundary tests
+        run: >-
+          ./mvnw -pl backend/api-gateway,backend/adoption-service -am
+          -Dtest=AdoptionMiniappGatewayPolicyTest,AdoptionMiniappAssertionVerifierTest
+          -Dsurefire.failIfNoSpecifiedTests=false test
+      - name: Build independent services
+        run: ./mvnw -pl backend/api-gateway,backend/identity-service,backend/animal-service,backend/adoption-service -am -DskipTests package
+      - run: docker build -t animallink-ai-smoke infra/minio
+      - run: python -m pip install PyMySQL==1.1.1 boto3==1.35.99
+      - name: Run adoption HTTP smoke
+        run: python .github/scripts/mini_adopt_http_smoke.py
+  miniapp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: miniapp/package-lock.json
+      - run: npm ci
+        working-directory: miniapp
+      - run: npm run check
+        working-directory: miniapp
+        env:
+          TZ: Asia/Shanghai

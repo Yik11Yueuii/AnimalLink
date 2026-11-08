@@ -17,6 +17,7 @@ const expiredRequestSession = (requestToken: string | undefined): 'replaced' | '
 type AuthPhase = 'unauthenticated' | 'restoring' | 'loggingIn' | 'loggingOut' | 'authenticated' | 'sessionUnverified' | 'restricted'
 
 Page({
+  openAdoptionApplications() { wx.navigateTo({ url: '/pages/my-applications/index' }) },
   loginInFlight: null as Promise<CurrentMiniappUser> | null,
   data: { loading: false, authPhase: 'unauthenticated' as AuthPhase, user: null as CurrentMiniappUser | null, error: '', offline: true, sessionRetryAvailable: false, identity: null as CampusIdentitySnapshot | null,
     campuses: [] as IdentityCampusOption[], showIdentityForm: false, campusIndex: 0, membershipTypes: ['STUDENT', 'ALUMNI'],

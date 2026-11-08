@@ -10,7 +10,9 @@
     "pages/my/index",
     "pages/campus/index",
     "pages/animal-detail/index",
-    "pages/post-detail/index"
+    "pages/post-detail/index",
+    "pages/adoption/index",
+    "pages/my-applications/index"
   ],
   "window": {
     "navigationBarTitleText": "AnimalLink",
@@ -25,10 +27,22 @@
     "backgroundColor": "#fffdfa",
     "borderStyle": "white",
     "list": [
-      { "pagePath": "pages/circle/index", "text": "Campus Circle" },
-      { "pagePath": "pages/animals/index", "text": "Animals" },
-      { "pagePath": "pages/rescue/index", "text": "Rescue" },
-      { "pagePath": "pages/my/index", "text": "My" }
+      {
+        "pagePath": "pages/circle/index",
+        "text": "Campus Circle"
+      },
+      {
+        "pagePath": "pages/animals/index",
+        "text": "Animals"
+      },
+      {
+        "pagePath": "pages/rescue/index",
+        "text": "Rescue"
+      },
+      {
+        "pagePath": "pages/my/index",
+        "text": "My"
+      }
     ]
   },
   "style": "v2",

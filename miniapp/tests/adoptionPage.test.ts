@@ -1,0 +1,9 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { runtimeConfig } from '../config/runtime'
+type Definition={data:Record<string,unknown>;[key:string]:unknown}
+test('uncertain application checks records and blocks another submission',async()=>{
+ const g=globalThis as unknown as {wx?:Record<string,unknown>;Page?:(v:Definition)=>void},oldWx=g.wx,oldPage=g.Page,mode=runtimeConfig.publicDataMode,auth=runtimeConfig.userAuthenticationMode,base=runtimeConfig.gatewayBaseUrl;let definition:Definition|undefined,posts=0,queries=0
+ const token='a'.repeat(43);g.Page=v=>{definition=v};g.wx={getStorageSync:()=>token,showModal:(o:{success:(v:{confirm:boolean})=>void})=>o.success({confirm:true}),request:(o:{url:string;method:string;success:(v:{statusCode:number;data:unknown})=>void;fail:(v:{errMsg:string})=>void})=>{if(o.method==='POST'){posts++;o.fail({errMsg:'timeout'})}else{queries++;o.success({statusCode:200,data:{items:queries===1?[]:[{applicationId:'a',listingId:'l',status:'SUBMITTED',selected:false}],page:0,size:100,total:queries===1?0:1}})}}};runtimeConfig.publicDataMode='api';runtimeConfig.userAuthenticationMode='api';runtimeConfig.gatewayBaseUrl='https://example.test'
+ try{await import('../pages/adoption/index');assert.ok(definition);const page=Object.assign({},definition,{generation:0,data:{...definition.data,selected:{listingId:'l'},input:'hello'},setData(value:Record<string,unknown>){Object.assign(this.data,value)}}) as unknown as Definition&{submit:()=>Promise<void>};await page.submit();assert.equal(posts,1);assert.equal(queries,2);assert.equal(page.data.uncertain,true);assert.equal((page.data.existing as {applicationId:string}).applicationId,'a');await page.submit();assert.equal(posts,1)}finally{g.wx=oldWx;g.Page=oldPage;runtimeConfig.publicDataMode=mode;runtimeConfig.userAuthenticationMode=auth;runtimeConfig.gatewayBaseUrl=base}
+})

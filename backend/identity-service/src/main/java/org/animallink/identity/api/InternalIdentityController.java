@@ -29,6 +29,12 @@ public class InternalIdentityController {
                 .orElseGet(IdentityDtos.InternalMembershipResponse::missing);
     }
 
+    @GetMapping("/{userId}/active-campus-membership")
+    public ActiveMembership activeMembership(@PathVariable("userId") String userId) {
+        return new ActiveMembership(queryService.hasActiveMembership(userId));
+    }
+    public record ActiveMembership(boolean active) { }
+
     @PostMapping("/summaries")
     public List<IdentityDtos.UserSummaryResponse> summaries(
             @Valid @RequestBody IdentityDtos.UserSummariesRequest request) {
