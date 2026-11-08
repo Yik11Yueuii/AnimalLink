@@ -67,6 +67,11 @@ animallink:
       lifetime: ${AUTH_SERVICE_ASSERTION_LIFETIME:PT15S}
       current-key-id: ${AUTH_SERVICE_ASSERTION_CURRENT_KEY_ID:}
       keys: ${AUTH_SERVICE_ASSERTION_KEYS:}
+    animal-miniapp:
+      base-url: ${ANIMAL_MINIAPP_BASE_URL:http://animal-service}
+    animal-miniapp-assertion:
+      current-key-id: ${AUTH_ANIMAL_MINIAPP_ASSERTION_KEY_ID:}
+      keys: ${AUTH_ANIMAL_MINIAPP_ASSERTION_KEYS:}
     animal-admin-assertion:
       issuer: ${AUTH_ANIMAL_ASSERTION_ISSUER:api-gateway}
       subject: ${AUTH_ANIMAL_ASSERTION_SUBJECT:api-gateway}
