@@ -5,6 +5,7 @@
     "pages/rescue/index",
     "pages/rescue-report/index",
     "pages/rescue-detail/index",
+    "pages/case-actions/index",
     "pages/my/index",
     "pages/campus/index",
     "pages/animal-detail/index",

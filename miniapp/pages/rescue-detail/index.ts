@@ -2,7 +2,7 @@ import { getRescueDataSource, isRescueOfflineDemo } from '../../services/sourceF
 import { resolveCurrentCampusContext } from '../../services/campusContext'
 import { getSelectedCampus } from '../../state/campus'
 import type { PublicRescueDetail, PublicRescueStatus } from '../../types/rescue'
-import { claimRescue, storedMiniappSession } from '../../services/userAuthentication'
+import { accessibleCaseByEvent, claimRescue, storedMiniappSession } from '../../services/userAuthentication'
 import type { ClaimedRescueCase } from '../../services/userAuthentication'
 import { ApiRequestError } from '../../services/apiClient'
 import { readableError } from '../../utils/presentation'
@@ -36,6 +36,17 @@ Page({
       const message = status === 401 ? '登录已失效，请重新登录。' : status === 403 ? '当前高校需要有效志愿者资格，或高校不匹配。' : status === 409 ? '案件已被其他志愿者认领，或事件当前不可认领。' : status === 503 ? '服务暂不可用，请稍后重试。' : '网络或服务异常，请检查后重试。'
       this.setData({ claimMessage: message })
     } finally { if (version === this.detailRequestVersion) this.setData({ claiming: false }) }
+  },
+  async openCaseActions() {
+    const token = storedMiniappSession(), version = this.detailRequestVersion
+    if (!token) { this.setData({ claimMessage: '请先前往「我的」完成微信登录。' }); return }
+    if (getSelectedCampus()?.id !== this.campusId) { this.setData({ claimMessage: '高校已切换，请重新打开详情。' }); return }
+    try {
+      const c = await accessibleCaseByEvent(this.eventId, this.campusId)
+      if (version !== this.detailRequestVersion || storedMiniappSession() !== token || getSelectedCampus()?.id !== this.campusId) return
+      if (c.eventId !== this.eventId || c.campusId !== this.campusId) throw new Error('案件信息不匹配')
+      wx.navigateTo({ url: `/pages/case-actions/index?caseId=${encodeURIComponent(c.id)}&campusId=${encodeURIComponent(c.campusId)}` })
+    } catch (error) { if (version === this.detailRequestVersion) this.setData({ claimMessage: error instanceof ApiRequestError && error.statusCode === 403 ? '无权查看此案件。' : '无法读取案件，请检查登录及网络。' }) }
   },
   openAnimal() { const id = this.data.detail?.rescue.animal?.id; if (id) wx.navigateTo({ url: `/pages/animal-detail/index?animalId=${encodeURIComponent(id)}` }) },
   async load() {

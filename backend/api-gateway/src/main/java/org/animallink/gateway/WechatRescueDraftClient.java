@@ -29,12 +29,16 @@ public class WechatRescueDraftClient {
     public Mono<Object> patch(String token, String id, Object body) { return call(token,"PATCH","/auth/wechat/rescue-drafts/"+id,body,Object.class); }
     public Mono<Object> submit(String token, String id) { return call(token,"POST","/auth/wechat/rescue-drafts/"+id+"/submit",null,Object.class); }
     public Mono<Object> claim(String token, String eventId, Object body) { return call(token,"POST","/auth/wechat/rescues/"+eventId+"/claim",body,Object.class); }
-    private Mono<Object> call(String token,String method,String externalPath,Object body,Class<Object> type) {
+    public Mono<Object> caseByEvent(String token, String event, String campus) { return call(token,"GET","/auth/wechat/rescues/"+event+"/case",null,Object.class,"?campusId="+java.net.URLEncoder.encode(campus,java.nio.charset.StandardCharsets.UTF_8)); }
+    public Mono<Object> listActions(String token, String id, String campus, int page, int size) { return call(token,"GET","/auth/wechat/cases/"+id+"/actions",null,Object.class,"?campusId="+java.net.URLEncoder.encode(campus,java.nio.charset.StandardCharsets.UTF_8)+"&page="+page+"&size="+size); }
+    public Mono<Object> createAction(String token, String id, Object body) { return call(token,"POST","/auth/wechat/cases/"+id+"/actions",body,Object.class); }
+    private Mono<Object> call(String token,String method,String externalPath,Object body,Class<Object> type) { return call(token,method,externalPath,body,type,""); }
+    private Mono<Object> call(String token,String method,String externalPath,Object body,Class<Object> type,String query) {
         return sessions.current(token).flatMap(actor -> Mono.fromCallable(() -> signer.sign(actor.userId(),actor.systemRole(),method,externalPath)).flatMap(assertion -> {
             String internal=IncidentMiniappGatewayPolicy.downstreamPath(externalPath); WebClient.RequestHeadersSpec<?> request;
             if("POST".equals(method)) request=client.post().uri(internal).header(HttpHeaders.AUTHORIZATION,"Bearer "+assertion).contentType(MediaType.APPLICATION_JSON).bodyValue(body==null?java.util.Map.of():body);
             else if("PATCH".equals(method)) request=client.patch().uri(internal).header(HttpHeaders.AUTHORIZATION,"Bearer "+assertion).contentType(MediaType.APPLICATION_JSON).bodyValue(body);
-            else request=client.get().uri(internal).header(HttpHeaders.AUTHORIZATION,"Bearer "+assertion);
+            else request=client.get().uri(internal+query).header(HttpHeaders.AUTHORIZATION,"Bearer "+assertion);
             return request.exchangeToMono(response -> result(response,type));
         }));
     }

@@ -1,0 +1,13 @@
+<view class="page-shell">
+  <view class="surface section"><text class="section-title">救助处理记录</text><view>案件编号：{{displayCaseId}}</view><view>案件状态：{{status || '读取中'}}</view></view>
+  <view class="surface section" wx:if="{{status === 'ACTIVE'}}">
+    <text class="section-title">添加处理记录</text><textarea value="{{description}}" bindinput="onDescription" maxlength="2000" placeholder="填写实际救助处理过程" />
+    <picker mode="date" value="{{date}}" bindchange="onDate"><view>发生日期：{{date || '请选择'}}</view></picker>
+    <picker mode="time" value="{{time}}" bindchange="onTime"><view>发生时间：{{time || '请选择'}}</view></picker>
+    <button bindtap="onSubmit" loading="{{submitting}}" disabled="{{submitting || loading}}">保存记录</button><view wx:if="{{message}}">{{message}}</view>
+  </view>
+  <view class="surface section"><text class="section-title">处理历史</text><view wx:if="{{error}}">{{error}} <button bindtap="onRetry">重试</button></view><view wx:if="{{!loading && !error && items.length === 0}}">暂无处理记录</view>
+    <view wx:for="{{items}}" wx:key="id" class="action"><view>{{item.description}}</view><view>{{item.occurredAt}}</view></view>
+    <button wx:if="{{items.length < total && !error}}" bindtap="onMore" disabled="{{loading || submitting}}">加载更多</button>
+  </view>
+</view>

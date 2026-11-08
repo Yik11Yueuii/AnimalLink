@@ -137,3 +137,17 @@ export const claimRescue = async (campusId: string, eventId: string): Promise<Cl
   try { return await request<ClaimedRescueCase>(`/auth/wechat/rescues/${encodeURIComponent(eventId)}/claim`, 'POST', { campusId }, token) }
   catch (error) { if (error instanceof ApiRequestError && error.statusCode === 401 && storedMiniappSession() === token) clearMiniappSession(); throw error }
 }
+
+export interface CaseAction { id: string; caseId: string; actorUserId: string; description: string; occurredAt: string; createdAt: string; resultCode: string | null }
+export interface CaseActionPage { caseId: string; eventId: string; campusId: string; status: string; items: CaseAction[]; page: number; size: number; total: number }
+const caseActionRequest = async <T>(path: string, method: 'GET' | 'POST', data?: Record<string, string>): Promise<T> => {
+  const token = storedMiniappSession()
+  if (!token) throw new ApiRequestError('请先完成微信登录。', 401)
+  try { return await request<T>(path, method, data, token) }
+  catch (error) { if (error instanceof ApiRequestError && error.statusCode === 401 && storedMiniappSession() === token) clearMiniappSession(); throw error }
+}
+export const listCaseActions = (caseId: string, campusId: string, page: number, size = 20) => caseActionRequest<CaseActionPage>(`/auth/wechat/cases/${encodeURIComponent(caseId)}/actions?campusId=${encodeURIComponent(campusId)}&page=${page}&size=${size}`, 'GET')
+export const createCaseAction = (caseId: string, campusId: string, description: string, occurredAt: string) => caseActionRequest<CaseAction>(`/auth/wechat/cases/${encodeURIComponent(caseId)}/actions`, 'POST', { campusId, description, occurredAt })
+
+export interface AccessibleCase { id: string; eventId: string; campusId: string; status: string }
+export const accessibleCaseByEvent = (eventId: string, campusId: string) => caseActionRequest<AccessibleCase>(`/auth/wechat/rescues/${encodeURIComponent(eventId)}/case?campusId=${encodeURIComponent(campusId)}`, 'GET')

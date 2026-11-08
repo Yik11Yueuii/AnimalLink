@@ -12,6 +12,13 @@ class IncidentMiniappRequestPolicyTest {
         assertFalse(IncidentMiniappRequestPolicy.requiredScope("GET", path).isPresent());
         assertTrue(IncidentMiniappRequestPolicy.isProtected(path));
     }
+    @Test void actionMethodsRequireDistinctScopes() {
+        String path="/api/v1/internal/miniapp/cases/"+ID+"/actions";
+        org.junit.jupiter.api.Assertions.assertEquals("incident.case-action.read",IncidentMiniappRequestPolicy.requiredScope("GET",path).orElseThrow());
+        org.junit.jupiter.api.Assertions.assertEquals("incident.case-action.write",IncidentMiniappRequestPolicy.requiredScope("POST",path).orElseThrow());
+        assertFalse(IncidentMiniappRequestPolicy.requiredScope("DELETE",path).isPresent());
+        assertTrue(IncidentMiniappRequestPolicy.isProtected(path));
+    }
     @Test void protectsOnlyTheGatewayInternalDraftContract() {
         assertTrue(IncidentMiniappRequestPolicy.requiredScope("POST", "/api/v1/internal/miniapp/rescue-drafts").isPresent());
         assertTrue(IncidentMiniappRequestPolicy.requiredScope("GET", "/api/v1/internal/miniapp/rescue-drafts/" + ID).isPresent());
