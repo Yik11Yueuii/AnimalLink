@@ -52,6 +52,18 @@ def signed(path, actor, key=KEY):
     return (value + b'.' + b64(hmac.new(key, value, hashlib.sha256).digest())).decode()
 
 
+def signed_admin(path, method):
+    b64 = lambda x: base64.urlsafe_b64encode(x).rstrip(b'=')
+    now = int(time.time())
+    header = {'alg': 'HS256', 'typ': 'JWT', 'kid': 'test'}
+    claims = {'iss': 'api-gateway', 'sub': 'api-gateway', 'aud': ['incident-service'], 'target': 'incident-service',
+              'actor_id': str(uuid.uuid4()), 'system_role': 'GOVERNANCE_ADMIN',
+              'scope': ['incident.event.verify' if method == 'POST' else 'incident.rescue.read'],
+              'request_method': method, 'request_path': path, 'iat': now, 'exp': now + 20, 'jti': str(uuid.uuid4())}
+    value = b64(json.dumps(header, separators=(',', ':')).encode()) + b'.' + b64(json.dumps(claims, separators=(',', ':')).encode())
+    return (value + b'.' + b64(hmac.new(KEY, value, hashlib.sha256).digest())).decode()
+
+
 def expect(label, expected, result):
     code, body = result
     print(label, 'HTTP', code, flush=True)
@@ -74,7 +86,8 @@ def main():
                   '--spring.cloud.discovery.client.simple.instances.incident-service[0].uri=' + INCIDENT,
                   '--management.health.rabbit.enabled=false',
                   '--spring.flyway.locations=classpath:db/migration', '--management.endpoint.health.probes.enabled=true',
-                  '--animallink.authentication.incident-miniapp-assertion.keys=' + KEYS]
+                  '--animallink.authentication.incident-miniapp-assertion.keys=' + KEYS,
+                  '--animallink.authentication.incident-admin-assertion.keys=' + KEYS]
         for name, port in [('identity-service', 18081), ('incident-service', 18083), ('api-gateway', 18080)]:
             log = open(name + '-claim-smoke.log', 'w+', encoding='utf8'); logs.append(log)
             args = ['java', '-jar', 'backend/' + name + '/target/' + name + '-0.1.0-SNAPSHOT.jar', '--server.port=' + str(port), *common,
@@ -90,10 +103,23 @@ def main():
             if i < 2: sql(db, "INSERT INTO volunteer_membership (id,user_id,campus_id,status) VALUES (%s,%s,%s,'ACTIVE')", str(uuid.uuid4()), user, CAMPUS)
         sql(db, 'USE animallink_incident')
         sql(db, "INSERT INTO event_draft (id,user_id,campus_id,description,occurred_at,public_location_description,created_at,updated_at) VALUES (%s,%s,%s,'smoke',NOW(6),'public',NOW(6),NOW(6))", DRAFT, USERS[0], CAMPUS)
-        sql(db, "INSERT INTO event (id,source_draft_id,reporter_user_id,campus_id,description,occurred_at,reported_at,public_location_description,exact_location_description,status,created_at,updated_at) VALUES (%s,%s,%s,%s,'smoke',NOW(6),NOW(6),'public','private location','VERIFIED',NOW(6),NOW(6))", EVENT,DRAFT,USERS[0],CAMPUS)
+        sql(db, "INSERT INTO event (id,source_draft_id,reporter_user_id,campus_id,description,occurred_at,reported_at,public_location_description,exact_location_description,status,created_at,updated_at) VALUES (%s,%s,%s,%s,'smoke',NOW(6),NOW(6),'public','private location','REPORTED',NOW(6),NOW(6))", EVENT,DRAFT,USERS[0],CAMPUS)
         path = '/auth/wechat/rescues/' + EVENT + '/claim'
         body = {'campusId': CAMPUS}
         claim = lambda token, value=body: request(GATEWAY + path, value, {'X-Miniapp-Session': token})
+        expect('unverified event cannot be claimed', 409, claim(TOKENS[0]))
+        admin_list = '/api/v1/admin/rescues'
+        pending = expect('administrator pending events', 200, request(INCIDENT + admin_list + '?campusId=' + CAMPUS + '&status=REPORTED',
+                        headers={'Authorization': 'Bearer ' + signed_admin(admin_list, 'GET')}))
+        assert any(item['eventId'] == EVENT for item in pending['items'])
+        verify_path = admin_list + '/' + EVENT + '/verify'
+        expect('anonymous verification rejected', 401, request(INCIDENT + verify_path, {}))
+        verified = expect('administrator verifies event', 200, request(INCIDENT + verify_path, {},
+                          {'Authorization': 'Bearer ' + signed_admin(verify_path, 'POST')}))
+        assert verified['rescue']['eventStatus'] == 'VERIFIED' and verified['rescue']['rescueStatus'] == 'WAITING_CLAIM'
+        assert sql(db, 'SELECT status FROM event WHERE id=%s', EVENT)[0][0] == 'VERIFIED'
+        expect('repeat verification rejected', 409, request(INCIDENT + verify_path, {},
+               {'Authorization': 'Bearer ' + signed_admin(verify_path, 'POST')}))
         expect('no session', 401, request(GATEWAY+path,body))
         expect('no volunteer', 403, claim(TOKENS[2]))
         expect('wrong campus', 403, claim(TOKENS[0], {'campusId': OTHER_CAMPUS}))

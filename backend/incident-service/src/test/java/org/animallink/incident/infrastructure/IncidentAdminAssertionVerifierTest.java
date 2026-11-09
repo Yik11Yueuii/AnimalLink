@@ -37,13 +37,23 @@ class IncidentAdminAssertionVerifierTest {
         assertThatThrownBy(() -> verifier(KEYS).verify("Bearer " + token("incident-service", "USER", "incident.rescue.read", PATH), "GET", PATH)).isInstanceOf(IncidentAdminAssertionVerifier.Forbidden.class);
         assertThatThrownBy(() -> verifier("").verify("Bearer value", "GET", PATH)).isInstanceOf(IncidentAdminAssertionVerifier.Unavailable.class);
     }
+    @Test void verificationRequiresExactPostPathAndWriteScope() throws Exception {
+        String path = "/api/v1/admin/rescues/00000000-0000-0000-0000-000000000002/verify";
+        String signed = token("incident-service", "GOVERNANCE_ADMIN", "incident.event.verify", path, "POST");
+        assertThat(verifier(KEYS).verify("Bearer " + signed, "POST", path).scope()).isEqualTo("incident.event.verify");
+        assertThatThrownBy(() -> verifier(KEYS).verify("Bearer " + signed, "GET", path)).isInstanceOf(IncidentAdminAssertionVerifier.Rejected.class);
+        assertThatThrownBy(() -> verifier(KEYS).verify("Bearer " + signed, "POST", path.replace("/verify", "/reject"))).isInstanceOf(IncidentAdminAssertionVerifier.Rejected.class);
+        assertThatThrownBy(() -> verifier(KEYS).verify("Bearer " + token("incident-service", "USER", "incident.event.verify", path, "POST"), "POST", path)).isInstanceOf(IncidentAdminAssertionVerifier.Forbidden.class);
+        assertThatThrownBy(() -> verifier(KEYS).verify("Bearer " + token("incident-service", "GOVERNANCE_ADMIN", "incident.rescue.read", path, "POST"), "POST", path)).isInstanceOf(IncidentAdminAssertionVerifier.Forbidden.class);
+    }
     private void assertRejected(String token, String path) { assertThatThrownBy(() -> verifier(KEYS).verify("Bearer " + token, "GET", path)).isInstanceOf(IncidentAdminAssertionVerifier.Rejected.class); }
     private IncidentAdminAssertionVerifier verifier(String keys) { return new IncidentAdminAssertionVerifier("api-gateway", "api-gateway", "incident-service",
             Duration.ofSeconds(30), Duration.ofSeconds(5), 100, keys, Clock.fixed(NOW, ZoneOffset.UTC)); }
-    private String token(String audience, String role, String scope, String path) throws Exception {
+    private String token(String audience, String role, String scope, String path) throws Exception { return token(audience, role, scope, path, "GET"); }
+    private String token(String audience, String role, String scope, String path, String method) throws Exception {
         var claims = new JWTClaimsSet.Builder().issuer("api-gateway").subject("api-gateway").audience(audience).claim("target", audience)
                 .claim("actor_id", "00000000-0000-0000-0000-000000000001").claim("system_role", role).claim("scope", List.of(scope))
-                .claim("request_method", "GET").claim("request_path", path).issueTime(Date.from(NOW)).expirationTime(Date.from(NOW.plusSeconds(15)))
+                .claim("request_method", method).claim("request_path", path).issueTime(Date.from(NOW)).expirationTime(Date.from(NOW.plusSeconds(15)))
                 .jwtID(UUID.randomUUID().toString()).build();
         var jwt = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.HS256).type(JOSEObjectType.JWT).keyID("incident-v1").build(), claims); jwt.sign(new MACSigner(KEY)); return jwt.serialize();
     }

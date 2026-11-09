@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { AuthenticationApiError } from '@/api/authentication'
 import type { RescueGovernanceDataSource } from './dataSource'
 import type { RescueDetail, RescueSearchResult } from './types'
 import { useRescueCatalog } from './useRescueCatalog'
@@ -29,6 +30,7 @@ describe('useRescueCatalog', () => {
     const dataSource: RescueGovernanceDataSource = {
       search: () => (++calls === 1 ? first.promise : second.promise),
       getDetail: async () => { throw new Error('unused') },
+      verify: async () => { throw new Error('unused') },
     }
     const catalog = useRescueCatalog(dataSource)
     const older = catalog.load()
@@ -48,6 +50,7 @@ describe('useRescueCatalog', () => {
     const dataSource: RescueGovernanceDataSource = {
       search: async () => result('list'),
       getDetail: (eventId) => eventId === 'older' ? first.promise : second.promise,
+      verify: async () => { throw new Error('unused') },
     }
     const catalog = useRescueCatalog(dataSource)
     const older = catalog.openDetail('older')
@@ -63,10 +66,65 @@ describe('useRescueCatalog', () => {
     const dataSource: RescueGovernanceDataSource = {
       search: async (criteria) => ({ ...result('item'), page: criteria.page, size: criteria.size }),
       getDetail: async () => { throw new Error('unused') },
+      verify: async () => { throw new Error('unused') },
     }
     const catalog = useRescueCatalog(dataSource)
     catalog.criteria.page = 3
     await catalog.load(true)
     expect(catalog.criteria.page).toBe(1)
+  })
+  it('refreshes the list and detail after verification and blocks another submission', async () => {
+    const reported = { ...result('reported').items[0], rescueStatus: 'REPORTED' as const, eventStatus: 'REPORTED' as const }
+    const verified = { ...reported, rescueStatus: 'WAITING_CLAIM' as const, eventStatus: 'VERIFIED' as const }
+    const detail = { ...reported, claimedAt: null, resultSubmittedAt: null, closedAt: null, progress: [] }
+    let verifyCalls = 0
+    const dataSource: RescueGovernanceDataSource = {
+      search: async () => ({ ...result('reported'), items: [verified] }),
+      getDetail: async () => detail,
+      verify: async () => { verifyCalls++; return { ...detail, ...verified } },
+    }
+    const catalog = useRescueCatalog(dataSource)
+    await catalog.openDetail('reported')
+    await catalog.verify()
+    await catalog.verify()
+    expect(verifyCalls).toBe(1)
+    expect(catalog.detail.value?.eventStatus).toBe('VERIFIED')
+    expect(catalog.items.value[0].rescueStatus).toBe('WAITING_CLAIM')
+    expect(catalog.verifyMessage.value).toContain('已核实')
+  })
+  it('refreshes after a conflicting verification and reports the changed state', async () => {
+    const reported = { ...result('reported').items[0], rescueStatus: 'REPORTED' as const, eventStatus: 'REPORTED' as const }
+    const verified = { ...reported, rescueStatus: 'WAITING_CLAIM' as const, eventStatus: 'VERIFIED' as const }
+    let detailReads = 0
+    const dataSource: RescueGovernanceDataSource = {
+      search: async () => ({ ...result('reported'), items: [verified] }),
+      getDetail: async () => ({ ...(detailReads++ === 0 ? reported : verified), claimedAt: null, resultSubmittedAt: null, closedAt: null, progress: [] }),
+      verify: async () => { throw new AuthenticationApiError('conflict', 409) },
+    }
+    const catalog = useRescueCatalog(dataSource)
+    await catalog.openDetail('reported')
+    await catalog.verify()
+    expect(catalog.verifyError.value).toContain('状态已变化')
+    expect(catalog.detail.value?.eventStatus).toBe('VERIFIED')
+    expect(catalog.items.value[0].eventStatus).toBe('VERIFIED')
+  })
+  it('does not show an old verification failure in a newly opened event', async () => {
+    const old = { ...result('old').items[0], rescueStatus: 'REPORTED' as const, eventStatus: 'REPORTED' as const, claimedAt: null, resultSubmittedAt: null, closedAt: null, progress: [] }
+    const next = { ...old, eventId: 'next' }
+    let reject!: (reason: unknown) => void
+    const failure = new Promise<RescueDetail>((_, fail) => { reject = fail })
+    const dataSource: RescueGovernanceDataSource = {
+      search: async () => result('next'),
+      getDetail: async (id) => id === 'old' ? old : next,
+      verify: async () => failure,
+    }
+    const catalog = useRescueCatalog(dataSource)
+    await catalog.openDetail('old')
+    const verify = catalog.verify()
+    await catalog.openDetail('next')
+    reject(new AuthenticationApiError('conflict', 409))
+    await verify
+    expect(catalog.detail.value?.eventId).toBe('next')
+    expect(catalog.verifyError.value).toBe('')
   })
 })

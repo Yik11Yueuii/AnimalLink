@@ -60,7 +60,7 @@ public class GovernanceReadAssertionSigner {
         String prefix = "incident-service".equals(binding.target()) ? "/incident"
                 : "adoption-service".equals(binding.target()) ? "/adoption" : "";
         boolean permittedBinding = !prefix.isEmpty()
-                && AdminGovernanceReadPolicy.binding(HttpMethod.GET, prefix + binding.downstreamPath())
+                && AdminGovernanceReadPolicy.binding(binding.method(), prefix + binding.downstreamPath())
                 .filter(binding::equals).isPresent();
         if (principal == null || !"GOVERNANCE_ADMIN".equals(principal.systemRole())
                 || !isUuid(principal.userId()) || !permittedBinding
@@ -75,7 +75,7 @@ public class GovernanceReadAssertionSigner {
                     .claim("actor_id", principal.userId())
                     .claim("system_role", principal.systemRole())
                     .claim("scope", Collections.singletonList(binding.scope()))
-                    .claim("request_method", "GET")
+                    .claim("request_method", binding.method().name())
                     .claim("request_path", binding.downstreamPath())
                     .issueTime(Date.from(issuedAt))
                     .expirationTime(Date.from(issuedAt.plus(configuration.lifetime())))
