@@ -129,7 +129,9 @@ def main():
         gateway_verify = GATEWAY + '/incident' + verify_path
         browser_headers = {'Cookie': csrf_cookie + '; ANIMALLINK_ADMIN_SESSION=' + ADMIN_TOKEN,
                            'Origin': ADMIN_ORIGIN, 'Sec-Fetch-Site': 'same-origin'}
-        expect('gateway admin without csrf rejected', 403, request(gateway_verify, {}, browser_headers))
+        csrf_status, _ = request(gateway_verify, {}, browser_headers)
+        print('gateway admin without csrf rejected HTTP', csrf_status, flush=True)
+        assert csrf_status == 403
         assert sql(db, 'SELECT status FROM event WHERE id=%s', EVENT)[0][0] == 'REPORTED'
         browser_headers[csrf['headerName']] = csrf['token']
         verified = expect('gateway session and csrf verifies event', 200, request(gateway_verify, {}, browser_headers))
