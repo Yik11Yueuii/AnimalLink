@@ -89,7 +89,7 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: miniapp/package-lock.json
-      - run: npm ci
+      - run: npm ci --registry=https://registry.npmjs.org --replace-registry-host=always
         working-directory: miniapp
       - run: npm run check
         working-directory: miniapp
@@ -116,7 +116,7 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: governance-web/package-lock.json
-      - run: npm ci
+      - run: npm ci --registry=https://registry.npmjs.org --replace-registry-host=always
         working-directory: governance-web
       - run: npm run typecheck
         working-directory: governance-web
