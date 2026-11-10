@@ -43,7 +43,8 @@ public class GatewaySecurityConfiguration {
                     || AdminAuthenticationController.LOGOUT_PATH.equals(path)))
                     || AdminCommunityReviewWritePolicy.matches(exchange.getRequest().getMethod(), path)
                     || AdminGovernanceReadPolicy.binding(exchange.getRequest().getMethod(), path)
-                            .filter(binding -> AdminGovernanceReadPolicy.INCIDENT_VERIFY_SCOPE.equals(binding.scope()))
+                            .filter(binding -> AdminGovernanceReadPolicy.INCIDENT_VERIFY_SCOPE.equals(binding.scope())
+                                    || "adoption-service".equals(binding.target()))
                             .isPresent();
             return protectedMutation
                     ? ServerWebExchangeMatcher.MatchResult.match()

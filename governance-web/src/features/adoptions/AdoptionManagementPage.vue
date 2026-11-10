@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import type { AdoptionGovernanceDataSource } from './dataSource'
 import { useAdoptionCatalog } from './useAdoptionCatalog'
 import {
@@ -12,6 +12,44 @@ import {
 
 const props = defineProps<{ dataSource: AdoptionGovernanceDataSource }>()
 const catalog = useAdoptionCatalog(props.dataSource)
+const selection = ref<{ selectionId: string; applicationId: string; status: string } | null>(null)
+const handover = ref<{ handoverId: string; status: string; scheduledAt: string; completedAt: string | null } | null>(null)
+const workflowError = ref(''), workflowMessage = ref(''), busy = ref(false)
+const reviewComment = ref(''), scheduledLocal = ref(''), cancelReason = ref('')
+let workflowGeneration = 0
+const refreshWorkflow = async (applicationId: string) => {
+  const generation = ++workflowGeneration
+  const current = catalog.detail.value
+  if (!current || current.applicationId !== applicationId || !props.dataSource.selection) return
+  workflowError.value = ''; selection.value = null; handover.value = null
+  try {
+    const selected = await props.dataSource.selection(current.listingId)
+    const currentHandover = selected && props.dataSource.handover ? await props.dataSource.handover(selected.selectionId) : null
+    if (generation !== workflowGeneration) return
+    selection.value = selected; handover.value = currentHandover
+  } catch { if (generation === workflowGeneration) workflowError.value = '选定或交接状态暂不可用，请刷新后核对。' }
+}
+watch(() => catalog.detail.value?.applicationId, (id) => { workflowGeneration++; selection.value = null; handover.value = null; workflowMessage.value = ''; workflowError.value = ''; if (id) void refreshWorkflow(id) })
+const act = async (operation: () => Promise<void>) => {
+  const id = catalog.detail.value?.applicationId
+  if (!id || busy.value) return
+  busy.value = true; workflowError.value = ''; workflowMessage.value = ''
+  let succeeded = false
+  try { await operation(); succeeded = true }
+  catch { /* The result may have committed; read it again before another action. */ }
+  finally {
+    if (catalog.detail.value?.applicationId === id) {
+      await catalog.openDetail(id)
+      await refreshWorkflow(id)
+      if (catalog.detail.value?.applicationId === id) {
+        if (succeeded) workflowMessage.value = '操作已提交，状态已从服务端刷新。'
+        else workflowError.value = '操作结果未确认，请核对刷新后的状态；请勿盲目重试。'
+      }
+    }
+    await catalog.load()
+    busy.value = false
+  }
+}
 const drawerSize = 'min(660px, 100vw)'
 const totalPages = computed(() => Math.max(1, Math.ceil(catalog.total.value / catalog.criteria.size)))
 const statusOrder: AdoptionApplicationStatus[] = ['SUBMITTED', 'APPROVED', 'REJECTED', 'WITHDRAWN']
@@ -138,8 +176,28 @@ onMounted(() => { void catalog.load() })
           <dl class="detail-grid"><div><dt>Listing ID</dt><dd><code>{{ catalog.detail.value.listingId }}</code></dd></div><div><dt>Animal ID</dt><dd><code>{{ catalog.detail.value.listing.animalId }}</code></dd></div><div><dt>Listing 状态</dt><dd>{{ adoptionListingStatusLabels[catalog.detail.value.listing.status] }} · {{ catalog.detail.value.listing.status }}</dd></div><div><dt>发布时间</dt><dd>{{ formatTime(catalog.detail.value.listing.publishedAt) }}</dd></div><div><dt>关闭时间</dt><dd>{{ formatTime(catalog.detail.value.listing.closedAt) }}</dd></div></dl>
           <div class="detail-copy"><span>Listing 说明</span><p>{{ catalog.detail.value.listing.description }}</p></div>
         </section>
-        <section class="approved-note" v-if="catalog.detail.value.status === 'APPROVED'"><strong>批准不等于完成领养</strong><span>当前治理 DTO 不提供“已选定”字段。候选人选定、交接完成与 AdoptionRelation 激活需要后续独立流程确认。</span></section>
-        <section class="pending-note"><strong>后续模块尚未接入</strong><span>本阶段仅提供只读申请预览；交接管理、领养关系与回访不在本页面伪造展示，也不提供批准、拒绝或选定按钮。</span></section>
+        <section v-if="dataSource.review" class="detail-section">
+          <h3>管理员处理</h3>
+          <el-alert v-if="workflowError" type="warning" :title="workflowError" :closable="false" />
+          <el-alert v-if="workflowMessage" type="success" :title="workflowMessage" :closable="false" />
+          <template v-if="catalog.detail.value.status === 'SUBMITTED'">
+            <el-input v-model="reviewComment" type="textarea" :maxlength="500" placeholder="审核意见；拒绝时必须填写原因" />
+            <el-popconfirm title="确认批准此申请？" @confirm="act(() => dataSource.review!(catalog.detail.value!.applicationId, 'approve', reviewComment))"><template #reference><el-button type="primary" :disabled="busy">批准</el-button></template></el-popconfirm>
+            <el-popconfirm title="确认拒绝此申请？" @confirm="act(() => dataSource.review!(catalog.detail.value!.applicationId, 'reject', reviewComment))"><template #reference><el-button type="danger" :disabled="busy || !reviewComment.trim()">拒绝</el-button></template></el-popconfirm>
+          </template>
+          <template v-if="catalog.detail.value.status === 'APPROVED'">
+            <p v-if="selection">最终候选：{{ selection.applicationId === catalog.detail.value.applicationId ? '本申请' : '同 Listing 的其他申请' }}</p>
+            <p v-else-if="!workflowError">尚无最终候选人；审核通过不代表已选定。</p>
+            <el-popconfirm v-if="!selection && dataSource.select" title="确认将本申请选为最终候选人？" @confirm="act(() => dataSource.select!(catalog.detail.value!.listingId, catalog.detail.value!.applicationId))"><template #reference><el-button :disabled="busy || !!workflowError">选定本申请</el-button></template></el-popconfirm>
+          </template>
+          <template v-if="selection && selection.applicationId === catalog.detail.value.applicationId">
+            <p v-if="handover">交接状态：{{ handover.status }}；计划时间：{{ formatTime(handover.scheduledAt) }}；完成时间：{{ formatTime(handover.completedAt) }}</p>
+            <template v-else-if="dataSource.initiate && !workflowError"><el-input v-model="scheduledLocal" type="datetime-local" /><el-popconfirm title="确认发起交接？" @confirm="act(() => dataSource.initiate!(selection!.selectionId, new Date(scheduledLocal).toISOString()))"><template #reference><el-button :disabled="busy || !scheduledLocal">发起交接</el-button></template></el-popconfirm></template>
+            <template v-if="handover?.status === 'PENDING'"><el-popconfirm title="确认交接已经实际完成？" @confirm="act(() => dataSource.complete!(handover!.handoverId))"><template #reference><el-button type="success" :disabled="busy">确认完成交接</el-button></template></el-popconfirm><el-input v-model="cancelReason" :maxlength="500" placeholder="取消原因" /><el-popconfirm title="确认取消待交接记录？" @confirm="act(() => dataSource.cancel!(handover!.handoverId, cancelReason))"><template #reference><el-button type="danger" :disabled="busy || !cancelReason.trim()">取消交接</el-button></template></el-popconfirm></template>
+            <p v-if="handover?.status === 'COMPLETED'">交接已完成，领养关系由服务端事务创建。</p>
+            <p v-if="handover?.status === 'CANCELLED'">交接已取消。</p>
+          </template>
+        </section>
       </template>
     </el-drawer>
   </section>
