@@ -118,6 +118,22 @@ def main():
   assert sql(db,'SELECT completed_by_user_id FROM adoption_handover WHERE id=%s',handover['handoverId'])[0][0]==ADMIN
   assert any(row['applicationId']==first and row['status']=='COMPLETED' for row in check('applicant sees completion',200,req(handovers,headers=h(0))))
   print('DB: HTTP review, selection, handover and ACTIVE relation verified',flush=True)
+  animal3=str(uuid.uuid4());sql(db,'USE animallink_animal');sql(db,"INSERT INTO animal(id,campus_id,display_name,species) VALUES (%s,%s,'cancel animal','CAT')",animal3,CAMPUS)
+  listing3=str(uuid.uuid4());sql(db,'USE animallink_adoption');sql(db,"INSERT INTO adoption_listing(id,animal_id,status,title,description,publisher_user_id,created_at,updated_at,published_at) VALUES (%s,%s,'PUBLISHED','Cancel flow','Description',%s,NOW(6),NOW(6),NOW(6))",listing3,animal3,USERS[1])
+  rejected=check('rejected applicant creates',200,req(root+'/listings/'+listing3+'/applications',{'message':'reject me'},h(2)))['applicationId']
+  approved=check('cancel flow applicant creates',200,req(root+'/listings/'+listing3+'/applications',{'message':'approve me'},h(0)))['applicationId']
+  check('admin rejects application',200,req(base+'/applications/'+rejected+'/reject',{'reason':'not suitable'},admin_headers))
+  assert sql(db,'SELECT status FROM adoption_application WHERE id=%s',rejected)[0][0]=='REJECTED'
+  check('cannot select rejected application',409,req(base+'/listings/'+listing3+'/selection',{'applicationId':rejected},admin_headers))
+  check('admin approves cancel flow',200,req(base+'/applications/'+approved+'/approve',{'comment':'qualified'},admin_headers))
+  selected3=check('admin selects cancel flow',200,req(base+'/listings/'+listing3+'/selection',{'applicationId':approved},admin_headers))
+  pending3=check('admin initiates cancel flow',200,req(base+'/selections/'+selected3['selectionId']+'/handover',{'scheduledAt':scheduled},admin_headers))
+  cancelled3=check('admin cancels pending handover',200,req(base+'/handovers/'+pending3['handoverId']+'/cancel',{'reason':'arrangement withdrawn'},admin_headers))
+  assert cancelled3['status']=='CANCELLED'
+  assert check('admin reads cancelled selection',200,req(base+'/listings/'+listing3+'/selection',headers=admin_headers))['status']=='CANCELLED'
+  assert check('admin reads cancelled handover',200,req(base+'/selections/'+selected3['selectionId']+'/handover',headers=admin_headers))['status']=='CANCELLED'
+  assert sql(db,'SELECT COUNT(*) FROM adoption_relation WHERE handover_id=%s',pending3['handoverId'])[0][0]==0
+  print('DB: HTTP reject and cancelled handover verified; no relation for cancelled handover',flush=True)
  finally:
   for p in processes:
    if p.poll() is None:p.terminate()

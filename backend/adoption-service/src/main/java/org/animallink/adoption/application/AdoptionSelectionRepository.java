@@ -10,6 +10,7 @@ public interface AdoptionSelectionRepository {
     Optional<AdoptionSelection> findById(String id);
     Optional<AdoptionSelection> findByIdForUpdate(String id);
     Optional<AdoptionSelection> findActiveByListingId(String listingId);
+    Optional<AdoptionSelection> findLatestByListingId(String listingId);
     boolean cancel(String id, String userId, java.time.Instant at, String reason);
     Set<String> findActiveApplicationIds(Collection<String> applicationIds);
 }

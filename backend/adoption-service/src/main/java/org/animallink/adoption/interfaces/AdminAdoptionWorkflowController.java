@@ -45,7 +45,7 @@ public class AdminAdoptionWorkflowController {
     }
     @GetMapping("/listings/{id}/selection")
     public Selection selection(HttpServletRequest request, @PathVariable("id") String id) {
-        admin(request); return Selection.from(selections.activeSelection(id));
+        admin(request); return Selection.from(selections.latestSelection(id));
     }
     @PostMapping("/selections/{id}/handover")
     public Handover initiate(HttpServletRequest request, @PathVariable("id") String id, @Valid @RequestBody Schedule body) {

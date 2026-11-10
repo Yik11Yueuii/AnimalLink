@@ -186,13 +186,13 @@ onMounted(() => { void catalog.load() })
             <el-popconfirm title="确认拒绝此申请？" @confirm="act(() => dataSource.review!(catalog.detail.value!.applicationId, 'reject', reviewComment))"><template #reference><el-button type="danger" :disabled="busy || !reviewComment.trim()">拒绝</el-button></template></el-popconfirm>
           </template>
           <template v-if="catalog.detail.value.status === 'APPROVED'">
-            <p v-if="selection">最终候选：{{ selection.applicationId === catalog.detail.value.applicationId ? '本申请' : '同 Listing 的其他申请' }}</p>
+            <p v-if="selection">最终候选：{{ selection.applicationId === catalog.detail.value.applicationId ? '本申请' : '同 Listing 的其他申请' }}；选定状态：{{ selection.status }}</p>
             <p v-else-if="!workflowError">尚无最终候选人；审核通过不代表已选定。</p>
-            <el-popconfirm v-if="!selection && dataSource.select" title="确认将本申请选为最终候选人？" @confirm="act(() => dataSource.select!(catalog.detail.value!.listingId, catalog.detail.value!.applicationId))"><template #reference><el-button :disabled="busy || !!workflowError">选定本申请</el-button></template></el-popconfirm>
+            <el-popconfirm v-if="!selection && catalog.detail.value.listing.status === 'PUBLISHED' && dataSource.select" title="确认将本申请选为最终候选人？" @confirm="act(() => dataSource.select!(catalog.detail.value!.listingId, catalog.detail.value!.applicationId))"><template #reference><el-button :disabled="busy || !!workflowError">选定本申请</el-button></template></el-popconfirm>
           </template>
           <template v-if="selection && selection.applicationId === catalog.detail.value.applicationId">
             <p v-if="handover">交接状态：{{ handover.status }}；计划时间：{{ formatTime(handover.scheduledAt) }}；完成时间：{{ formatTime(handover.completedAt) }}</p>
-            <template v-else-if="dataSource.initiate && !workflowError"><el-input v-model="scheduledLocal" type="datetime-local" /><el-popconfirm title="确认发起交接？" @confirm="act(() => dataSource.initiate!(selection!.selectionId, new Date(scheduledLocal).toISOString()))"><template #reference><el-button :disabled="busy || !scheduledLocal">发起交接</el-button></template></el-popconfirm></template>
+            <template v-else-if="selection.status === 'ACTIVE' && dataSource.initiate && !workflowError"><el-input v-model="scheduledLocal" type="datetime-local" /><el-popconfirm title="确认发起交接？" @confirm="act(() => dataSource.initiate!(selection!.selectionId, new Date(scheduledLocal).toISOString()))"><template #reference><el-button :disabled="busy || !scheduledLocal">发起交接</el-button></template></el-popconfirm></template>
             <template v-if="handover?.status === 'PENDING'"><el-popconfirm title="确认交接已经实际完成？" @confirm="act(() => dataSource.complete!(handover!.handoverId))"><template #reference><el-button type="success" :disabled="busy">确认完成交接</el-button></template></el-popconfirm><el-input v-model="cancelReason" :maxlength="500" placeholder="取消原因" /><el-popconfirm title="确认取消待交接记录？" @confirm="act(() => dataSource.cancel!(handover!.handoverId, cancelReason))"><template #reference><el-button type="danger" :disabled="busy || !cancelReason.trim()">取消交接</el-button></template></el-popconfirm></template>
             <p v-if="handover?.status === 'COMPLETED'">交接已完成，领养关系由服务端事务创建。</p>
             <p v-if="handover?.status === 'CANCELLED'">交接已取消。</p>
