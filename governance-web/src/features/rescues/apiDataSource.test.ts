@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { gatewayClient } from '@/api/client'
 import { rescueApiDataSource } from './apiDataSource'
+import { authenticatedAdminMutation } from '@/api/authentication'
+
+vi.mock('@/api/authentication', () => ({ authenticatedAdminMutation: vi.fn() }))
 
 const rescue = { eventId: 'event', caseId: null, campusId: 'campus', animalId: 'animal-list', rescueStatus: 'WAITING_CLAIM',
   eventStatus: 'VERIFIED', caseStatus: null, claimStatus: null, hasOwner: false, abnormalitySummary: null,
@@ -34,5 +37,11 @@ describe('rescue API data source', () => {
       .mockRejectedValueOnce(new Error('public animal unavailable'))
     const result = await rescueApiDataSource.search({ keyword: '', campusId: 'campus', rescueStatus: '', sort: 'UPDATED_DESC', page: 1, size: 6 })
     expect(result.items[0]).toMatchObject({ eventId: 'event', animal: null })
+  })
+  it('uses the CSRF protected exact admin route and maps the verified detail', async () => {
+    vi.mocked(authenticatedAdminMutation).mockResolvedValueOnce({ rescue: { ...rescue, eventStatus: 'VERIFIED', rescueStatus: 'WAITING_CLAIM', animalId: null }, claimedAt: null, resultSubmittedAt: null, closedAt: null, progress: [] })
+    const detail = await rescueApiDataSource.verify('event')
+    expect(authenticatedAdminMutation).toHaveBeenCalledWith('/incident/api/v1/admin/rescues/event/verify', undefined)
+    expect(detail.eventStatus).toBe('VERIFIED')
   })
 })

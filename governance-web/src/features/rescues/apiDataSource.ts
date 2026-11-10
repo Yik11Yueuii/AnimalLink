@@ -1,4 +1,5 @@
 import { gatewayClient } from '@/api/client'
+import { authenticatedAdminMutation } from '@/api/authentication'
 import type { CampusOption } from '@/features/animals/types'
 import type { RescueGovernanceDataSource } from './dataSource'
 import type { RescueAnimal, RescueDetail, RescueListItem, RescueProgress, RescueSearchResult } from './types'
@@ -79,6 +80,13 @@ export const rescueApiDataSource: RescueGovernanceDataSource = {
   async getDetail(eventId): Promise<RescueDetail> {
     const { data } = await gatewayClient.get(`/incident/api/v1/admin/rescues/${encodeURIComponent(eventId)}`)
     const source = record(data); const base = item(source.rescue); if (!Array.isArray(source.progress)) throw new Error('救助详情进度响应无效。')
+    return { ...await withAnimal(base), claimedAt: nullableText(source.claimedAt, 'claimedAt'), resultSubmittedAt: nullableText(source.resultSubmittedAt, 'resultSubmittedAt'),
+      closedAt: nullableText(source.closedAt, 'closedAt'), progress: source.progress.map(progress) }
+  },
+  async verify(eventId): Promise<RescueDetail> {
+    const data = await authenticatedAdminMutation<unknown>(`/incident/api/v1/admin/rescues/${encodeURIComponent(eventId)}/verify`, undefined)
+    const source = record(data); const base = item(source.rescue)
+    if (!Array.isArray(source.progress)) throw new Error('核实响应无效。')
     return { ...await withAnimal(base), claimedAt: nullableText(source.claimedAt, 'claimedAt'), resultSubmittedAt: nullableText(source.resultSubmittedAt, 'resultSubmittedAt'),
       closedAt: nullableText(source.closedAt, 'closedAt'), progress: source.progress.map(progress) }
   },

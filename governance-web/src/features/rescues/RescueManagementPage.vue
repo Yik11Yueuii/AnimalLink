@@ -43,7 +43,7 @@ onMounted(() => { if (catalog.criteria.campusId) void catalog.load() })
       <div>
         <p class="eyebrow">EVENT / CASE GOVERNANCE</p>
         <h1 id="rescue-title">救助事件与 Case</h1>
-        <p>集中查看已核实事件、Case 处理进度与结案结果。页面进度为汇总展示，原始状态始终单独保留。</p>
+        <p>查看待核实事件，人工核实后交由志愿者认领；已认领 Case 的进度与结果继续在此查看。</p>
       </div>
       <div class="result-summary" aria-live="polite"><strong>{{ catalog.total.value }}</strong><span>条匹配事件</span></div>
     </header>
@@ -139,6 +139,13 @@ onMounted(() => { if (catalog.criteria.campusId) void catalog.load() })
           <h3>事件信息</h3>
           <dl class="detail-grid"><div><dt>Campus</dt><dd>{{ campusLabel(catalog.detail.value.campusId) }}</dd></div><div><dt>关联 Animal</dt><dd>{{ animalName(catalog.detail.value) }}</dd></div><div><dt>Event 原始状态</dt><dd>{{ eventStatusLabels[catalog.detail.value.eventStatus] }} · {{ catalog.detail.value.eventStatus }}</dd></div><div><dt>发生时间</dt><dd>{{ formatTime(catalog.detail.value.occurredAt) }}</dd></div><div><dt>上报时间</dt><dd>{{ formatTime(catalog.detail.value.reportedAt) }}</dd></div><div><dt>公开位置</dt><dd>{{ catalog.detail.value.publicLocationDescription || '未提供' }}</dd></div></dl>
           <div class="detail-copy"><span>事件描述</span><p>{{ catalog.detail.value.description }}</p></div>
+          <div v-if="catalog.detail.value.eventStatus === 'REPORTED'" class="review-action">
+            <el-popconfirm title="确认已核对事件信息并核实？核实后志愿者可认领。" confirm-button-text="确认核实" cancel-button-text="取消" @confirm="catalog.verify()">
+              <template #reference><el-button type="primary" :loading="catalog.verifying.value" :disabled="catalog.verifying.value">核实事件</el-button></template>
+            </el-popconfirm>
+          </div>
+          <el-alert v-if="catalog.verifyMessage.value" type="success" :title="catalog.verifyMessage.value" :closable="false" />
+          <el-alert v-if="catalog.verifyError.value" type="warning" :title="catalog.verifyError.value" :closable="false" />
         </section>
         <section class="detail-section">
           <h3>Case 与结果</h3>
@@ -153,7 +160,7 @@ onMounted(() => { if (catalog.criteria.campusId) void catalog.load() })
           <el-timeline v-if="catalog.detail.value.progress.length"><el-timeline-item v-for="entry in catalog.detail.value.progress" :key="entry.id" :timestamp="formatTime(entry.occurredAt)" color="#ef7d5b"><strong>{{ entry.resultCode ? resultCodeLabels[entry.resultCode] : '处理记录' }}</strong><p>{{ entry.description }}</p></el-timeline-item></el-timeline>
           <div v-else class="inline-empty"><strong>暂无进度记录</strong><span>当前 Case 尚未提交 Case Action。</span></div>
         </section>
-        <section class="pending-note"><strong>媒体与治理操作尚未接入</strong><span>本阶段仅展示公开位置和只读契约，不提供审核、认领、处理或结案按钮。</span></section>
+        <section class="pending-note"><strong>其他治理操作尚未接入</strong><span>本页仅提供 Event 核实。认领、处理与结案由授权志愿者在小程序完成。</span></section>
       </template>
     </el-drawer>
   </section>

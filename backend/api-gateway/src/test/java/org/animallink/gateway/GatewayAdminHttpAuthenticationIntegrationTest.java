@@ -41,6 +41,20 @@ class GatewayAdminHttpAuthenticationIntegrationTest {
     @MockBean TrustedClientSourceResolver trustedClientSourceResolver;
 
     @Test
+    void eventVerificationRequiresBrowserCsrfAndAdminSession() {
+        String path = "/incident/api/v1/admin/rescues/00000000-0000-0000-0000-000000000001/verify";
+        when(authenticationClient.validate(SESSION_TOKEN)).thenReturn(Mono.just(principal()));
+        client.post().uri(path).header(HttpHeaders.ORIGIN, ORIGIN).header("Sec-Fetch-Site", "same-origin")
+                .cookie("ANIMALLINK_ADMIN_SESSION", SESSION_TOKEN)
+                .exchange().expectStatus().isForbidden();
+        CsrfMaterial csrf = csrf();
+        client.post().uri(path).header(HttpHeaders.ORIGIN, ORIGIN).header("Sec-Fetch-Site", "same-origin")
+                .cookie(csrf.cookie().getName(), csrf.cookie().getValue())
+                .header(csrf.headerName(), csrf.token())
+                .exchange().expectStatus().isUnauthorized();
+    }
+
+    @Test
     void csrfBootstrapAndLoginIssueOnlyHardenedCookieAndMinimalJson() {
         CsrfMaterial csrf = csrf();
         when(trustedClientSourceResolver.resolve(org.mockito.ArgumentMatchers.any()))

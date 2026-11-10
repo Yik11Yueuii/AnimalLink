@@ -8,6 +8,9 @@ CAMPUS = '22000000-0000-4000-8000-000000000001'
 OTHER_CAMPUS = '22000000-0000-4000-8000-000000000002'
 USERS = [str(uuid.uuid4()) for _ in range(3)]
 TOKENS = [base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip('=') for _ in USERS]
+ADMIN, ADMIN_IDENTITY = str(uuid.uuid4()), str(uuid.uuid4())
+ADMIN_TOKEN = base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip('=')
+ADMIN_ORIGIN = 'https://admin.animallink.test'
 EVENT, DRAFT = str(uuid.uuid4()), str(uuid.uuid4())
 KEY = os.urandom(32)
 KEYS = 'test=' + base64.b64encode(KEY).decode()
@@ -52,6 +55,18 @@ def signed(path, actor, key=KEY):
     return (value + b'.' + b64(hmac.new(key, value, hashlib.sha256).digest())).decode()
 
 
+def signed_admin(path, method):
+    b64 = lambda x: base64.urlsafe_b64encode(x).rstrip(b'=')
+    now = int(time.time())
+    header = {'alg': 'HS256', 'typ': 'JWT', 'kid': 'test'}
+    claims = {'iss': 'api-gateway', 'sub': 'api-gateway', 'aud': ['incident-service'], 'target': 'incident-service',
+              'actor_id': str(uuid.uuid4()), 'system_role': 'GOVERNANCE_ADMIN',
+              'scope': ['incident.event.verify' if method == 'POST' else 'incident.rescue.read'],
+              'request_method': method, 'request_path': path, 'iat': now, 'exp': now + 20, 'jti': str(uuid.uuid4())}
+    value = b64(json.dumps(header, separators=(',', ':')).encode()) + b'.' + b64(json.dumps(claims, separators=(',', ':')).encode())
+    return (value + b'.' + b64(hmac.new(KEY, value, hashlib.sha256).digest())).decode()
+
+
 def expect(label, expected, result):
     code, body = result
     print(label, 'HTTP', code, flush=True)
@@ -74,7 +89,10 @@ def main():
                   '--spring.cloud.discovery.client.simple.instances.incident-service[0].uri=' + INCIDENT,
                   '--management.health.rabbit.enabled=false',
                   '--spring.flyway.locations=classpath:db/migration', '--management.endpoint.health.probes.enabled=true',
-                  '--animallink.authentication.incident-miniapp-assertion.keys=' + KEYS]
+                  '--animallink.authentication.incident-miniapp-assertion.keys=' + KEYS,
+                  '--animallink.authentication.incident-admin-assertion.keys=' + KEYS,
+                  '--animallink.authentication.incident-admin-assertion.current-key-id=test',
+                  '--animallink.authentication.browser.allowed-origins=' + ADMIN_ORIGIN]
         for name, port in [('identity-service', 18081), ('incident-service', 18083), ('api-gateway', 18080)]:
             log = open(name + '-claim-smoke.log', 'w+', encoding='utf8'); logs.append(log)
             args = ['java', '-jar', 'backend/' + name + '/target/' + name + '-0.1.0-SNAPSHOT.jar', '--server.port=' + str(port), *common,
@@ -84,16 +102,43 @@ def main():
             processes.append(subprocess.Popen(args, env=env, stdout=log, stderr=subprocess.STDOUT))
         for url, proc in zip((IDENTITY, INCIDENT, GATEWAY), processes): ready(url, proc)
         sql(db, 'USE animallink_identity')
+        sql(db, "INSERT INTO `user` (id,display_name,account_status,system_role) VALUES (%s,'test admin','ACTIVE','GOVERNANCE_ADMIN')", ADMIN)
+        sql(db, "INSERT INTO external_identity (id,user_id,provider,provider_tenant,provider_subject) VALUES (%s,%s,'ADMIN_PASSWORD','','smoke.admin')", ADMIN_IDENTITY, ADMIN)
+        sql(db, "INSERT INTO admin_password_credential (external_identity_id,password_hash,password_algorithm,credential_version) VALUES (%s,%s,'ARGON2ID_V1',1)", ADMIN_IDENTITY, 'unused-test-hash-value-for-session')
+        sql(db, "INSERT INTO admin_session (id,user_id,client_type,token_hash,credential_version,created_at,last_seen_at,idle_expires_at,absolute_expires_at) VALUES (%s,%s,'ADMIN_WEB',%s,1,NOW(6),NOW(6),DATE_ADD(NOW(6),INTERVAL 1 DAY),DATE_ADD(NOW(6),INTERVAL 2 DAY))", str(uuid.uuid4()), ADMIN, hashlib.sha256(ADMIN_TOKEN.encode()).digest())
         for i, user in enumerate(USERS):
             sql(db, "INSERT INTO `user` (id,display_name,account_status,system_role) VALUES (%s,%s,'ACTIVE','USER')", user, 'smoke')
             sql(db, "INSERT INTO wechat_user_session (id,user_id,token_hash,created_at,last_seen_at,idle_expires_at,absolute_expires_at) VALUES (%s,%s,%s,NOW(6),NOW(6),DATE_ADD(NOW(6),INTERVAL 1 DAY),DATE_ADD(NOW(6),INTERVAL 2 DAY))", str(uuid.uuid4()), user, hashlib.sha256(TOKENS[i].encode()).digest())
             if i < 2: sql(db, "INSERT INTO volunteer_membership (id,user_id,campus_id,status) VALUES (%s,%s,%s,'ACTIVE')", str(uuid.uuid4()), user, CAMPUS)
         sql(db, 'USE animallink_incident')
         sql(db, "INSERT INTO event_draft (id,user_id,campus_id,description,occurred_at,public_location_description,created_at,updated_at) VALUES (%s,%s,%s,'smoke',NOW(6),'public',NOW(6),NOW(6))", DRAFT, USERS[0], CAMPUS)
-        sql(db, "INSERT INTO event (id,source_draft_id,reporter_user_id,campus_id,description,occurred_at,reported_at,public_location_description,exact_location_description,status,created_at,updated_at) VALUES (%s,%s,%s,%s,'smoke',NOW(6),NOW(6),'public','private location','VERIFIED',NOW(6),NOW(6))", EVENT,DRAFT,USERS[0],CAMPUS)
+        sql(db, "INSERT INTO event (id,source_draft_id,reporter_user_id,campus_id,description,occurred_at,reported_at,public_location_description,exact_location_description,status,created_at,updated_at) VALUES (%s,%s,%s,%s,'smoke',NOW(6),NOW(6),'public','private location','REPORTED',NOW(6),NOW(6))", EVENT,DRAFT,USERS[0],CAMPUS)
         path = '/auth/wechat/rescues/' + EVENT + '/claim'
         body = {'campusId': CAMPUS}
         claim = lambda token, value=body: request(GATEWAY + path, value, {'X-Miniapp-Session': token})
+        expect('unverified event cannot be claimed', 409, claim(TOKENS[0]))
+        admin_list = '/api/v1/admin/rescues'
+        pending = expect('administrator pending events', 200, request(INCIDENT + admin_list + '?campusId=' + CAMPUS + '&status=REPORTED',
+                        headers={'Authorization': 'Bearer ' + signed_admin(admin_list, 'GET')}))
+        assert any(item['eventId'] == EVENT for item in pending['items'])
+        verify_path = admin_list + '/' + EVENT + '/verify'
+        expect('anonymous verification rejected', 401, request(INCIDENT + verify_path, {}))
+        with urllib.request.urlopen(GATEWAY + '/auth/admin/csrf', timeout=15) as response:
+            csrf = json.loads(response.read())
+            csrf_cookie = response.headers.get('Set-Cookie').split(';', 1)[0]
+        gateway_verify = GATEWAY + '/incident' + verify_path
+        browser_headers = {'Cookie': csrf_cookie + '; ANIMALLINK_ADMIN_SESSION=' + ADMIN_TOKEN,
+                           'Origin': ADMIN_ORIGIN, 'Sec-Fetch-Site': 'same-origin'}
+        csrf_status, _ = request(gateway_verify, {}, browser_headers)
+        print('gateway admin without csrf rejected HTTP', csrf_status, flush=True)
+        assert csrf_status == 403
+        assert sql(db, 'SELECT status FROM event WHERE id=%s', EVENT)[0][0] == 'REPORTED'
+        browser_headers[csrf['headerName']] = csrf['token']
+        verified = expect('gateway session and csrf verifies event', 200, request(gateway_verify, {}, browser_headers))
+        assert verified['rescue']['eventStatus'] == 'VERIFIED' and verified['rescue']['rescueStatus'] == 'WAITING_CLAIM'
+        assert sql(db, 'SELECT status FROM event WHERE id=%s', EVENT)[0][0] == 'VERIFIED'
+        expect('repeat verification rejected', 409, request(INCIDENT + verify_path, {},
+               {'Authorization': 'Bearer ' + signed_admin(verify_path, 'POST')}))
         expect('no session', 401, request(GATEWAY+path,body))
         expect('no volunteer', 403, claim(TOKENS[2]))
         expect('wrong campus', 403, claim(TOKENS[0], {'campusId': OTHER_CAMPUS}))

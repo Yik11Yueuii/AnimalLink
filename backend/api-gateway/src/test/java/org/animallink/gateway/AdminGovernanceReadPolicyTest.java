@@ -21,6 +21,9 @@ class AdminGovernanceReadPolicyTest {
             assertThat(AdminGovernanceReadPolicy.binding(HttpMethod.GET, path)).isEmpty();
         }
         assertThat(AdminGovernanceReadPolicy.binding(HttpMethod.POST, "/incident/api/v1/admin/rescues")).isEmpty();
+        assertThat(AdminGovernanceReadPolicy.binding(HttpMethod.POST, "/incident/api/v1/admin/rescues/" + id + "/verify").orElseThrow().scope()).isEqualTo("incident.event.verify");
+        assertThat(AdminGovernanceReadPolicy.binding(HttpMethod.GET, "/incident/api/v1/admin/rescues/" + id + "/verify")).isEmpty();
+        assertThat(AdminGovernanceReadPolicy.binding(HttpMethod.POST, "/incident/api/v1/admin/rescues/" + id + "/reject")).isEmpty();
         assertThat(AdminGovernanceReadPolicy.binding(HttpMethod.HEAD, "/adoption/api/v1/admin/applications")).isEmpty();
     }
 }

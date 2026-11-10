@@ -66,7 +66,10 @@ public class AdminAuthenticationRequestPolicyFilter implements WebFilter, Ordere
         String path = exchange.getRequest().getURI().getPath();
         return AdminAuthenticationController.LOGIN_PATH.equals(path)
                 || AdminAuthenticationController.LOGOUT_PATH.equals(path)
-                || AdminCommunityReviewWritePolicy.matches(exchange.getRequest().getMethod(), path);
+                || AdminCommunityReviewWritePolicy.matches(exchange.getRequest().getMethod(), path)
+                || AdminGovernanceReadPolicy.binding(exchange.getRequest().getMethod(), path)
+                        .filter(binding -> AdminGovernanceReadPolicy.INCIDENT_VERIFY_SCOPE.equals(binding.scope()))
+                        .isPresent();
     }
 
     private static String configuredOrigin(String value) {

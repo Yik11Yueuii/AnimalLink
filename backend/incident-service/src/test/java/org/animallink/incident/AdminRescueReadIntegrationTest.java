@@ -8,6 +8,7 @@ import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 
 import org.animallink.incident.application.AdminRescueReadService;
+import org.animallink.incident.api.EventController;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +21,8 @@ import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -27,9 +30,14 @@ import java.util.Base64;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -50,6 +58,7 @@ class AdminRescueReadIntegrationTest {
         registry.add("animallink.authentication.incident-admin-assertion.keys", () -> "incident-v1=" + Base64.getEncoder().encodeToString(KEY));
     }
     @Autowired JdbcTemplate jdbc; @Autowired AdminRescueReadService service; @Autowired MockMvc mvc;
+    @Autowired EventController events; @Autowired PlatformTransactionManager transactionManager;
     @BeforeEach void seed() {
         jdbc.update("DELETE FROM case_action"); jdbc.update("DELETE FROM animal_case"); jdbc.update("DELETE FROM event"); jdbc.update("DELETE FROM event_draft");
         Timestamp now = Timestamp.from(Instant.parse("2026-10-28T01:00:00Z"));
@@ -98,6 +107,61 @@ class AdminRescueReadIntegrationTest {
         assertThat(service.search(CAMPUS, "RESOLVED", null, "UPDATED_DESC", 0, 20).items())
                 .extracting(item -> item.eventId()).containsExactly(resolved);
     }
+    @Test void trustedVerificationMovesReportedEventIntoClaimableQueryAndRejectsRepeat() throws Exception {
+        String reported = seedAdditionalEvent("REPORTED", null, null);
+        String path = "/api/v1/admin/rescues/" + reported + "/verify";
+        mvc.perform(get("/api/v1/admin/rescues").param("campusId", CAMPUS).param("status", "REPORTED")
+                .header("Authorization", "Bearer " + token("GET", "/api/v1/admin/rescues", "incident.rescue.read", "GOVERNANCE_ADMIN")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].eventId").value(reported));
+        mvc.perform(post(path)).andExpect(status().isUnauthorized());
+        mvc.perform(post(path).header("Authorization", "Bearer " + token("POST", path, "incident.event.verify", "USER")))
+                .andExpect(status().isForbidden());
+        mvc.perform(post(path).header("Authorization", "Bearer " + token("POST", path, "incident.event.verify", "GOVERNANCE_ADMIN")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.rescue.eventStatus").value("VERIFIED"))
+                .andExpect(jsonPath("$.rescue.rescueStatus").value("WAITING_CLAIM"))
+                .andExpect(jsonPath("$.rescue.exactLocationDescription").doesNotExist());
+        assertThat(jdbc.queryForObject("SELECT status FROM event WHERE id=?", String.class, reported)).isEqualTo("VERIFIED");
+        mvc.perform(post(path).header("Authorization", "Bearer " + token("POST", path, "incident.event.verify", "GOVERNANCE_ADMIN")))
+                .andExpect(status().isConflict());
+    }
+    @Test void concurrentAdministratorsCannotBothVerifyTheSameEvent() throws Exception {
+        String reported = seedAdditionalEvent("REPORTED", null, null);
+        var connections = new ConcurrentLinkedQueue<Long>();
+        var ready = new CountDownLatch(2);
+        var release = new CountDownLatch(1);
+        try (var workers = Executors.newFixedThreadPool(2)) {
+            var attempt = (java.util.concurrent.Callable<String>) () -> {
+                try {
+                    return new TransactionTemplate(transactionManager).execute(status -> {
+                        connections.add(jdbc.queryForObject("SELECT CONNECTION_ID()", Long.class));
+                        ready.countDown();
+                        try {
+                            if (!release.await(15, TimeUnit.SECONDS)) throw new IllegalStateException("verification barrier timed out");
+                        } catch (InterruptedException interrupted) {
+                            Thread.currentThread().interrupt(); throw new IllegalStateException(interrupted);
+                        }
+                        events.verifyForTrustedAdmin(reported);
+                        return "VERIFIED";
+                    });
+                } catch (RuntimeException conflict) { return conflict.getClass().getSimpleName(); }
+            };
+            var first = workers.submit(attempt);
+            var second = workers.submit(attempt);
+            assertThat(ready.await(15, TimeUnit.SECONDS)).isTrue();
+            release.countDown();
+            assertThat(List.of(first.get(15, TimeUnit.SECONDS), second.get(15, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder("VERIFIED", "Conflict");
+        } finally { release.countDown(); }
+        assertThat(connections).hasSize(2).doesNotHaveDuplicates();
+        assertThat(jdbc.queryForObject("SELECT status FROM event WHERE id=?", String.class, reported)).isEqualTo("VERIFIED");
+    }
+    @Test void rejectedEventCannotBeVerified() throws Exception {
+        String rejected = seedAdditionalEvent("REJECTED", null, null);
+        String path = "/api/v1/admin/rescues/" + rejected + "/verify";
+        mvc.perform(post(path).header("Authorization", "Bearer " + token("POST", path, "incident.event.verify", "GOVERNANCE_ADMIN")))
+                .andExpect(status().isConflict());
+        assertThat(jdbc.queryForObject("SELECT status FROM event WHERE id=?", String.class, rejected)).isEqualTo("REJECTED");
+    }
     private String rescueStatusFor(String eventId) {
         return service.search(CAMPUS, null, null, "UPDATED_DESC", 0, 100).items().stream()
                 .filter(item -> item.eventId().equals(eventId)).findFirst().orElseThrow().rescueStatus();
@@ -118,12 +182,13 @@ class AdminRescueReadIntegrationTest {
         }
         return eventId;
     }
-    private static String token(String path) throws Exception {
+    private static String token(String path) throws Exception { return token("GET", path, "incident.rescue.read", "GOVERNANCE_ADMIN"); }
+    private static String token(String method, String path, String scope, String role) throws Exception {
         Instant now = Instant.now();
         var claims = new JWTClaimsSet.Builder().issuer("api-gateway").subject("api-gateway").audience("incident-service")
                 .claim("target", "incident-service").claim("actor_id", "71000000-0000-0000-0000-000000000099")
-                .claim("system_role", "GOVERNANCE_ADMIN").claim("scope", List.of("incident.rescue.read"))
-                .claim("request_method", "GET").claim("request_path", path).issueTime(Date.from(now))
+                .claim("system_role", role).claim("scope", List.of(scope))
+                .claim("request_method", method).claim("request_path", path).issueTime(Date.from(now))
                 .expirationTime(Date.from(now.plusSeconds(15))).jwtID(UUID.randomUUID().toString()).build();
         var jwt = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.HS256).type(JOSEObjectType.JWT).keyID("incident-v1").build(), claims);
         jwt.sign(new MACSigner(KEY)); return jwt.serialize();

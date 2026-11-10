@@ -2,11 +2,13 @@ package org.animallink.incident.interfaces;
 
 import jakarta.servlet.http.HttpServletRequest;
 import org.animallink.incident.application.AdminRescueReadService;
+import org.animallink.incident.api.EventController;
 import org.animallink.incident.infrastructure.IncidentAdminAssertionFilter;
 import org.animallink.incident.infrastructure.IncidentAdminAssertionVerifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -16,7 +18,8 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/v1/admin/rescues")
 public class AdminRescueReadController {
     private final AdminRescueReadService service;
-    public AdminRescueReadController(AdminRescueReadService service) { this.service = service; }
+    private final EventController events;
+    public AdminRescueReadController(AdminRescueReadService service, EventController events) { this.service = service; this.events = events; }
     @GetMapping
     public AdminRescueDtos.Page search(HttpServletRequest request,
             @RequestParam(name = "campusId") String campusId,
@@ -31,6 +34,13 @@ public class AdminRescueReadController {
     public AdminRescueDtos.RescueDetail detail(HttpServletRequest request,
             @PathVariable(name = "eventId") String eventId) {
         requireAdmin(request); return service.detail(eventId);
+    }
+    @PostMapping("/{eventId}/verify")
+    public AdminRescueDtos.RescueDetail verify(HttpServletRequest request,
+            @PathVariable(name = "eventId") String eventId) {
+        requireAdmin(request);
+        events.verifyForTrustedAdmin(eventId);
+        return service.detail(eventId);
     }
     private static void requireAdmin(HttpServletRequest request) {
         if (!(request.getAttribute(IncidentAdminAssertionFilter.PRINCIPAL) instanceof IncidentAdminAssertionVerifier.AuthenticatedAdmin))
