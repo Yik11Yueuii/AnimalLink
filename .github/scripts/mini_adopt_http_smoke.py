@@ -100,7 +100,10 @@ def main():
   with urllib.request.urlopen(GATEWAY+'/auth/admin/csrf',timeout=15) as response:
    csrf=json.loads(response.read());csrf_cookie=response.headers.get('Set-Cookie').split(';',1)[0]
   admin_headers={'Cookie':csrf_cookie+'; ANIMALLINK_ADMIN_SESSION='+ADMIN_TOKEN,'Origin':ORIGIN,'Sec-Fetch-Site':'same-origin',csrf['headerName']:csrf['token']}
+  admin_read_headers={'Cookie':'ANIMALLINK_ADMIN_SESSION='+ADMIN_TOKEN}
   base=GATEWAY+'/adoption/api/v1/admin'
+  check('admin reads applications without csrf',200,req(base+'/applications',headers=admin_read_headers))
+  check('admin reads application without csrf',200,req(base+'/applications/'+first,headers=admin_read_headers))
   check('admin review without session',401,req(base+'/applications/'+first+'/approve',{'comment':'no'},headers={'Origin':ORIGIN,'Sec-Fetch-Site':'same-origin',csrf['headerName']:csrf['token'],'Cookie':csrf_cookie}))
   missing_csrf=dict(admin_headers);missing_csrf.pop(csrf['headerName']);code,_=req(base+'/applications/'+first+'/approve',{'comment':'no'},missing_csrf);assert code==403
   check('unsigned direct admin',401,req(ADOPTION+'/api/v1/admin/applications/'+first+'/approve',{'comment':'no'}))
@@ -130,8 +133,8 @@ def main():
   pending3=check('admin initiates cancel flow',200,req(base+'/selections/'+selected3['selectionId']+'/handover',{'scheduledAt':scheduled},admin_headers))
   cancelled3=check('admin cancels pending handover',200,req(base+'/handovers/'+pending3['handoverId']+'/cancel',{'reason':'arrangement withdrawn'},admin_headers))
   assert cancelled3['status']=='CANCELLED'
-  assert check('admin reads cancelled selection',200,req(base+'/listings/'+listing3+'/selection',headers=admin_headers))['status']=='CANCELLED'
-  assert check('admin reads cancelled handover',200,req(base+'/selections/'+selected3['selectionId']+'/handover',headers=admin_headers))['status']=='CANCELLED'
+  assert check('admin reads cancelled selection without csrf',200,req(base+'/listings/'+listing3+'/selection',headers=admin_read_headers))['status']=='CANCELLED'
+  assert check('admin reads cancelled handover without csrf',200,req(base+'/selections/'+selected3['selectionId']+'/handover',headers=admin_read_headers))['status']=='CANCELLED'
   assert sql(db,'SELECT COUNT(*) FROM adoption_relation WHERE handover_id=%s',pending3['handoverId'])[0][0]==0
   print('DB: HTTP reject and cancelled handover verified; no relation for cancelled handover',flush=True)
  finally:

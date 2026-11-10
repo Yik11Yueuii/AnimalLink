@@ -44,7 +44,8 @@ public class GatewaySecurityConfiguration {
                     || AdminCommunityReviewWritePolicy.matches(exchange.getRequest().getMethod(), path)
                     || AdminGovernanceReadPolicy.binding(exchange.getRequest().getMethod(), path)
                             .filter(binding -> AdminGovernanceReadPolicy.INCIDENT_VERIFY_SCOPE.equals(binding.scope())
-                                    || "adoption-service".equals(binding.target()))
+                                    || ("adoption-service".equals(binding.target())
+                                        && HttpMethod.POST.equals(exchange.getRequest().getMethod())))
                             .isPresent();
             return protectedMutation
                     ? ServerWebExchangeMatcher.MatchResult.match()

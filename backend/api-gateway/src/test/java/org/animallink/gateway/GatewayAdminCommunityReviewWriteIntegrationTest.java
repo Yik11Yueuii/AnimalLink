@@ -32,6 +32,7 @@ import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.web.reactive.function.server.RequestPredicates.POST;
+import static org.springframework.web.reactive.function.server.RequestPredicates.GET;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "spring.profiles.active=secure",
@@ -40,7 +41,9 @@ import static org.springframework.web.reactive.function.server.RequestPredicates
         "spring.config.import=optional:classpath:gateway-test-absent.yaml",
         "animallink.authentication.browser.allowed-origins=https://admin.animallink.test",
         "animallink.authentication.animal-admin-assertion.current-key-id=animal-v1",
-        "animallink.authentication.animal-admin-assertion.keys=animal-v1=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+        "animallink.authentication.animal-admin-assertion.keys=animal-v1=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+        "animallink.authentication.adoption-admin-assertion.current-key-id=adopt-v1",
+        "animallink.authentication.adoption-admin-assertion.keys=adopt-v1=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
 })
 @AutoConfigureWebTestClient
 @Import(GatewayAdminCommunityReviewWriteIntegrationTest.TestRoute.class)
@@ -61,6 +64,15 @@ class GatewayAdminCommunityReviewWriteIntegrationTest {
                 new IdentitySessionClient.GatewayAuthenticatedPrincipal("session", ID,
                         "GOVERNANCE_ADMIN", Instant.now().plusSeconds(600),
                         Instant.now().plusSeconds(3600))));
+    }
+
+    @Test
+    void adoptionReadsWithAdminSessionDoNotRequireCsrf() {
+        for (String path : new String[] {"/adoption/api/v1/admin/applications", "/adoption/api/v1/admin/applications/" + ID,
+                "/adoption/api/v1/admin/listings/" + ID + "/selection", "/adoption/api/v1/admin/selections/" + ID + "/handover"}) {
+            client.get().uri(path).cookie("ANIMALLINK_ADMIN_SESSION", TOKEN)
+                    .exchange().expectStatus().isOk().expectBody(String.class).isEqualTo("trusted-read");
+        }
     }
 
     @Test
@@ -173,7 +185,10 @@ class GatewayAdminCommunityReviewWriteIntegrationTest {
             return builder.routes().route("review-write-probe", route -> route.order(-100)
                     .path("/animal/**")
                     .filters(filters -> filters.setPath("/test-review-write-probe"))
-                    .uri("forward:/test-review-write-probe")).build();
+                    .uri("forward:/test-review-write-probe"))
+                    .route("adoption-read-probe", route -> route.order(-100).path("/adoption/**")
+                            .filters(filters -> filters.setPath("/test-adoption-read-probe"))
+                            .uri("forward:/test-adoption-read-probe")).build();
         }
 
         @Bean
@@ -194,6 +209,16 @@ class GatewayAdminCommunityReviewWriteIntegrationTest {
                 } catch (Exception invalid) {
                     return ServerResponse.ok().bodyValue("unsafe");
                 }
+            });
+        }
+
+        @Bean
+        RouterFunction<ServerResponse> adoptionReadProbe() {
+            return RouterFunctions.route(GET("/test-adoption-read-probe"), request -> {
+                try {
+                    SignedJWT jwt = SignedJWT.parse(request.headers().firstHeader(HttpHeaders.AUTHORIZATION).substring(7));
+                    return ServerResponse.ok().bodyValue("GET".equals(jwt.getJWTClaimsSet().getStringClaim("request_method")) ? "trusted-read" : "unsafe");
+                } catch (Exception invalid) { return ServerResponse.ok().bodyValue("unsafe"); }
             });
         }
     }

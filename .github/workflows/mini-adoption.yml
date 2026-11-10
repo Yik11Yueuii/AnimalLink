@@ -36,7 +36,7 @@ jobs:
       - name: Run scoped boundary tests
         run: >-
           ./mvnw -pl backend/api-gateway,backend/adoption-service -am
-          -Dtest=AdoptionMiniappGatewayPolicyTest,AdoptionMiniappAssertionVerifierTest,AdminGovernanceReadPolicyTest,AdoptionAdminAssertionVerifierTest
+          -Dtest=AdoptionMiniappGatewayPolicyTest,AdoptionMiniappAssertionVerifierTest,AdminGovernanceReadPolicyTest,AdoptionAdminAssertionVerifierTest,GatewayAdminCommunityReviewWriteIntegrationTest
           -Dsurefire.failIfNoSpecifiedTests=false test
       - name: Build independent services
         run: ./mvnw -pl backend/api-gateway,backend/identity-service,backend/animal-service,backend/adoption-service -am -DskipTests package
