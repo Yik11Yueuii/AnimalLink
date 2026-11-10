@@ -30,37 +30,37 @@ public class AdminAdoptionWorkflowController {
         this.applications = applications; this.selections = selections; this.handovers = handovers; this.read = read;
     }
     @PostMapping("/applications/{id}/approve")
-    public AdminAdoptionDtos.Application approve(HttpServletRequest request, @PathVariable String id,
+    public AdminAdoptionDtos.Application approve(HttpServletRequest request, @PathVariable("id") String id,
             @Valid @RequestBody Review body) {
         admin(request); applications.approve(id, body.comment()); return read.detail(id);
     }
     @PostMapping("/applications/{id}/reject")
-    public AdminAdoptionDtos.Application reject(HttpServletRequest request, @PathVariable String id,
+    public AdminAdoptionDtos.Application reject(HttpServletRequest request, @PathVariable("id") String id,
             @Valid @RequestBody Rejection body) {
         admin(request); applications.reject(id, body.reason()); return read.detail(id);
     }
     @PostMapping("/listings/{id}/selection")
-    public Selection select(HttpServletRequest request, @PathVariable String id, @Valid @RequestBody Select body) {
+    public Selection select(HttpServletRequest request, @PathVariable("id") String id, @Valid @RequestBody Select body) {
         admin(request); return Selection.from(selections.select(id, body.applicationId(), body.note()).view());
     }
     @GetMapping("/listings/{id}/selection")
-    public Selection selection(HttpServletRequest request, @PathVariable String id) {
+    public Selection selection(HttpServletRequest request, @PathVariable("id") String id) {
         admin(request); return Selection.from(selections.activeSelection(id));
     }
     @PostMapping("/selections/{id}/handover")
-    public Handover initiate(HttpServletRequest request, @PathVariable String id, @Valid @RequestBody Schedule body) {
+    public Handover initiate(HttpServletRequest request, @PathVariable("id") String id, @Valid @RequestBody Schedule body) {
         admin(request); return Handover.from(handovers.initiate(id, body.scheduledAt(), body.note()).view());
     }
     @GetMapping("/selections/{id}/handover")
-    public Handover handover(HttpServletRequest request, @PathVariable String id) {
+    public Handover handover(HttpServletRequest request, @PathVariable("id") String id) {
         admin(request); return Handover.from(handovers.governance(id));
     }
     @PostMapping("/handovers/{id}/complete")
-    public Handover complete(HttpServletRequest request, @PathVariable String id) {
+    public Handover complete(HttpServletRequest request, @PathVariable("id") String id) {
         admin(request); return Handover.from(handovers.complete(id).view());
     }
     @PostMapping("/handovers/{id}/cancel")
-    public Handover cancel(HttpServletRequest request, @PathVariable String id, @Valid @RequestBody Rejection body) {
+    public Handover cancel(HttpServletRequest request, @PathVariable("id") String id, @Valid @RequestBody Rejection body) {
         admin(request); return Handover.from(handovers.cancel(id, body.reason()).view());
     }
     private static void admin(HttpServletRequest request) {
