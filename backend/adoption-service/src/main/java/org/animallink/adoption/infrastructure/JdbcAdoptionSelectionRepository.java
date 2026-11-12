@@ -32,6 +32,9 @@ public class JdbcAdoptionSelectionRepository implements AdoptionSelectionReposit
     public Optional<AdoptionSelection> findActiveByListingId(String listingId) {
         return jdbc.query("SELECT * FROM adoption_selection WHERE listing_id=? AND status='ACTIVE'", ROW, listingId).stream().findFirst();
     }
+    public Optional<AdoptionSelection> findLatestByListingId(String listingId) {
+        return jdbc.query("SELECT * FROM adoption_selection WHERE listing_id=? ORDER BY selected_at DESC,id DESC LIMIT 1", ROW, listingId).stream().findFirst();
+    }
     public boolean cancel(String id,String userId,java.time.Instant at,String reason){return jdbc.update("UPDATE adoption_selection SET status='CANCELLED',cancelled_by_user_id=?,cancelled_at=?,cancel_reason=? WHERE id=? AND status='ACTIVE'",userId,Timestamp.from(at),reason,id)==1;}
     public Set<String> findActiveApplicationIds(Collection<String> applicationIds) {
         if (applicationIds.isEmpty()) return Set.of();

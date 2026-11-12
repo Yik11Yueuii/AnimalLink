@@ -19,6 +19,16 @@ public class HttpIdentityGateway implements IdentityGateway {
     public HttpIdentityGateway(@Qualifier("identityRestClient") RestClient client, HttpServletRequest request) { this.client = client; this.request = request; }
     public CurrentUser requireCurrentUser() {
         try {
+            Object adminPrincipal = request.getAttribute(AdoptionAdminAssertionFilter.PRINCIPAL);
+            if (adminPrincipal instanceof AdoptionAdminAssertionVerifier.AuthenticatedAdmin admin) {
+                UserSummary[] users = client.post().uri("/internal/v1/users/summaries")
+                        .body(java.util.Map.of("userIds", java.util.List.of(admin.userId())))
+                        .retrieve().body(UserSummary[].class);
+                if (users == null || users.length != 1 || !admin.userId().equals(users[0].id())
+                        || !"ACTIVE".equals(users[0].accountStatus()))
+                    throw new ListingAccessDeniedException("管理员账号已失效");
+                return new CurrentUser(admin.userId(), "ACTIVE", "GOVERNANCE_ADMIN");
+            }
             Object principal = request.getAttribute(AdoptionMiniappAssertionFilter.PRINCIPAL);
             if (principal instanceof AdoptionMiniappAssertionVerifier.AuthenticatedMiniappUser actor) {
                 UserSummary[] users = client.post().uri("/internal/v1/users/summaries")

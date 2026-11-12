@@ -9,6 +9,7 @@ on:
       - 'backend/animal-service/**'
       - 'backend/identity-service/**'
       - 'miniapp/**'
+      - 'governance-web/**'
 permissions:
   contents: read
 jobs:
@@ -35,7 +36,7 @@ jobs:
       - name: Run scoped boundary tests
         run: >-
           ./mvnw -pl backend/api-gateway,backend/adoption-service -am
-          -Dtest=AdoptionMiniappGatewayPolicyTest,AdoptionMiniappAssertionVerifierTest
+          -Dtest=AdoptionMiniappGatewayPolicyTest,AdoptionMiniappAssertionVerifierTest,AdminGovernanceReadPolicyTest,AdoptionAdminAssertionVerifierTest,GatewayAdminCommunityReviewWriteIntegrationTest
           -Dsurefire.failIfNoSpecifiedTests=false test
       - name: Build independent services
         run: ./mvnw -pl backend/api-gateway,backend/identity-service,backend/animal-service,backend/adoption-service -am -DskipTests package
@@ -58,3 +59,18 @@ jobs:
         working-directory: miniapp
         env:
           TZ: Asia/Shanghai
+  governance-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: governance-web/package-lock.json
+      - run: npm ci --registry=https://registry.npmjs.org --replace-registry-host=always
+        working-directory: governance-web
+      - run: npm run typecheck
+        working-directory: governance-web
+      - run: npm test
+        working-directory: governance-web

@@ -1,4 +1,5 @@
 import { gatewayClient } from '@/api/client'
+import { authenticatedAdminMutation } from '@/api/authentication'
 import type { AdoptionGovernanceDataSource } from './dataSource'
 import type { AdoptionListingSummary, AdoptionSearchResult, AdoptionStatusCounts, GovernanceAdoptionApplication } from './types'
 
@@ -31,4 +32,22 @@ export const adoptionApiDataSource: AdoptionGovernanceDataSource = {
     const { data } = await gatewayClient.get(`/adoption/api/v1/admin/applications/${encodeURIComponent(applicationId)}`)
     return application(data)
   },
+  async review(id, decision, comment) {
+    await authenticatedAdminMutation(`/adoption/api/v1/admin/applications/${encodeURIComponent(id)}/${decision}`,
+      decision === 'approve' ? { comment } : { reason: comment })
+  },
+  async selection(id) {
+    try { const { data } = await gatewayClient.get(`/adoption/api/v1/admin/listings/${encodeURIComponent(id)}/selection`); const x = record(data)
+      return { selectionId: text(x.selectionId, 'selectionId'), applicationId: text(x.applicationId, 'applicationId'), status: text(x.status, 'status') }
+    } catch (error) { if ((error as { response?: { status?: number } }).response?.status === 404) return null; throw error }
+  },
+  async select(id, applicationId) { await authenticatedAdminMutation(`/adoption/api/v1/admin/listings/${encodeURIComponent(id)}/selection`, { applicationId }) },
+  async handover(id) {
+    try { const { data } = await gatewayClient.get(`/adoption/api/v1/admin/selections/${encodeURIComponent(id)}/handover`); const x = record(data)
+      return { handoverId: text(x.handoverId, 'handoverId'), status: text(x.status, 'status'), scheduledAt: text(x.scheduledAt, 'scheduledAt'), completedAt: nullableText(x.completedAt, 'completedAt') }
+    } catch (error) { if ((error as { response?: { status?: number } }).response?.status === 404) return null; throw error }
+  },
+  async initiate(id, scheduledAt) { await authenticatedAdminMutation(`/adoption/api/v1/admin/selections/${encodeURIComponent(id)}/handover`, { scheduledAt }) },
+  async complete(id) { await authenticatedAdminMutation(`/adoption/api/v1/admin/handovers/${encodeURIComponent(id)}/complete`, undefined) },
+  async cancel(id, reason) { await authenticatedAdminMutation(`/adoption/api/v1/admin/handovers/${encodeURIComponent(id)}/cancel`, { reason }) },
 }

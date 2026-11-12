@@ -5,6 +5,7 @@ import boto3, pymysql
 GATEWAY='http://127.0.0.1:18080'; IDENTITY='http://127.0.0.1:18081'; ANIMAL='http://127.0.0.1:18082'; ADOPTION='http://127.0.0.1:18084'
 CAMPUS='22000000-0000-4000-8000-000000000001'; USERS=[str(uuid.uuid4()) for _ in range(3)]; TOKENS=[base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip('=') for _ in USERS]
 assertion_key=os.urandom(32);keys='test='+base64.b64encode(assertion_key).decode(); access=secrets.token_hex(12); secret=secrets.token_hex(24); processes=[]; logs=[]
+ADMIN=str(uuid.uuid4()); ADMIN_TOKEN=base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip('='); ORIGIN='https://admin.animallink.test'
 def req(url,body=None,headers=None,method=None):
  data=None if body is None else json.dumps(body).encode(); q=urllib.request.Request(url,data=data,headers={'Content-Type':'application/json',**(headers or {})},method=method)
  try:
@@ -38,11 +39,15 @@ def main():
     time.sleep(1)
   storage.create_bucket(Bucket='animallink-animal')
   env=os.environ.copy();env.update({'ANIMAL_DB_USER':'root','ANIMAL_DB_PASSWORD':'','ANIMAL_SERVICE_URL':ANIMAL,'ANIMAL_SERVICE_BASE_URL':ANIMAL,'ADOPTION_DB_USER':'root','ADOPTION_DB_PASSWORD':'','IDENTITY_SERVICE_BASE_URL':IDENTITY,'ANIMALLINK_MESSAGING_ENABLED':'false','ANIMALLINK_AUTHENTICATION_OBSERVATION_ASSERTION_KEY':base64.b64encode(os.urandom(32)).decode(),'IDENTITY_DB_USER':'root','IDENTITY_DB_PASSWORD':'','INTELLIGENCE_DB_USER':'root','INTELLIGENCE_DB_PASSWORD':'','AUTH_SERVICE_ASSERTION_CURRENT_KEY_ID':'test','AUTH_SERVICE_ASSERTION_KEYS':keys,'IDENTITY_INTERNAL_BASE_URL':'http://identity-service','IDENTITY_SERVICE_URL':IDENTITY,'MINIO_ACCESS_KEY':access,'MINIO_SECRET_KEY':secret,'CREDENTIAL_PRECHECK_DISPATCHER_ENABLED':'false','AI_PROVIDER':'mock'})
-  common=['--spring.cloud.nacos.discovery.enabled=false','--spring.cloud.nacos.config.enabled=false','--spring.flyway.locations=classpath:db/migration','--spring.cloud.discovery.client.simple.instances.identity-service[0].uri='+IDENTITY,'--spring.cloud.discovery.client.simple.instances.animal-service[0].uri='+ANIMAL,'--spring.cloud.discovery.client.simple.instances.adoption-service[0].uri='+ADOPTION,'--management.endpoint.health.probes.enabled=true','--management.health.rabbit.enabled=false','--animallink.authentication.adoption-miniapp-assertion.keys='+keys,'--animallink.authentication.adoption-miniapp-assertion.current-key-id=test']
+  common=['--spring.cloud.nacos.discovery.enabled=false','--spring.cloud.nacos.config.enabled=false','--spring.flyway.locations=classpath:db/migration','--spring.cloud.discovery.client.simple.instances.identity-service[0].uri='+IDENTITY,'--spring.cloud.discovery.client.simple.instances.animal-service[0].uri='+ANIMAL,'--spring.cloud.discovery.client.simple.instances.adoption-service[0].uri='+ADOPTION,'--management.endpoint.health.probes.enabled=true','--management.health.rabbit.enabled=false','--animallink.authentication.adoption-miniapp-assertion.keys='+keys,'--animallink.authentication.adoption-miniapp-assertion.current-key-id=test','--animallink.authentication.adoption-admin-assertion.keys='+keys,'--animallink.authentication.adoption-admin-assertion.current-key-id=test','--animallink.authentication.browser.allowed-origins='+ORIGIN]
   for name,port in [('identity-service',18081),('animal-service',18082),('adoption-service',18084),('api-gateway',18080)]:
    log=open(name+'-ai-smoke.log','w+',encoding='utf8');logs.append(log);args=['java','-jar','backend/'+name+'/target/'+name+'-0.1.0-SNAPSHOT.jar','--server.port='+str(port),*common];print('START',name,port,flush=True);processes.append(subprocess.Popen(args,env=env,stdout=log,stderr=subprocess.STDOUT))
   for url,p in zip((IDENTITY,ANIMAL,ADOPTION,GATEWAY),processes):ready(url,p)
   sql(db,'USE animallink_identity')
+  sql(db,"INSERT INTO `user` (id,display_name,account_status,system_role) VALUES (%s,'admin','ACTIVE','GOVERNANCE_ADMIN')",ADMIN)
+  admin_identity=str(uuid.uuid4());sql(db,"INSERT INTO external_identity(id,user_id,provider,provider_tenant,provider_subject) VALUES (%s,%s,'ADMIN_PASSWORD','','adopt.admin')",admin_identity,ADMIN)
+  sql(db,"INSERT INTO admin_password_credential(external_identity_id,password_hash,password_algorithm,credential_version) VALUES (%s,'unused-test-password-hash','ARGON2ID_V1',1)",admin_identity)
+  sql(db,"INSERT INTO admin_session(id,user_id,client_type,token_hash,credential_version,created_at,last_seen_at,idle_expires_at,absolute_expires_at) VALUES (%s,%s,'ADMIN_WEB',%s,1,NOW(6),NOW(6),DATE_ADD(NOW(6),INTERVAL 1 DAY),DATE_ADD(NOW(6),INTERVAL 2 DAY))",str(uuid.uuid4()),ADMIN,hashlib.sha256(ADMIN_TOKEN.encode()).digest())
   for i,user in enumerate(USERS):
    sql(db,"INSERT INTO `user` (id,display_name,account_status,system_role) VALUES (%s,'Smoke','ACTIVE','USER')",user)
    sql(db,"INSERT INTO wechat_user_session(id,user_id,token_hash,created_at,last_seen_at,idle_expires_at,absolute_expires_at) VALUES (%s,%s,%s,NOW(6),NOW(6),DATE_ADD(NOW(6),INTERVAL 1 DAY),DATE_ADD(NOW(6),INTERVAL 2 DAY))",str(uuid.uuid4()),user,hashlib.sha256(TOKENS[i].encode()).digest())
@@ -88,6 +93,50 @@ def main():
   assert all(seeded[r['handoverId']][1]==USERS[2] for r in other_rows)
   now=int(time.time());claims.update({'iat':now,'exp':now+15,'jti':str(uuid.uuid4())});signing=encode(json.dumps(header,separators=(',',':')).encode())+b'.'+encode(json.dumps(claims,separators=(',',':')).encode());spoof={'Authorization':'Bearer '+(signing+b'.'+encode(hmac.new(assertion_key,signing,hashlib.sha256).digest())).decode(),'X-User-Id':USERS[2]};spoofed=check('spoofed user header ignored',200,req(ADOPTION+hp,headers=spoof));assert len(spoofed)==3 and all(seeded[r['handoverId']][1]==USERS[0] for r in spoofed)
   print('DB fixtures: handover PENDING/COMPLETED/CANCELLED; ownership verified',flush=True)
+  animal2=str(uuid.uuid4());sql(db,'USE animallink_animal');sql(db,"INSERT INTO animal(id,campus_id,display_name,species) VALUES (%s,%s,'workflow animal','CAT')",animal2,CAMPUS)
+  listing2=str(uuid.uuid4());sql(db,'USE animallink_adoption');sql(db,"INSERT INTO adoption_listing(id,animal_id,status,title,description,publisher_user_id,created_at,updated_at,published_at) VALUES (%s,%s,'PUBLISHED','Workflow','Description',%s,NOW(6),NOW(6),NOW(6))",listing2,animal2,USERS[1])
+  first=check('workflow applicant one',200,req(root+'/listings/'+listing2+'/applications',{'message':'first'},h(0)))['applicationId']
+  second=check('workflow applicant two',200,req(root+'/listings/'+listing2+'/applications',{'message':'second'},h(2)))['applicationId']
+  with urllib.request.urlopen(GATEWAY+'/auth/admin/csrf',timeout=15) as response:
+   csrf=json.loads(response.read());csrf_cookie=response.headers.get('Set-Cookie').split(';',1)[0]
+  admin_headers={'Cookie':csrf_cookie+'; ANIMALLINK_ADMIN_SESSION='+ADMIN_TOKEN,'Origin':ORIGIN,'Sec-Fetch-Site':'same-origin',csrf['headerName']:csrf['token']}
+  admin_read_headers={'Cookie':'ANIMALLINK_ADMIN_SESSION='+ADMIN_TOKEN}
+  base=GATEWAY+'/adoption/api/v1/admin'
+  check('admin reads applications without csrf',200,req(base+'/applications',headers=admin_read_headers))
+  check('admin reads application without csrf',200,req(base+'/applications/'+first,headers=admin_read_headers))
+  check('admin review without session',401,req(base+'/applications/'+first+'/approve',{'comment':'no'},headers={'Origin':ORIGIN,'Sec-Fetch-Site':'same-origin',csrf['headerName']:csrf['token'],'Cookie':csrf_cookie}))
+  missing_csrf=dict(admin_headers);missing_csrf.pop(csrf['headerName']);code,_=req(base+'/applications/'+first+'/approve',{'comment':'no'},missing_csrf);assert code==403
+  check('unsigned direct admin',401,req(ADOPTION+'/api/v1/admin/applications/'+first+'/approve',{'comment':'no'}))
+  check('admin review first',200,req(base+'/applications/'+first+'/approve',{'comment':'qualified'},admin_headers))
+  check('admin review second',200,req(base+'/applications/'+second+'/approve',{'comment':'qualified'},admin_headers))
+  selection=check('admin select first',200,req(base+'/listings/'+listing2+'/selection',{'applicationId':first},admin_headers))
+  check('second selection rejected',409,req(base+'/listings/'+listing2+'/selection',{'applicationId':second},admin_headers))
+  scheduled='2030-01-01T12:00:00+08:00'
+  handover=check('admin initiate handover',200,req(base+'/selections/'+selection['selectionId']+'/handover',{'scheduledAt':scheduled},admin_headers))
+  completed=check('admin complete handover',200,req(base+'/handovers/'+handover['handoverId']+'/complete',{},admin_headers))
+  assert completed['status']=='COMPLETED'
+  check('completed handover cannot cancel',409,req(base+'/handovers/'+handover['handoverId']+'/cancel',{'reason':'too late'},admin_headers))
+  assert sql(db,'SELECT status FROM adoption_relation WHERE handover_id=%s',handover['handoverId'])[0][0]=='ACTIVE'
+  assert sql(db,'SELECT selected_by_user_id FROM adoption_selection WHERE id=%s',selection['selectionId'])[0][0]==ADMIN
+  assert sql(db,'SELECT completed_by_user_id FROM adoption_handover WHERE id=%s',handover['handoverId'])[0][0]==ADMIN
+  assert any(row['applicationId']==first and row['status']=='COMPLETED' for row in check('applicant sees completion',200,req(handovers,headers=h(0))))
+  print('DB: HTTP review, selection, handover and ACTIVE relation verified',flush=True)
+  animal3=str(uuid.uuid4());sql(db,'USE animallink_animal');sql(db,"INSERT INTO animal(id,campus_id,display_name,species) VALUES (%s,%s,'cancel animal','CAT')",animal3,CAMPUS)
+  listing3=str(uuid.uuid4());sql(db,'USE animallink_adoption');sql(db,"INSERT INTO adoption_listing(id,animal_id,status,title,description,publisher_user_id,created_at,updated_at,published_at) VALUES (%s,%s,'PUBLISHED','Cancel flow','Description',%s,NOW(6),NOW(6),NOW(6))",listing3,animal3,USERS[1])
+  rejected=check('rejected applicant creates',200,req(root+'/listings/'+listing3+'/applications',{'message':'reject me'},h(2)))['applicationId']
+  approved=check('cancel flow applicant creates',200,req(root+'/listings/'+listing3+'/applications',{'message':'approve me'},h(0)))['applicationId']
+  check('admin rejects application',200,req(base+'/applications/'+rejected+'/reject',{'reason':'not suitable'},admin_headers))
+  assert sql(db,'SELECT status FROM adoption_application WHERE id=%s',rejected)[0][0]=='REJECTED'
+  check('cannot select rejected application',409,req(base+'/listings/'+listing3+'/selection',{'applicationId':rejected},admin_headers))
+  check('admin approves cancel flow',200,req(base+'/applications/'+approved+'/approve',{'comment':'qualified'},admin_headers))
+  selected3=check('admin selects cancel flow',200,req(base+'/listings/'+listing3+'/selection',{'applicationId':approved},admin_headers))
+  pending3=check('admin initiates cancel flow',200,req(base+'/selections/'+selected3['selectionId']+'/handover',{'scheduledAt':scheduled},admin_headers))
+  cancelled3=check('admin cancels pending handover',200,req(base+'/handovers/'+pending3['handoverId']+'/cancel',{'reason':'arrangement withdrawn'},admin_headers))
+  assert cancelled3['status']=='CANCELLED'
+  assert check('admin reads cancelled selection without csrf',200,req(base+'/listings/'+listing3+'/selection',headers=admin_read_headers))['status']=='CANCELLED'
+  assert check('admin reads cancelled handover without csrf',200,req(base+'/selections/'+selected3['selectionId']+'/handover',headers=admin_read_headers))['status']=='CANCELLED'
+  assert sql(db,'SELECT COUNT(*) FROM adoption_relation WHERE handover_id=%s',pending3['handoverId'])[0][0]==0
+  print('DB: HTTP reject and cancelled handover verified; no relation for cancelled handover',flush=True)
  finally:
   for p in processes:
    if p.poll() is None:p.terminate()

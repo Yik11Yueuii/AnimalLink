@@ -75,6 +75,16 @@ public class AdoptionSelectionService {
         return new SelectionView(selection, application.applicantUserId());
     }
 
+    public SelectionView latestSelection(String listingId) {
+        validUuid(listingId, "listingId"); requireGovernance();
+        listings.findById(listingId).orElseThrow(() -> new ListingNotFoundException("领养信息不存在"));
+        AdoptionSelection selection = selections.findLatestByListingId(listingId)
+                .orElseThrow(() -> new SelectionNotFoundException("当前领养信息尚无最终候选人"));
+        AdoptionApplication application = applications.findById(selection.applicationId())
+                .orElseThrow(() -> new ApplicationNotFoundException("领养申请不存在"));
+        return new SelectionView(selection, application.applicantUserId());
+    }
+
     private SelectionCommandResult existingResult(AdoptionSelection existing, String applicationId) {
         if (!existing.applicationId().equals(applicationId)) throw new ListingAlreadySelectedException("该领养信息已有最终候选人");
         AdoptionApplication application = applications.findById(existing.applicationId())

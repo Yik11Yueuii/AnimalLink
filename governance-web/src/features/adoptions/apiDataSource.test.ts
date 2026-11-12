@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { gatewayClient } from '@/api/client'
+import * as auth from '@/api/authentication'
 import { adoptionApiDataSource } from './apiDataSource'
 
 const application = { applicationId: 'application', listingId: 'listing', applicantReference: 'user-…12345678', status: 'SUBMITTED',
@@ -19,5 +20,14 @@ describe('adoption API data source', () => {
   it('rejects malformed responses instead of inventing listing data', async () => {
     vi.spyOn(gatewayClient, 'get').mockResolvedValue({ data: { ...application, listing: null } })
     await expect(adoptionApiDataSource.getDetail('application')).rejects.toThrow('无法验证')
+  })
+  it('sends review and handover mutations through authenticated admin requests', async () => {
+    const mutation = vi.spyOn(auth, 'authenticatedAdminMutation').mockResolvedValue(undefined as never)
+    await adoptionApiDataSource.review?.('application', 'reject', 'reason')
+    await adoptionApiDataSource.initiate?.('selection', '2030-01-01T04:00:00.000Z')
+    await adoptionApiDataSource.complete?.('handover')
+    expect(mutation).toHaveBeenCalledWith('/adoption/api/v1/admin/applications/application/reject', { reason: 'reason' })
+    expect(mutation).toHaveBeenCalledWith('/adoption/api/v1/admin/selections/selection/handover', { scheduledAt: '2030-01-01T04:00:00.000Z' })
+    expect(mutation).toHaveBeenCalledWith('/adoption/api/v1/admin/handovers/handover/complete', undefined)
   })
 })
