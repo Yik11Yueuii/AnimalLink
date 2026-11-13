@@ -51,6 +51,10 @@ def main():
   for i,user in enumerate(USERS):
    sql(db,"INSERT INTO `user` (id,display_name,account_status,system_role) VALUES (%s,'Smoke','ACTIVE','USER')",user)
    sql(db,"INSERT INTO wechat_user_session(id,user_id,token_hash,created_at,last_seen_at,idle_expires_at,absolute_expires_at) VALUES (%s,%s,%s,NOW(6),NOW(6),DATE_ADD(NOW(6),INTERVAL 1 DAY),DATE_ADD(NOW(6),INTERVAL 2 DAY))",str(uuid.uuid4()),user,hashlib.sha256(TOKENS[i].encode()).digest())
+  ordinary_token=base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip('=')
+  ordinary_identity=str(uuid.uuid4());sql(db,"INSERT INTO external_identity(id,user_id,provider,provider_tenant,provider_subject) VALUES (%s,%s,'ADMIN_PASSWORD','','ordinary.adopt')",ordinary_identity,USERS[0])
+  sql(db,"INSERT INTO admin_password_credential(external_identity_id,password_hash,password_algorithm,credential_version) VALUES (%s,'unused-test-password-hash','ARGON2ID_V1',1)",ordinary_identity)
+  sql(db,"INSERT INTO admin_session(id,user_id,client_type,token_hash,credential_version,created_at,last_seen_at,idle_expires_at,absolute_expires_at) VALUES (%s,%s,'ADMIN_WEB',%s,1,NOW(6),NOW(6),DATE_ADD(NOW(6),INTERVAL 1 DAY),DATE_ADD(NOW(6),INTERVAL 2 DAY))",str(uuid.uuid4()),USERS[0],hashlib.sha256(ordinary_token.encode()).digest())
   verification=str(uuid.uuid4());sql(db,"INSERT INTO campus_verification(id,user_id,campus_id,requested_membership_type,applicant_name,status) VALUES (%s,%s,%s,'STUDENT','Smoke','APPROVED')",verification,USERS[0],CAMPUS)
   sql(db,"INSERT INTO campus_membership(id,user_id,campus_id,membership_type,status,approved_at,last_verification_id) VALUES (%s,%s,%s,'STUDENT','ACTIVE',NOW(6),%s)",str(uuid.uuid4()),USERS[0],CAMPUS,verification)
   verification2=str(uuid.uuid4());sql(db,"INSERT INTO campus_verification(id,user_id,campus_id,requested_membership_type,applicant_name,status) VALUES (%s,%s,%s,'STUDENT','Other','APPROVED')",verification2,USERS[2],CAMPUS)
@@ -106,6 +110,8 @@ def main():
   sql(db,'USE animallink_adoption')
   listing_body={'animalId':listing_animal,'title':'HTTP created listing','description':'Ready for adoption'}
   check('listing create without session',401,req(base+'/listings',listing_body,headers={'Origin':ORIGIN,'Sec-Fetch-Site':'same-origin',csrf['headerName']:csrf['token'],'Cookie':csrf_cookie}))
+  ordinary_headers=dict(admin_headers);ordinary_headers['Cookie']=csrf_cookie+'; ANIMALLINK_ADMIN_SESSION='+ordinary_token
+  check('ordinary user listing create forbidden',403,req(base+'/listings',listing_body,ordinary_headers))
   code,_=req(base+'/listings',listing_body,{'Cookie':csrf_cookie+'; ANIMALLINK_ADMIN_SESSION='+ADMIN_TOKEN,'Origin':ORIGIN,'Sec-Fetch-Site':'same-origin'});assert code==403
   check('direct unsigned listing create',401,req(ADOPTION+'/api/v1/admin/listings',listing_body))
   created_listing=check('admin creates listing draft',200,req(base+'/listings',listing_body,admin_headers));assert created_listing['status']=='DRAFT' and created_listing['publisherUserId']==ADMIN
