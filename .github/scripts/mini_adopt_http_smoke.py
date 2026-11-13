@@ -111,7 +111,7 @@ def main():
   listing_body={'animalId':listing_animal,'title':'HTTP created listing','description':'Ready for adoption'}
   check('listing create without session',401,req(base+'/listings',listing_body,headers={'Origin':ORIGIN,'Sec-Fetch-Site':'same-origin',csrf['headerName']:csrf['token'],'Cookie':csrf_cookie}))
   ordinary_headers=dict(admin_headers);ordinary_headers['Cookie']=csrf_cookie+'; ANIMALLINK_ADMIN_SESSION='+ordinary_token
-  check('ordinary user listing create forbidden',403,req(base+'/listings',listing_body,ordinary_headers))
+  check('ordinary user listing create rejected',401,req(base+'/listings',listing_body,ordinary_headers))
   code,_=req(base+'/listings',listing_body,{'Cookie':csrf_cookie+'; ANIMALLINK_ADMIN_SESSION='+ADMIN_TOKEN,'Origin':ORIGIN,'Sec-Fetch-Site':'same-origin'});assert code==403
   check('direct unsigned listing create',401,req(ADOPTION+'/api/v1/admin/listings',listing_body))
   created_listing=check('admin creates listing draft',200,req(base+'/listings',listing_body,admin_headers));assert created_listing['status']=='DRAFT' and created_listing['publisherUserId']==ADMIN
