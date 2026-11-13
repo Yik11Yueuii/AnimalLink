@@ -32,6 +32,15 @@ public class JdbcAdoptionListingRepository implements AdoptionListingRepository 
     public Optional<AdoptionListing> findByIdForUpdate(String id) { return jdbc.query("SELECT * FROM adoption_listing WHERE id=? FOR UPDATE", ROW, id).stream().findFirst(); }
     public List<AdoptionListing> findPublished(int limit, int offset) { return jdbc.query("SELECT * FROM adoption_listing WHERE status='PUBLISHED' ORDER BY published_at DESC,id DESC LIMIT ? OFFSET ?", ROW, limit, offset); }
     public long countPublished() { Long value = jdbc.queryForObject("SELECT COUNT(*) FROM adoption_listing WHERE status='PUBLISHED'", Long.class); return value == null ? 0L : value; }
+    public List<AdoptionListing> findForGovernance(String status, int limit, int offset) {
+        return status == null ? jdbc.query("SELECT * FROM adoption_listing ORDER BY updated_at DESC,id DESC LIMIT ? OFFSET ?", ROW, limit, offset)
+                : jdbc.query("SELECT * FROM adoption_listing WHERE status=? ORDER BY updated_at DESC,id DESC LIMIT ? OFFSET ?", ROW, status, limit, offset);
+    }
+    public long countForGovernance(String status) {
+        Long value = status == null ? jdbc.queryForObject("SELECT COUNT(*) FROM adoption_listing", Long.class)
+                : jdbc.queryForObject("SELECT COUNT(*) FROM adoption_listing WHERE status=?", Long.class, status);
+        return value == null ? 0L : value;
+    }
     public boolean publish(String id, java.time.Instant updatedAt, java.time.Instant publishedAt) { return jdbc.update("UPDATE adoption_listing SET status='PUBLISHED',updated_at=?,published_at=? WHERE id=? AND status='DRAFT'", Timestamp.from(updatedAt), Timestamp.from(publishedAt), id) == 1; }
     public boolean close(String id, java.time.Instant updatedAt, java.time.Instant closedAt) { return jdbc.update("UPDATE adoption_listing SET status='CLOSED',updated_at=?,closed_at=? WHERE id=? AND status IN ('DRAFT','PUBLISHED')", Timestamp.from(updatedAt), Timestamp.from(closedAt), id) == 1; }
 }

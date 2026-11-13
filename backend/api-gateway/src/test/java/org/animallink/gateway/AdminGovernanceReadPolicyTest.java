@@ -17,7 +17,7 @@ class AdminGovernanceReadPolicyTest {
         assertThat(AdminGovernanceReadPolicy.binding(HttpMethod.GET, "/adoption/api/v1/admin/applications")).isPresent();
         assertThat(AdminGovernanceReadPolicy.binding(HttpMethod.GET, "/adoption/api/v1/admin/applications/" + id)).isPresent();
         for (String path : new String[] { "/incident/api/v1/admin/rescues/", "/incident/api/v1/admin/rescues/" + id + "/extra",
-                "/adoption/api/v1/admin/applications/not-a-uuid", "/adoption/api/v1/admin/listings" }) {
+                "/adoption/api/v1/admin/applications/not-a-uuid", "/adoption/api/v1/admin/listings/not-a-uuid" }) {
             assertThat(AdminGovernanceReadPolicy.binding(HttpMethod.GET, path)).isEmpty();
         }
         assertThat(AdminGovernanceReadPolicy.binding(HttpMethod.POST, "/incident/api/v1/admin/rescues")).isEmpty();
@@ -26,6 +26,10 @@ class AdminGovernanceReadPolicyTest {
         assertThat(AdminGovernanceReadPolicy.binding(HttpMethod.POST, "/incident/api/v1/admin/rescues/" + id + "/reject")).isEmpty();
         assertThat(AdminGovernanceReadPolicy.binding(HttpMethod.HEAD, "/adoption/api/v1/admin/applications")).isEmpty();
         assertThat(AdminGovernanceReadPolicy.binding(HttpMethod.POST, "/adoption/api/v1/admin/applications/" + id + "/approve").orElseThrow().scope()).isEqualTo("adoption.application.review");
+        assertThat(AdminGovernanceReadPolicy.binding(HttpMethod.GET, "/adoption/api/v1/admin/listings").orElseThrow().scope()).isEqualTo("adoption.listing.read");
+        assertThat(AdminGovernanceReadPolicy.binding(HttpMethod.POST, "/adoption/api/v1/admin/listings").orElseThrow().scope()).isEqualTo("adoption.listing.manage");
+        assertThat(AdminGovernanceReadPolicy.binding(HttpMethod.GET, "/adoption/api/v1/admin/listings/" + id).orElseThrow().scope()).isEqualTo("adoption.listing.read");
+        assertThat(AdminGovernanceReadPolicy.binding(HttpMethod.POST, "/adoption/api/v1/admin/listings/" + id + "/publish").orElseThrow().scope()).isEqualTo("adoption.listing.manage");
         assertThat(AdminGovernanceReadPolicy.binding(HttpMethod.POST, "/adoption/api/v1/admin/listings/" + id + "/selection").orElseThrow().scope()).isEqualTo("adoption.selection.manage");
         assertThat(AdminGovernanceReadPolicy.binding(HttpMethod.GET, "/adoption/api/v1/admin/selections/" + id + "/handover").orElseThrow().scope()).isEqualTo("adoption.handover.manage");
         assertThat(AdminGovernanceReadPolicy.binding(HttpMethod.POST, "/adoption/api/v1/admin/handovers/" + id + "/complete").orElseThrow().scope()).isEqualTo("adoption.handover.manage");

@@ -10,6 +10,8 @@ import java.time.OffsetDateTime;
 import org.animallink.adoption.application.AdoptionApplicationService;
 import org.animallink.adoption.application.AdoptionHandoverService;
 import org.animallink.adoption.application.AdoptionSelectionService;
+import org.animallink.adoption.application.AdoptionListingService;
+import org.animallink.adoption.api.AdoptionListingDtos;
 import org.animallink.adoption.application.AdminAdoptionReadService;
 import org.animallink.adoption.infrastructure.AdoptionAdminAssertionFilter;
 import org.animallink.adoption.infrastructure.AdoptionAdminAssertionVerifier;
@@ -24,10 +26,31 @@ public class AdminAdoptionWorkflowController {
     private final AdoptionSelectionService selections;
     private final AdoptionHandoverService handovers;
     private final AdminAdoptionReadService read;
+    private final AdoptionListingService listings;
 
     public AdminAdoptionWorkflowController(AdoptionApplicationService applications, AdoptionSelectionService selections,
-            AdoptionHandoverService handovers, AdminAdoptionReadService read) {
-        this.applications = applications; this.selections = selections; this.handovers = handovers; this.read = read;
+            AdoptionHandoverService handovers, AdminAdoptionReadService read, AdoptionListingService listings) {
+        this.applications = applications; this.selections = selections; this.handovers = handovers; this.read = read; this.listings = listings;
+    }
+    @GetMapping("/listings")
+    public AdoptionListingDtos.PageResponse listings(HttpServletRequest request,
+            @RequestParam(name="status", required=false) String status,
+            @RequestParam(name="page", defaultValue="0") int page,
+            @RequestParam(name="size", defaultValue="20") int size) {
+        admin(request); return AdoptionListingDtos.PageResponse.from(listings.governanceListings(status, page, size));
+    }
+    @GetMapping("/listings/{id}")
+    public AdoptionListingDtos.ListingResponse listing(HttpServletRequest request, @PathVariable("id") String id) {
+        admin(request); return AdoptionListingDtos.ListingResponse.from(listings.detail(id));
+    }
+    @PostMapping("/listings")
+    public AdoptionListingDtos.ListingResponse createListing(HttpServletRequest request,
+            @Valid @RequestBody AdoptionListingDtos.CreateListingRequest body) {
+        admin(request); return AdoptionListingDtos.ListingResponse.from(listings.create(body.animalId(), body.title(), body.description()));
+    }
+    @PostMapping("/listings/{id}/publish")
+    public AdoptionListingDtos.ListingResponse publishListing(HttpServletRequest request, @PathVariable("id") String id) {
+        admin(request); return AdoptionListingDtos.ListingResponse.from(listings.publish(id));
     }
     @PostMapping("/applications/{id}/approve")
     public AdminAdoptionDtos.Application approve(HttpServletRequest request, @PathVariable("id") String id,

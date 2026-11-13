@@ -9,6 +9,8 @@ public interface AdoptionListingRepository {
     Optional<AdoptionListing> findByIdForUpdate(String id);
     List<AdoptionListing> findPublished(int limit, int offset);
     long countPublished();
+    List<AdoptionListing> findForGovernance(String status, int limit, int offset);
+    long countForGovernance(String status);
     boolean publish(String id, Instant updatedAt, Instant publishedAt);
     boolean close(String id, Instant updatedAt, Instant closedAt);
 }

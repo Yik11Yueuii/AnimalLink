@@ -46,6 +46,14 @@ public class AdoptionListingService {
         return new PageResult<>(repository.findPublished(safeSize, safePage * safeSize), safePage, safeSize, repository.countPublished());
     }
 
+    public PageResult<AdoptionListing> governanceListings(String status, int page, int size) {
+        requireGovernanceAdmin();
+        String normalized = status == null || status.isBlank() ? null : org.animallink.adoption.domain.ListingStatus.valueOf(status).name();
+        int safePage = Math.max(0, page); int safeSize = Math.min(MAX_PAGE_SIZE, Math.max(1, size));
+        return new PageResult<>(repository.findForGovernance(normalized, safeSize, safePage * safeSize), safePage, safeSize,
+                repository.countForGovernance(normalized));
+    }
+
     @Transactional
     public AdoptionListing publish(String listingId) {
         requireGovernanceAdmin();

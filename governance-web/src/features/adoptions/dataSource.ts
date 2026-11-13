@@ -1,4 +1,4 @@
-import type { AdoptionSearchCriteria, AdoptionSearchResult, GovernanceAdoptionApplication } from './types'
+import type { AdoptionAnimalOption, AdoptionListingPage, AdoptionListingSummary, AdoptionSearchCriteria, AdoptionSearchResult, GovernanceAdoptionApplication } from './types'
 
 export interface AdoptionGovernanceDataSource {
   search(criteria: AdoptionSearchCriteria): Promise<AdoptionSearchResult>
@@ -10,4 +10,9 @@ export interface AdoptionGovernanceDataSource {
   initiate?(selectionId: string, scheduledAt: string): Promise<void>
   complete?(handoverId: string): Promise<void>
   cancel?(handoverId: string, reason: string): Promise<void>
+  listings?(status: string, page: number, size: number): Promise<AdoptionListingPage>
+  listing?(listingId: string): Promise<AdoptionListingSummary>
+  animals?(campusId: string, keyword: string): Promise<AdoptionAnimalOption[]>
+  createListing?(animalId: string, title: string, description: string): Promise<AdoptionListingSummary>
+  publishListing?(listingId: string): Promise<AdoptionListingSummary>
 }

@@ -102,6 +102,27 @@ def main():
   admin_headers={'Cookie':csrf_cookie+'; ANIMALLINK_ADMIN_SESSION='+ADMIN_TOKEN,'Origin':ORIGIN,'Sec-Fetch-Site':'same-origin',csrf['headerName']:csrf['token']}
   admin_read_headers={'Cookie':'ANIMALLINK_ADMIN_SESSION='+ADMIN_TOKEN}
   base=GATEWAY+'/adoption/api/v1/admin'
+  listing_animal=str(uuid.uuid4());sql(db,'USE animallink_animal');sql(db,"INSERT INTO animal(id,campus_id,display_name,species,adoption_status) VALUES (%s,%s,'publish animal','CAT','OPEN')",listing_animal,CAMPUS)
+  sql(db,'USE animallink_adoption')
+  listing_body={'animalId':listing_animal,'title':'HTTP created listing','description':'Ready for adoption'}
+  check('listing create without session',401,req(base+'/listings',listing_body,headers={'Origin':ORIGIN,'Sec-Fetch-Site':'same-origin',csrf['headerName']:csrf['token'],'Cookie':csrf_cookie}))
+  code,_=req(base+'/listings',listing_body,{'Cookie':csrf_cookie+'; ANIMALLINK_ADMIN_SESSION='+ADMIN_TOKEN,'Origin':ORIGIN,'Sec-Fetch-Site':'same-origin'});assert code==403
+  check('direct unsigned listing create',401,req(ADOPTION+'/api/v1/admin/listings',listing_body))
+  created_listing=check('admin creates listing draft',200,req(base+'/listings',listing_body,admin_headers));assert created_listing['status']=='DRAFT' and created_listing['publisherUserId']==ADMIN
+  new_listing=created_listing['listingId']
+  assert check('admin reopens draft without csrf',200,req(base+'/listings/'+new_listing,headers=admin_read_headers))['status']=='DRAFT'
+  assert any(x['listingId']==new_listing for x in check('admin lists draft without csrf',200,req(base+'/listings?status=DRAFT',headers=admin_read_headers))['items'])
+  check('public draft detail rejected',404,req(root+'/listings/'+new_listing))
+  assert all(x['listingId']!=new_listing for x in check('public excludes draft',200,req(root+'/listings'))['items'])
+  check('duplicate active listing rejected',409,req(base+'/listings',listing_body,admin_headers))
+  check('invalid animal rejected',404,req(base+'/listings',{'animalId':str(uuid.uuid4()),'title':'Invalid','description':'Invalid'},admin_headers))
+  published_listing=check('admin publishes listing',200,req(base+'/listings/'+new_listing+'/publish',{},admin_headers));assert published_listing['status']=='PUBLISHED'
+  check('duplicate publish rejected',409,req(base+'/listings/'+new_listing+'/publish',{},admin_headers))
+  assert check('public reads published listing',200,req(root+'/listings/'+new_listing))['listingId']==new_listing
+  assert any(x['listingId']==new_listing for x in check('public lists published listing',200,req(root+'/listings'))['items'])
+  check('applicant applies to HTTP published listing',200,req(root+'/listings/'+new_listing+'/applications',{'message':'apply'},h(0)))
+  assert sql(db,'SELECT status,publisher_user_id FROM adoption_listing WHERE id=%s',new_listing)[0]==('PUBLISHED',ADMIN)
+  print('DB: administrator HTTP created/published Listing and applicant HTTP submitted',flush=True)
   check('admin reads applications without csrf',200,req(base+'/applications',headers=admin_read_headers))
   check('admin reads application without csrf',200,req(base+'/applications/'+first,headers=admin_read_headers))
   check('admin review without session',401,req(base+'/applications/'+first+'/approve',{'comment':'no'},headers={'Origin':ORIGIN,'Sec-Fetch-Site':'same-origin',csrf['headerName']:csrf['token'],'Cookie':csrf_cookie}))

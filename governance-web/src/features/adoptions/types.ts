@@ -13,6 +13,8 @@ export interface AdoptionListingSummary {
   publishedAt: string | null
   closedAt: string | null
 }
+export interface AdoptionListingPage { items: AdoptionListingSummary[]; page: number; size: number; total: number }
+export interface AdoptionAnimalOption { id: string; campusId: string; displayName: string; species: string }
 
 export interface GovernanceAdoptionApplication {
   applicationId: string

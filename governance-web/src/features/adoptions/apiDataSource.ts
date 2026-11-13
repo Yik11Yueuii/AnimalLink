@@ -50,4 +50,21 @@ export const adoptionApiDataSource: AdoptionGovernanceDataSource = {
   async initiate(id, scheduledAt) { await authenticatedAdminMutation(`/adoption/api/v1/admin/selections/${encodeURIComponent(id)}/handover`, { scheduledAt }) },
   async complete(id) { await authenticatedAdminMutation(`/adoption/api/v1/admin/handovers/${encodeURIComponent(id)}/complete`, undefined) },
   async cancel(id, reason) { await authenticatedAdminMutation(`/adoption/api/v1/admin/handovers/${encodeURIComponent(id)}/cancel`, { reason }) },
+  async listings(status, page, size) {
+    const { data } = await gatewayClient.get('/adoption/api/v1/admin/listings', { params: { status: status || undefined, page, size } })
+    const source = record(data); if (!Array.isArray(source.items)) throw new Error('领养信息列表响应无效。')
+    return { items: source.items.map(listing), page: number(source.page, 'page'), size: number(source.size, 'size'), total: number(source.total, 'total') }
+  },
+  async listing(id) { const { data } = await gatewayClient.get(`/adoption/api/v1/admin/listings/${encodeURIComponent(id)}`); return listing(data) },
+  async animals(campusId, keyword) {
+    const { data } = await gatewayClient.get('/animal/api/v1/animals', { params: { campusId, q: keyword.trim(), page: 0, size: 20 } })
+    const source = record(data); if (!Array.isArray(source.items)) throw new Error('Animal 查询响应无效。')
+    return source.items.map(value => { const x = record(value); return { id: text(x.id, 'animal.id'), campusId: text(x.campusId, 'animal.campusId'), displayName: text(x.displayName, 'animal.displayName'), species: text(x.species, 'animal.species') } })
+  },
+  async createListing(animalId, title, description) {
+    const data = await authenticatedAdminMutation('/adoption/api/v1/admin/listings', { animalId, title, description }); return listing(data)
+  },
+  async publishListing(id) {
+    const data = await authenticatedAdminMutation(`/adoption/api/v1/admin/listings/${encodeURIComponent(id)}/publish`, undefined); return listing(data)
+  },
 }
