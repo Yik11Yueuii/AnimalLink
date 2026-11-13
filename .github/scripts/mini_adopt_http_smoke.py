@@ -112,14 +112,15 @@ def main():
   new_listing=created_listing['listingId']
   assert check('admin reopens draft without csrf',200,req(base+'/listings/'+new_listing,headers=admin_read_headers))['status']=='DRAFT'
   assert any(x['listingId']==new_listing for x in check('admin lists draft without csrf',200,req(base+'/listings?status=DRAFT',headers=admin_read_headers))['items'])
-  check('public draft detail rejected',404,req(root+'/listings/'+new_listing))
-  assert all(x['listingId']!=new_listing for x in check('public excludes draft',200,req(root+'/listings'))['items'])
+  public_listings=GATEWAY+'/adoption/api/v1/public/listings'
+  check('public draft detail rejected',404,req(public_listings+'/'+new_listing))
+  assert all(x['listingId']!=new_listing for x in check('public excludes draft',200,req(public_listings))['items'])
   check('duplicate active listing rejected',409,req(base+'/listings',listing_body,admin_headers))
   check('invalid animal rejected',404,req(base+'/listings',{'animalId':str(uuid.uuid4()),'title':'Invalid','description':'Invalid'},admin_headers))
   published_listing=check('admin publishes listing',200,req(base+'/listings/'+new_listing+'/publish',{},admin_headers));assert published_listing['status']=='PUBLISHED'
   check('duplicate publish rejected',409,req(base+'/listings/'+new_listing+'/publish',{},admin_headers))
-  assert check('public reads published listing',200,req(root+'/listings/'+new_listing))['listingId']==new_listing
-  assert any(x['listingId']==new_listing for x in check('public lists published listing',200,req(root+'/listings'))['items'])
+  assert check('public reads published listing',200,req(public_listings+'/'+new_listing))['listingId']==new_listing
+  assert any(x['listingId']==new_listing for x in check('public lists published listing',200,req(public_listings))['items'])
   check('applicant applies to HTTP published listing',200,req(root+'/listings/'+new_listing+'/applications',{'message':'apply'},h(0)))
   assert sql(db,'SELECT status,publisher_user_id FROM adoption_listing WHERE id=%s',new_listing)[0]==('PUBLISHED',ADMIN)
   print('DB: administrator HTTP created/published Listing and applicant HTTP submitted',flush=True)
