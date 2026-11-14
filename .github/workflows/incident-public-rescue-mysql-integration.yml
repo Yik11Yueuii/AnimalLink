@@ -56,7 +56,7 @@ jobs:
       - name: Run public and administrator rescue MySQL integration tests
         run: >-
           ./mvnw -pl backend/incident-service -am
-          -Dtest=PublicRescueReadIntegrationTest,AdminRescueReadIntegrationTest
+          -Dtest=PublicRescueReadIntegrationTest,AdminRescueReadIntegrationTest,PublicRescueMissingParameterTest
           -Dsurefire.failIfNoSpecifiedTests=false test
 
       - name: Print Surefire failure summary
