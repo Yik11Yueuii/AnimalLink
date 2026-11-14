@@ -46,6 +46,18 @@ export default defineConfig(({ mode }) => {
           target: env.GOVERNANCE_GATEWAY_TARGET || 'http://127.0.0.1:8080',
           changeOrigin: false,
         },
+        '/adoption/api/v1/admin/listings': {
+          target: env.GOVERNANCE_GATEWAY_TARGET || 'http://127.0.0.1:8080',
+          changeOrigin: false,
+        },
+        '/adoption/api/v1/admin/selections': {
+          target: env.GOVERNANCE_GATEWAY_TARGET || 'http://127.0.0.1:8080',
+          changeOrigin: false,
+        },
+        '/adoption/api/v1/admin/handovers': {
+          target: env.GOVERNANCE_GATEWAY_TARGET || 'http://127.0.0.1:8080',
+          changeOrigin: false,
+        },
         '/identity/api/v1/campuses': {
           target: env.GOVERNANCE_GATEWAY_TARGET || 'http://127.0.0.1:8080',
           changeOrigin: false,
