@@ -44,4 +44,13 @@ describe('adoption API data source', () => {
     expect(mutation).toHaveBeenCalledWith('/adoption/api/v1/admin/listings', { animalId: 'animal', title: 'title', description: 'description' })
     expect(mutation).toHaveBeenCalledWith('/adoption/api/v1/admin/listings/listing/publish', undefined)
   })
+  it('searches public animals by campus and keyword', async () => {
+    const get = vi.spyOn(gatewayClient, 'get').mockResolvedValue({ data: { items: [
+      { id: 'animal', campusId: 'campus', displayName: 'Cat', species: 'CAT' },
+    ] } })
+    expect(await adoptionApiDataSource.animals?.('campus', ' Cat ')).toEqual([
+      { id: 'animal', campusId: 'campus', displayName: 'Cat', species: 'CAT' },
+    ])
+    expect(get).toHaveBeenCalledWith('/animal/api/v1/public/animals', { params: { campusId: 'campus', q: 'Cat', page: 0, size: 20 } })
+  })
 })

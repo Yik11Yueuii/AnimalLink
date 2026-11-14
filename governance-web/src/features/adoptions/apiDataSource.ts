@@ -57,7 +57,7 @@ export const adoptionApiDataSource: AdoptionGovernanceDataSource = {
   },
   async listing(id) { const { data } = await gatewayClient.get(`/adoption/api/v1/admin/listings/${encodeURIComponent(id)}`); return listing(data) },
   async animals(campusId, keyword) {
-    const { data } = await gatewayClient.get('/animal/api/v1/animals', { params: { campusId, q: keyword.trim(), page: 0, size: 20 } })
+    const { data } = await gatewayClient.get('/animal/api/v1/public/animals', { params: { campusId, q: keyword.trim(), page: 0, size: 20 } })
     const source = record(data); if (!Array.isArray(source.items)) throw new Error('Animal 查询响应无效。')
     return source.items.map(value => { const x = record(value); return { id: text(x.id, 'animal.id'), campusId: text(x.campusId, 'animal.campusId'), displayName: text(x.displayName, 'animal.displayName'), species: text(x.species, 'animal.species') } })
   },
