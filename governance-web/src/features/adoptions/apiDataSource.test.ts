@@ -30,4 +30,18 @@ describe('adoption API data source', () => {
     expect(mutation).toHaveBeenCalledWith('/adoption/api/v1/admin/selections/selection/handover', { scheduledAt: '2030-01-01T04:00:00.000Z' })
     expect(mutation).toHaveBeenCalledWith('/adoption/api/v1/admin/handovers/handover/complete', undefined)
   })
+  it('reads drafts through admin routes and creates and publishes through protected mutations', async () => {
+    const listing = application.listing
+    const get = vi.spyOn(gatewayClient, 'get').mockResolvedValueOnce({ data: { items: [listing], page: 0, size: 20, total: 1 } })
+      .mockResolvedValueOnce({ data: listing })
+    const mutation = vi.spyOn(auth, 'authenticatedAdminMutation').mockResolvedValueOnce(listing as never)
+      .mockResolvedValueOnce({ ...listing, status: 'PUBLISHED' } as never)
+    expect((await adoptionApiDataSource.listings?.('DRAFT', 0, 20))?.items[0].listingId).toBe('listing')
+    expect((await adoptionApiDataSource.listing?.('listing'))?.listingId).toBe('listing')
+    await adoptionApiDataSource.createListing?.('animal', 'title', 'description')
+    await adoptionApiDataSource.publishListing?.('listing')
+    expect(get).toHaveBeenCalledWith('/adoption/api/v1/admin/listings', { params: { status: 'DRAFT', page: 0, size: 20 } })
+    expect(mutation).toHaveBeenCalledWith('/adoption/api/v1/admin/listings', { animalId: 'animal', title: 'title', description: 'description' })
+    expect(mutation).toHaveBeenCalledWith('/adoption/api/v1/admin/listings/listing/publish', undefined)
+  })
 })

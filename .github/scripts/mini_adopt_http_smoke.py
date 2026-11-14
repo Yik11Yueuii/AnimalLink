@@ -51,6 +51,10 @@ def main():
   for i,user in enumerate(USERS):
    sql(db,"INSERT INTO `user` (id,display_name,account_status,system_role) VALUES (%s,'Smoke','ACTIVE','USER')",user)
    sql(db,"INSERT INTO wechat_user_session(id,user_id,token_hash,created_at,last_seen_at,idle_expires_at,absolute_expires_at) VALUES (%s,%s,%s,NOW(6),NOW(6),DATE_ADD(NOW(6),INTERVAL 1 DAY),DATE_ADD(NOW(6),INTERVAL 2 DAY))",str(uuid.uuid4()),user,hashlib.sha256(TOKENS[i].encode()).digest())
+  ordinary_token=base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip('=')
+  ordinary_identity=str(uuid.uuid4());sql(db,"INSERT INTO external_identity(id,user_id,provider,provider_tenant,provider_subject) VALUES (%s,%s,'ADMIN_PASSWORD','','ordinary.adopt')",ordinary_identity,USERS[0])
+  sql(db,"INSERT INTO admin_password_credential(external_identity_id,password_hash,password_algorithm,credential_version) VALUES (%s,'unused-test-password-hash','ARGON2ID_V1',1)",ordinary_identity)
+  sql(db,"INSERT INTO admin_session(id,user_id,client_type,token_hash,credential_version,created_at,last_seen_at,idle_expires_at,absolute_expires_at) VALUES (%s,%s,'ADMIN_WEB',%s,1,NOW(6),NOW(6),DATE_ADD(NOW(6),INTERVAL 1 DAY),DATE_ADD(NOW(6),INTERVAL 2 DAY))",str(uuid.uuid4()),USERS[0],hashlib.sha256(ordinary_token.encode()).digest())
   verification=str(uuid.uuid4());sql(db,"INSERT INTO campus_verification(id,user_id,campus_id,requested_membership_type,applicant_name,status) VALUES (%s,%s,%s,'STUDENT','Smoke','APPROVED')",verification,USERS[0],CAMPUS)
   sql(db,"INSERT INTO campus_membership(id,user_id,campus_id,membership_type,status,approved_at,last_verification_id) VALUES (%s,%s,%s,'STUDENT','ACTIVE',NOW(6),%s)",str(uuid.uuid4()),USERS[0],CAMPUS,verification)
   verification2=str(uuid.uuid4());sql(db,"INSERT INTO campus_verification(id,user_id,campus_id,requested_membership_type,applicant_name,status) VALUES (%s,%s,%s,'STUDENT','Other','APPROVED')",verification2,USERS[2],CAMPUS)
@@ -102,6 +106,30 @@ def main():
   admin_headers={'Cookie':csrf_cookie+'; ANIMALLINK_ADMIN_SESSION='+ADMIN_TOKEN,'Origin':ORIGIN,'Sec-Fetch-Site':'same-origin',csrf['headerName']:csrf['token']}
   admin_read_headers={'Cookie':'ANIMALLINK_ADMIN_SESSION='+ADMIN_TOKEN}
   base=GATEWAY+'/adoption/api/v1/admin'
+  listing_animal=str(uuid.uuid4());sql(db,'USE animallink_animal');sql(db,"INSERT INTO animal(id,campus_id,display_name,species,adoption_status) VALUES (%s,%s,'publish animal','CAT','OPEN')",listing_animal,CAMPUS)
+  sql(db,'USE animallink_adoption')
+  listing_body={'animalId':listing_animal,'title':'HTTP created listing','description':'Ready for adoption'}
+  check('listing create without session',401,req(base+'/listings',listing_body,headers={'Origin':ORIGIN,'Sec-Fetch-Site':'same-origin',csrf['headerName']:csrf['token'],'Cookie':csrf_cookie}))
+  ordinary_headers=dict(admin_headers);ordinary_headers['Cookie']=csrf_cookie+'; ANIMALLINK_ADMIN_SESSION='+ordinary_token
+  check('ordinary user listing create rejected',401,req(base+'/listings',listing_body,ordinary_headers))
+  code,_=req(base+'/listings',listing_body,{'Cookie':csrf_cookie+'; ANIMALLINK_ADMIN_SESSION='+ADMIN_TOKEN,'Origin':ORIGIN,'Sec-Fetch-Site':'same-origin'});assert code==403
+  check('direct unsigned listing create',401,req(ADOPTION+'/api/v1/admin/listings',listing_body))
+  created_listing=check('admin creates listing draft',200,req(base+'/listings',listing_body,admin_headers));assert created_listing['status']=='DRAFT' and created_listing['publisherUserId']==ADMIN
+  new_listing=created_listing['listingId']
+  assert check('admin reopens draft without csrf',200,req(base+'/listings/'+new_listing,headers=admin_read_headers))['status']=='DRAFT'
+  assert any(x['listingId']==new_listing for x in check('admin lists draft without csrf',200,req(base+'/listings?status=DRAFT',headers=admin_read_headers))['items'])
+  public_listings=GATEWAY+'/adoption/api/v1/public/listings'
+  check('public draft detail rejected',404,req(public_listings+'/'+new_listing))
+  assert all(x['listingId']!=new_listing for x in check('public excludes draft',200,req(public_listings))['items'])
+  check('duplicate active listing rejected',409,req(base+'/listings',listing_body,admin_headers))
+  check('invalid animal rejected',404,req(base+'/listings',{'animalId':str(uuid.uuid4()),'title':'Invalid','description':'Invalid'},admin_headers))
+  published_listing=check('admin publishes listing',200,req(base+'/listings/'+new_listing+'/publish',{},admin_headers));assert published_listing['status']=='PUBLISHED'
+  check('duplicate publish rejected',409,req(base+'/listings/'+new_listing+'/publish',{},admin_headers))
+  assert check('public reads published listing',200,req(public_listings+'/'+new_listing))['listingId']==new_listing
+  assert any(x['listingId']==new_listing for x in check('public lists published listing',200,req(public_listings))['items'])
+  check('applicant applies to HTTP published listing',200,req(root+'/listings/'+new_listing+'/applications',{'message':'apply'},h(0)))
+  assert sql(db,'SELECT status,publisher_user_id FROM adoption_listing WHERE id=%s',new_listing)[0]==('PUBLISHED',ADMIN)
+  print('DB: administrator HTTP created/published Listing and applicant HTTP submitted',flush=True)
   check('admin reads applications without csrf',200,req(base+'/applications',headers=admin_read_headers))
   check('admin reads application without csrf',200,req(base+'/applications/'+first,headers=admin_read_headers))
   check('admin review without session',401,req(base+'/applications/'+first+'/approve',{'comment':'no'},headers={'Origin':ORIGIN,'Sec-Fetch-Site':'same-origin',csrf['headerName']:csrf['token'],'Cookie':csrf_cookie}))

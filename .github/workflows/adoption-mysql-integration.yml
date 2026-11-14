@@ -27,6 +27,9 @@ jobs:
       - name: Verify runner Docker Engine
         run: docker version
 
+      - name: Match docker-java API to runner Docker Engine
+        run: printf 'api.version=1.44\n' > "$HOME/.docker-java.properties"
+
       - name: Run Adoption MySQL integration test
         run: >-
           ./mvnw -pl backend/adoption-service -am

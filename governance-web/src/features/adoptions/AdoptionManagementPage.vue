@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import type { AdoptionGovernanceDataSource } from './dataSource'
+import type { CampusOption } from '@/features/animals/types'
 import { useAdoptionCatalog } from './useAdoptionCatalog'
 import {
   adoptionApplicationStatusLabels,
@@ -8,14 +9,25 @@ import {
   type AdoptionApplicationStatus,
   type AdoptionListingStatus,
   type GovernanceAdoptionApplication,
+  type AdoptionListingSummary,
+  type AdoptionAnimalOption,
 } from './types'
 
-const props = defineProps<{ dataSource: AdoptionGovernanceDataSource }>()
+const props = defineProps<{ dataSource: AdoptionGovernanceDataSource; campusOptions?: CampusOption[] }>()
 const catalog = useAdoptionCatalog(props.dataSource)
 const selection = ref<{ selectionId: string; applicationId: string; status: string } | null>(null)
 const handover = ref<{ handoverId: string; status: string; scheduledAt: string; completedAt: string | null } | null>(null)
 const workflowError = ref(''), workflowMessage = ref(''), busy = ref(false)
 const reviewComment = ref(''), scheduledLocal = ref(''), cancelReason = ref('')
+const listingItems = ref<AdoptionListingSummary[]>([]), listingStatus = ref(''), listingError = ref(''), listingBusy = ref(false)
+const listingDetail = ref<AdoptionListingSummary | null>(null), listingPage = ref(0), listingTotal = ref(0)
+const campusId = ref(''), animalKeyword = ref(''), animalOptions = ref<AdoptionAnimalOption[]>([]), selectedAnimalId = ref('')
+const listingTitle = ref(''), listingDescription = ref('')
+const loadListings = async () => { if (!props.dataSource.listings) return; try { const result=await props.dataSource.listings(listingStatus.value,listingPage.value,20); listingItems.value=result.items; listingTotal.value=result.total } catch { listingError.value='领养信息加载失败。' } }
+const openListing = async (id: string) => { if (!props.dataSource.listing) return; try { listingDetail.value=await props.dataSource.listing(id); listingError.value='' } catch { listingError.value='领养信息详情暂不可用。' } }
+const findAnimals = async () => { if (!props.dataSource.animals || !campusId.value) return; listingError.value=''; try { animalOptions.value=await props.dataSource.animals(campusId.value,animalKeyword.value) } catch { listingError.value='Animal 查询失败。' } }
+const createListing = async () => { if (!props.dataSource.createListing || listingBusy.value) return; listingBusy.value=true; listingError.value=''; try { const created=await props.dataSource.createListing(selectedAnimalId.value,listingTitle.value,listingDescription.value); listingDetail.value=created; listingTitle.value=''; listingDescription.value=''; listingStatus.value=''; listingPage.value=0; await loadListings() } catch { await loadListings(); listingError.value='创建结果未确认，请核对刷新后的列表；请勿盲目重试。' } finally { listingBusy.value=false } }
+const publishListing = async (id: string) => { if (!props.dataSource.publishListing || listingBusy.value) return; listingBusy.value=true; listingError.value=''; try { listingDetail.value=await props.dataSource.publishListing(id); await loadListings() } catch { await loadListings(); await openListing(id); listingError.value='发布结果未确认，请核对刷新后的状态。' } finally { listingBusy.value=false } }
 let workflowGeneration = 0
 const refreshWorkflow = async (applicationId: string) => {
   const generation = ++workflowGeneration
@@ -70,7 +82,7 @@ const statusDescription = (status: AdoptionApplicationStatus) => ({
   WITHDRAWN: '申请人已撤回本次申请',
 })[status]
 
-onMounted(() => { void catalog.load() })
+onMounted(() => { void catalog.load(); void loadListings() })
 </script>
 
 <template>
@@ -83,6 +95,28 @@ onMounted(() => { void catalog.load() })
       </div>
       <div class="result-summary" aria-live="polite"><strong>{{ catalog.total.value }}</strong><span>条匹配申请</span></div>
     </header>
+
+    <el-card v-if="dataSource.listings" class="filter-card" shadow="never">
+      <template #header><strong>领养信息创建与发布</strong></template>
+      <el-alert v-if="listingError" type="warning" :title="listingError" :closable="false" />
+      <el-form class="filter-grid" label-position="top" @submit.prevent="findAnimals">
+        <el-form-item label="Campus"><el-select v-model="campusId" placeholder="选择 Campus" @change="selectedAnimalId='';animalOptions=[]"><el-option v-for="campus in campusOptions || []" :key="campus.id" :label="campus.label" :value="campus.id" /></el-select></el-form-item>
+        <el-form-item label="Animal 关键词"><el-input v-model="animalKeyword" @keyup.enter="findAnimals" /></el-form-item>
+        <div class="filter-actions"><el-button @click="findAnimals" :disabled="!campusId">查询 Animal</el-button></div>
+        <el-form-item label="Animal"><el-select v-model="selectedAnimalId" filterable placeholder="选择已有 Animal"><el-option v-for="animal in animalOptions" :key="animal.id" :label="`${animal.displayName} · ${animal.species} · ${animal.id}`" :value="animal.id" /></el-select></el-form-item>
+        <el-form-item label="标题"><el-input v-model="listingTitle" :maxlength="160" /></el-form-item>
+        <el-form-item label="描述" class="keyword-field"><el-input v-model="listingDescription" type="textarea" :maxlength="4000" /></el-form-item>
+        <div class="filter-actions"><el-button type="primary" :loading="listingBusy" :disabled="!selectedAnimalId || !listingTitle.trim() || !listingDescription.trim()" @click="createListing">创建草稿</el-button></div>
+      </el-form>
+      <div class="filter-actions"><el-select v-model="listingStatus" clearable placeholder="全部 Listing 状态" @change="listingPage=0;loadListings()"><el-option v-for="(label,value) in adoptionListingStatusLabels" :key="value" :label="label" :value="value" /></el-select><el-button @click="loadListings">刷新</el-button></div>
+      <el-table :data="listingItems" empty-text="暂无领养信息">
+        <el-table-column prop="title" label="标题" min-width="160" /><el-table-column prop="animalId" label="Animal ID" min-width="240" />
+        <el-table-column label="状态" width="110"><template #default="{ row }"><el-tag :type="listingStatusType(row.status)">{{ adoptionListingStatusLabels[row.status as AdoptionListingStatus] }}</el-tag></template></el-table-column>
+        <el-table-column label="操作" width="180"><template #default="{ row }"><el-button link @click="openListing(row.listingId)">查看</el-button><el-popconfirm v-if="row.status === 'DRAFT'" title="确认发布此领养信息？" @confirm="publishListing(row.listingId)"><template #reference><el-button link type="primary" :disabled="listingBusy">发布</el-button></template></el-popconfirm></template></el-table-column>
+      </el-table>
+      <el-pagination v-if="listingTotal > 20" :current-page="listingPage+1" :page-size="20" :total="listingTotal" layout="prev, pager, next" @current-change="(page: number) => { listingPage=page-1; loadListings() }" />
+      <section v-if="listingDetail" class="detail-section"><h3>领养信息详情</h3><p>{{ listingDetail.title }} · {{ adoptionListingStatusLabels[listingDetail.status] }}</p><p>{{ listingDetail.description }}</p><p>Animal ID：{{ listingDetail.animalId }}</p><p>Listing ID：{{ listingDetail.listingId }}</p><el-popconfirm v-if="listingDetail.status === 'DRAFT'" title="确认发布此领养信息？" @confirm="publishListing(listingDetail.listingId)"><template #reference><el-button type="primary" :disabled="listingBusy">确认发布</el-button></template></el-popconfirm></section>
+    </el-card>
 
     <section class="stats-grid" aria-label="当前查询范围状态统计">
       <article v-for="status in statusOrder" :key="status" :class="['stat-card', `stat-${status.toLowerCase()}`]">
